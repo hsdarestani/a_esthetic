@@ -1,1 +1,1 @@
-Trigger direct connected deployment 2026-07-25T16:20:00Z
+Trigger connected deployment diagnostic 2026-07-25T16:28:00Z
