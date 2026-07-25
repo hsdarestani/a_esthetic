@@ -1,175 +1,34 @@
-name: Deploy A+ Esthetic Web App
+name: Trigger connected A+ Esthetic deployment
 
 on:
   push:
     branches: [main]
     paths:
-      - "index.html"
       - "manifest.json"
-      - "sw.js"
+      - ".deploy/full-app.tar.gz.b64"
       - ".github/workflows/deploy-web.yml"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  actions: write
+  contents: read
 
 concurrency:
-  group: a-esthetic-production
+  group: a-esthetic-deploy-trigger
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate static app
-        run: |
-          test -s index.html
-          test -s manifest.json
-          test -s sw.js
-          grep -q "A+ Esthetic" index.html
-          grep -q "Keine Diagnose" index.html
-
-      - name: Upload release
-        uses: appleboy/scp-action@v0.1.7
+      - name: Start connected deployment workflow
+        uses: actions/github-script@v7
         with:
-          host: ${{ secrets.HOST }}
-          username: root
-          password: ${{ secrets.PASS }}
-          source: "index.html,manifest.json,sw.js"
-          target: "/tmp/a-esthetic-release"
-          overwrite: true
-
-      - name: Activate release and web server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.HOST }}
-          username: root
-          password: ${{ secrets.PASS }}
-          command_timeout: 20m
+          github-token: ${{ github.token }}
           script: |
-            set -eu
-            DOMAIN="esthetic.smarbiz.sbs"
-            WEBROOT="/opt/a-esthetic-web/site"
-            mkdir -p "$WEBROOT"
-            install -m 0644 /tmp/a-esthetic-release/index.html "$WEBROOT/index.html"
-            install -m 0644 /tmp/a-esthetic-release/manifest.json "$WEBROOT/manifest.json"
-            install -m 0644 /tmp/a-esthetic-release/sw.js "$WEBROOT/sw.js"
-            chown -R root:root /opt/a-esthetic-web
-
-            if command -v caddy >/dev/null 2>&1; then
-              CADDYFILE="/etc/caddy/Caddyfile"
-              touch "$CADDYFILE"
-              awk '
-                /^# BEGIN A_ESTHETIC_WEB$/ {skip=1; next}
-                /^# END A_ESTHETIC_WEB$/ {skip=0; next}
-                !skip {print}
-              ' "$CADDYFILE" > /tmp/Caddyfile.clean
-              cat >> /tmp/Caddyfile.clean <<'CADDY'
-            # BEGIN A_ESTHETIC_WEB
-            esthetic.smarbiz.sbs {
-              root * /opt/a-esthetic-web/site
-              encode zstd gzip
-              try_files {path} /index.html
-              file_server
-              header {
-                X-Content-Type-Options nosniff
-                X-Frame-Options DENY
-                Referrer-Policy strict-origin-when-cross-origin
-                Permissions-Policy "camera=(), microphone=(), geolocation=()"
-                Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-              }
-              @serviceWorker path /sw.js
-              header @serviceWorker Cache-Control "no-cache, no-store, must-revalidate"
-            }
-            # END A_ESTHETIC_WEB
-            CADDY
-              mv /tmp/Caddyfile.clean "$CADDYFILE"
-              caddy validate --config "$CADDYFILE"
-              systemctl reload caddy
-            elif command -v nginx >/dev/null 2>&1; then
-              cat > /etc/nginx/sites-available/a-esthetic-web.conf <<'NGINX'
-            server {
-              listen 80;
-              listen [::]:80;
-              server_name esthetic.smarbiz.sbs;
-              root /opt/a-esthetic-web/site;
-              index index.html;
-              location / { try_files $uri $uri/ /index.html; }
-              location = /sw.js { add_header Cache-Control "no-cache, no-store, must-revalidate" always; }
-              add_header X-Content-Type-Options nosniff always;
-              add_header X-Frame-Options DENY always;
-              add_header Referrer-Policy strict-origin-when-cross-origin always;
-              add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-              add_header Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
-            }
-            NGINX
-              ln -sfn /etc/nginx/sites-available/a-esthetic-web.conf /etc/nginx/sites-enabled/a-esthetic-web.conf
-              nginx -t
-              systemctl reload nginx
-              if command -v certbot >/dev/null 2>&1; then
-                certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
-              fi
-            elif command -v apache2 >/dev/null 2>&1; then
-              cat > /etc/apache2/sites-available/a-esthetic-web.conf <<'APACHE'
-            <VirtualHost *:80>
-              ServerName esthetic.smarbiz.sbs
-              DocumentRoot /opt/a-esthetic-web/site
-              <Directory /opt/a-esthetic-web/site>
-                Require all granted
-                AllowOverride None
-                FallbackResource /index.html
-              </Directory>
-              Header always set X-Content-Type-Options "nosniff"
-              Header always set X-Frame-Options "DENY"
-              Header always set Referrer-Policy "strict-origin-when-cross-origin"
-            </VirtualHost>
-            APACHE
-              a2enmod headers rewrite
-              a2ensite a-esthetic-web.conf
-              apache2ctl configtest
-              systemctl reload apache2
-            else
-              apt-get update -y
-              DEBIAN_FRONTEND=noninteractive apt-get install -y nginx certbot python3-certbot-nginx
-              cat > /etc/nginx/sites-available/a-esthetic-web.conf <<'NGINXNEW'
-            server {
-              listen 80;
-              listen [::]:80;
-              server_name esthetic.smarbiz.sbs;
-              root /opt/a-esthetic-web/site;
-              index index.html;
-              location / { try_files $uri $uri/ /index.html; }
-              location = /sw.js { add_header Cache-Control "no-cache, no-store, must-revalidate" always; }
-              add_header X-Content-Type-Options nosniff always;
-              add_header X-Frame-Options DENY always;
-              add_header Referrer-Policy strict-origin-when-cross-origin always;
-              add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-              add_header Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
-            }
-            NGINXNEW
-              rm -f /etc/nginx/sites-enabled/default
-              ln -sfn /etc/nginx/sites-available/a-esthetic-web.conf /etc/nginx/sites-enabled/a-esthetic-web.conf
-              nginx -t
-              systemctl enable --now nginx
-              certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
-            fi
-
-            rm -rf /tmp/a-esthetic-release
-            sleep 3
-            curl -fsS --max-time 20 "http://127.0.0.1" -H "Host: $DOMAIN" | grep -q "A+ Esthetic"
-
-      - name: Record deployment result
-        if: always()
-        env:
-          DEPLOY_RESULT: ${{ job.status }}
-          DEPLOY_SHA: ${{ github.sha }}
-        run: |
-          printf '{\n  "status": "%s",\n  "commit": "%s",\n  "environment": "production",\n  "domain": "esthetic.smarbiz.sbs",\n  "recorded_at": "%s"\n}\n' "$DEPLOY_RESULT" "$DEPLOY_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > deployment-status.json
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add deployment-status.json
-          git commit -m "chore: record deployment status" || exit 0
-          git push
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy-connected-app.yml',
+              ref: 'main'
+            });
