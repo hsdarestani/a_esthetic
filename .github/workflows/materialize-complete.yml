@@ -19,8 +19,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
+      - name: Verify transfer part 00
+        if: ${{ hashFiles('.release/complete.part00') != '' }}
+        run: echo "46549391d45d160677c58d16f34ddea2eae55beee6058ae1619c928a3e8f2fd9  .release/complete.part00" | sha256sum -c -
+      - name: Verify transfer part 01
+        if: ${{ hashFiles('.release/complete.part01') != '' }}
+        run: echo "11448614b125de50a54191dd72d38285618b4e509930679a166edf66de7d7b3c  .release/complete.part01" | sha256sum -c -
+      - name: Verify transfer part 02
+        if: ${{ hashFiles('.release/complete.part02') != '' }}
+        run: echo "f80f5618a7c604f609756be73d30ddf4b702a8c2e9c16094d0789185785df6ca  .release/complete.part02" | sha256sum -c -
+      - name: Verify transfer part 03
+        if: ${{ hashFiles('.release/complete.part03') != '' }}
+        run: echo "8b49b2f62c7ff5eb091cdb777e49060d48f6435a5d70c86fbdc9fa594957988a  .release/complete.part03" | sha256sum -c -
+      - name: Verify transfer part 04
+        if: ${{ hashFiles('.release/complete.part04') != '' }}
+        run: echo "fc5cce7c57b1efbbaa608a6d80c87b7c7f3622d875cfd13c15a46e7d4a92b416  .release/complete.part04" | sha256sum -c -
+      - name: Verify transfer part 05
+        if: ${{ hashFiles('.release/complete.part05') != '' }}
+        run: echo "1b8cd04bc28bab8c365896f6962dcfbff226b2344376ccb5554c9c43dac8d2de  .release/complete.part05" | sha256sum -c -
       - name: Expand source package
         run: |
           set -euo pipefail
