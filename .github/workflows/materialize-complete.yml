@@ -21,23 +21,31 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
-      - name: Record transfer checksums
+      - name: Expand verified source package
         run: |
           set -euo pipefail
-          {
-            for file in .release/complete.part*; do
-              [ -f "$file" ] || continue
-              case "$file" in *actual-checksums.txt) continue;; esac
-              printf '%s %s ' "$(wc -c < "$file")" "$(sha256sum "$file" | cut -d' ' -f1)"
-              echo "$file"
-            done
-          } > .release/actual-checksums.txt
-          cat .release/actual-checksums.txt
-      - name: Commit checksum report
+          shopt -s nullglob
+          parts=(.release/complete.part*)
+          if [ ${#parts[@]} -eq 0 ]; then
+            echo "Source already materialized."
+            exit 0
+          fi
+          cat .release/complete.part* > /tmp/complete.b64
+          test "$(wc -c < /tmp/complete.b64)" = "80072"
+          base64 -d /tmp/complete.b64 > /tmp/complete.tar.gz
+          echo "9edc7ee473f05238dd8c3f5516a802eef3b5946856e85ff2c3bbfb4901c081bc  /tmp/complete.tar.gz" | sha256sum -c -
+          tar -tzf /tmp/complete.tar.gz >/dev/null
+          tar -xzf /tmp/complete.tar.gz
+          rm -rf .release
+          python3 -m compileall -q experience_app config
+          test -s experience_app/models.py
+          test -s experience_app/views.py
+          test -s .github/workflows/deploy-complete-platform.yml
+      - name: Commit readable source
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .release/actual-checksums.txt
+          git add -A
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Record transfer checksums"
+          git commit -m "Materialize complete A+ Esthetic source"
           git push origin HEAD:${{ github.head_ref }}
