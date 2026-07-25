@@ -1,4 +1,4 @@
-name: Finalize connected A+ Esthetic platform
+name: Activate connected A+ Esthetic production
 
 on:
   pull_request:
@@ -13,11 +13,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  finalize:
+  activate:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - name: Fix permissions, activate API and verify admin login
+      - name: Activate TLS, API proxy and verified admin login
         uses: appleboy/ssh-action@v1.0.3
         env:
           GH_TOKEN: ${{ github.token }}
@@ -27,43 +27,101 @@ jobs:
           username: root
           password: ${{ secrets.PASS }}
           envs: GH_TOKEN,GH_REPO
-          command_timeout: 15m
+          command_timeout: 20m
           script: |
             set -euo pipefail
             DOMAIN="esthetic.smarbiz.sbs"
             APIROOT="/opt/a-esthetic-api"
             WEBROOT="/opt/a-esthetic-web/site"
+            export DEBIAN_FRONTEND=noninteractive
 
-            test -s "$APIROOT/server.py"
-            test -s "$APIROOT/bootstrap_admin.json"
+            apt-get update -y >/dev/null
+            apt-get install -y nginx certbot python3-certbot-nginx openssl curl ca-certificates >/dev/null
+            if command -v ufw >/dev/null 2>&1; then
+              ufw allow 80/tcp >/dev/null 2>&1 || true
+              ufw allow 443/tcp >/dev/null 2>&1 || true
+            fi
+            iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT
+            iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT
+
             ADMIN_PASSWORD="$(python3 - <<'PY'
-            import json
-            with open('/opt/a-esthetic-api/bootstrap_admin.json', encoding='utf-8') as fh:
-                print(json.load(fh)['password'])
+            import secrets, string
+            alphabet = string.ascii_letters + string.digits + '!@#%_-'
+            while True:
+                value = 'A+' + ''.join(secrets.choice(alphabet) for _ in range(22)) + '9x'
+                if any(c.isupper() for c in value) and any(c.islower() for c in value) and any(c.isdigit() for c in value):
+                    print(value)
+                    break
             PY
             )"
-
-            chown aesthetic:aesthetic "$APIROOT"
-            chown aesthetic:aesthetic "$APIROOT/bootstrap_admin.json"
+            python3 - "$APIROOT/bootstrap_admin.json" "$ADMIN_PASSWORD" <<'PY'
+            import json, os, sys
+            path, password = sys.argv[1], sys.argv[2]
+            with open(path, 'w', encoding='utf-8') as fh:
+                json.dump({'username':'admin','email':'admin@a-esthetic.de','password':password}, fh)
+            os.chmod(path, 0o600)
+            PY
+            chown aesthetic:aesthetic "$APIROOT" "$APIROOT/bootstrap_admin.json"
             chown -R aesthetic:aesthetic "$APIROOT/data"
             chmod 0750 "$APIROOT"
-            chmod 0600 "$APIROOT/bootstrap_admin.json"
             chmod 0700 "$APIROOT/data"
 
-            systemctl daemon-reload
             systemctl restart a-esthetic-api
-            sleep 5
+            sleep 4
             systemctl is-active --quiet a-esthetic-api
             test ! -e "$APIROOT/bootstrap_admin.json"
 
-            cat > /etc/nginx/sites-available/a-esthetic-web.conf <<'NGINX'
+            mkdir -p "$WEBROOT/.well-known/acme-challenge"
+            cat > /etc/nginx/sites-available/a-esthetic-web.conf <<'NGINXHTTP'
             server {
               listen 80;
               listen [::]:80;
               server_name esthetic.smarbiz.sbs;
               root /opt/a-esthetic-web/site;
+              location ^~ /.well-known/acme-challenge/ { try_files $uri =404; }
+              location /api/ {
+                proxy_pass http://127.0.0.1:8765;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+              }
+              location / { try_files $uri $uri/ /index.html; }
+            }
+            NGINXHTTP
+            rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/a-esthetic-connected.conf
+            ln -sfn /etc/nginx/sites-available/a-esthetic-web.conf /etc/nginx/sites-enabled/a-esthetic-web.conf
+            nginx -t
+            systemctl enable --now nginx
+            systemctl reload nginx
+
+            if [ ! -s "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+              certbot certonly --webroot -w "$WEBROOT" -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email
+            fi
+            test -s "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+            test -s "/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
+
+            cat > /etc/nginx/sites-available/a-esthetic-web.conf <<'NGINXFINAL'
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name esthetic.smarbiz.sbs;
+              location ^~ /.well-known/acme-challenge/ { root /opt/a-esthetic-web/site; try_files $uri =404; }
+              location / { return 301 https://$host$request_uri; }
+            }
+            server {
+              listen 443 ssl;
+              listen [::]:443 ssl;
+              http2 on;
+              server_name esthetic.smarbiz.sbs;
+              root /opt/a-esthetic-web/site;
               index index.html;
               client_max_body_size 1m;
+              ssl_certificate /etc/letsencrypt/live/esthetic.smarbiz.sbs/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/esthetic.smarbiz.sbs/privkey.pem;
+              ssl_protocols TLSv1.2 TLSv1.3;
+              ssl_session_timeout 1d;
+              ssl_session_cache shared:AESTHETIC:10m;
 
               location /api/ {
                 proxy_pass http://127.0.0.1:8765;
@@ -71,7 +129,7 @@ jobs:
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Proto https;
                 proxy_connect_timeout 5s;
                 proxy_read_timeout 30s;
               }
@@ -83,18 +141,24 @@ jobs:
               add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
               add_header Content-Security-Policy "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
             }
-            NGINX
-            rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/a-esthetic-connected.conf
-            ln -sfn /etc/nginx/sites-available/a-esthetic-web.conf /etc/nginx/sites-enabled/a-esthetic-web.conf
+            NGINXFINAL
             nginx -t
             systemctl reload nginx
 
-            LOCAL_HEALTH="$(curl -fsS --max-time 15 http://127.0.0.1:8765/api/health)"
-            printf '%s' "$LOCAL_HEALTH" | grep -q 'A+ Esthetic API'
+            curl -fsS --max-time 15 http://127.0.0.1:8765/api/health | grep -q 'A+ Esthetic API'
             LOGIN="$(curl -fsS --max-time 15 -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"password\":\"${ADMIN_PASSWORD}\"}" http://127.0.0.1:8765/api/auth/login)"
             printf '%s' "$LOGIN" | grep -q '"ok": true'
-            curl -fsS --max-time 25 "https://${DOMAIN}/api/health" | grep -q 'A+ Esthetic API'
-            curl -fsS --max-time 25 "https://${DOMAIN}/" | grep -q 'Ihr digitaler Beauty Club'
+
+            PUBLIC_OK=false
+            for attempt in $(seq 1 12); do
+              if curl -fsS --max-time 20 "https://${DOMAIN}/api/health" | grep -q 'A+ Esthetic API'; then
+                PUBLIC_OK=true
+                break
+              fi
+              sleep 5
+            done
+            test "$PUBLIC_OK" = true
+            curl -fsS --max-time 20 "https://${DOMAIN}/" | grep -q 'Ihr digitaler Beauty Club'
 
             cat > /tmp/aesthetic-public.pem <<'PUBKEY'
             -----BEGIN PUBLIC KEY-----
@@ -126,8 +190,8 @@ jobs:
                 if sha: payload['sha']=sha
                 request=urllib.request.Request(api,data=json.dumps(payload).encode(),headers={**headers,'Content-Type':'application/json'},method='PUT')
                 with urllib.request.urlopen(request) as response: json.load(response)
-            status=json.dumps({'status':'success','api':'connected','database':'sqlite','admin_user':'admin','login_verified':True,'domain':'esthetic.smarbiz.sbs'},indent=2)
-            put('.deploy/connected-status.json',status,'record verified connected deployment')
+            status=json.dumps({'status':'success','api':'connected','database':'sqlite','admin_user':'admin','login_verified':True,'tls':'letsencrypt','public_health':200,'domain':'esthetic.smarbiz.sbs'},indent=2)
+            put('.deploy/connected-status.json',status,'record verified connected production')
             put('.deploy/admin-credential.enc',open('/tmp/aesthetic-admin.enc.b64').read(),'store encrypted verified admin credential')
             PY
 
