@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: a-esthetic-production
@@ -160,3 +160,16 @@ jobs:
             rm -rf /tmp/a-esthetic-release
             sleep 3
             curl -fsS --max-time 20 "http://127.0.0.1" -H "Host: $DOMAIN" | grep -q "A+ Esthetic"
+
+      - name: Record deployment result
+        if: always()
+        env:
+          DEPLOY_RESULT: ${{ job.status }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          printf '{\n  "status": "%s",\n  "commit": "%s",\n  "environment": "production",\n  "domain": "esthetic.smarbiz.sbs",\n  "recorded_at": "%s"\n}\n' "$DEPLOY_RESULT" "$DEPLOY_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > deployment-status.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deployment-status.json
+          git commit -m "chore: record deployment status" || exit 0
+          git push
