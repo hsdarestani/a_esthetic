@@ -27,7 +27,9 @@ jobs:
           test -s templates/app.html
           python3 -m compileall -q config platform_app
       - name: Build release
-        run: tar --exclude=.git --exclude=.github --exclude=.release --exclude='__pycache__' --exclude='*.pyc' -czf aesthetic-release.tar.gz .
+        run: |
+          tar --exclude=.git --exclude=.github --exclude=.release --exclude='__pycache__' --exclude='*.pyc' -czf /tmp/aesthetic-release.tar.gz .
+          mv /tmp/aesthetic-release.tar.gz ./aesthetic-release.tar.gz
       - uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.HOST }}
