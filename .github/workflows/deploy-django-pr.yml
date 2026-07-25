@@ -19,8 +19,13 @@ jobs:
       - name: Materialize source package
         run: |
           set -eu
-          if [ -f .release/aesthetic-source.b64 ]; then
+          if compgen -G '.release/aesthetic-source.part*' >/dev/null; then
+            cat .release/aesthetic-source.part* > /tmp/aesthetic-source.b64
+            base64 -d /tmp/aesthetic-source.b64 > /tmp/aesthetic-source.tar.gz
+          elif [ -f .release/aesthetic-source.b64 ]; then
             base64 -d .release/aesthetic-source.b64 > /tmp/aesthetic-source.tar.gz
+          fi
+          if [ -f /tmp/aesthetic-source.tar.gz ]; then
             test "$(sha256sum /tmp/aesthetic-source.tar.gz | cut -d' ' -f1)" = "f170b4704506bff252016adba28993f91088c300b40ca316f75014bc9211e37d"
             tar -xzf /tmp/aesthetic-source.tar.gz
           fi
