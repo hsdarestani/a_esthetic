@@ -81,7 +81,7 @@ class CompleteFeatureTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_private_photo_page_requires_owner(self):
-        album = ProgressAlbum.objects.create(user=self.user, title="Privat", private=True)
+        album = ProgressAlbum.objects.create(user=self.user, title="OWNER-ONLY-ALBUM-7F3A9C", private=True)
         other = User.objects.create_user("other", password="Test-Password-123!")
         self.client.login(username="other", password="Test-Password-123!")
         response = self.client.get(reverse("experience:photo_center"))
