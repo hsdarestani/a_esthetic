@@ -1,17 +1,15 @@
-timestamp=2026-07-25T16:30:23Z
+timestamp=2026-07-25T16:31:42Z
 caddy_active=inactive
 nginx_active=active
-api_active=activating
+api_active=active
 api_enabled=enabled
 api_file=yes
 db_file=yes
 web_index=yes
-curl: (7) Failed to connect to 127.0.0.1 port 8765 after 0 ms: Couldn't connect to server
-local_health=000
-bash: line 16: /tmp/local-health: No such file or directory
-local_body=
-public_health=200
-public_body=<!doctype html><html lang="de"><head>  <meta charset="utf-8">  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">  <meta name="theme-color" content="#17212a">  <meta name="description" content="A+ Esthetic Beauty Club Web App">  <link rel="manifest" href="/manifes
+local_health=200
+local_body={"ok": true, "service": "A+ Esthetic API", "time": "2026-07-25T16:31:42+00:00"}
+public_health=521
+public_body=error code: 521
 package_check_start
 part00_http=200 bytes=3500
 part01_http=200 bytes=3500
@@ -24,29 +22,29 @@ package_sha=ea16c08f884c9eef20aec68822937af6112c8b6e098e1314edeb5261182a3cd1
 expected_sha=ea16c08f884c9eef20aec68822937af6112c8b6e098e1314edeb5261182a3cd1
 tar_test=0
 journal_start
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:   File "/opt/a-esthetic-api/server.py", line 170, in init_db
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:     BOOTSTRAP_PATH.unlink()
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:   File "/usr/lib/python3.12/pathlib.py", line 1344, in unlink
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:     os.unlink(self)
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]: PermissionError: [Errno 13] Permission denied: '/opt/a-esthetic-api/bootstrap_admin.json'
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]: Error in sys.excepthook:
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]: Traceback (most recent call last):
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 228, in partial_apport_excepthook
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:     return apport_excepthook(binary, exc_type, exc_obj, exc_tb)
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 144, in apport_excepthook
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:     os.open(pr_filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o640), "wb"
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]: OSError: [Errno 30] Read-only file system: '/var/crash/_opt_a-esthetic-api_server.py.999.crash'
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]: Original exception was:
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]: Traceback (most recent call last):
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:   File "/opt/a-esthetic-api/server.py", line 421, in <module>
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:     init_db()
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:   File "/opt/a-esthetic-api/server.py", line 170, in init_db
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:     BOOTSTRAP_PATH.unlink()
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:   File "/usr/lib/python3.12/pathlib.py", line 1344, in unlink
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]:     os.unlink(self)
-Jul 25 16:30:22 Srv-HET-ad24f2 python3[19373]: PermissionError: [Errno 13] Permission denied: '/opt/a-esthetic-api/bootstrap_admin.json'
-Jul 25 16:30:22 Srv-HET-ad24f2 systemd[1]: a-esthetic-api.service: Main process exited, code=exited, status=1/FAILURE
-Jul 25 16:30:22 Srv-HET-ad24f2 systemd[1]: a-esthetic-api.service: Failed with result 'exit-code'.
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:   File "/usr/lib/python3.12/pathlib.py", line 1344, in unlink
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:     os.unlink(self)
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]: PermissionError: [Errno 13] Permission denied: '/opt/a-esthetic-api/bootstrap_admin.json'
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]: Error in sys.excepthook:
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]: Traceback (most recent call last):
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 228, in partial_apport_excepthook
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:     return apport_excepthook(binary, exc_type, exc_obj, exc_tb)
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 144, in apport_excepthook
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:     os.open(pr_filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o640), "wb"
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]: OSError: [Errno 30] Read-only file system: '/var/crash/_opt_a-esthetic-api_server.py.999.crash'
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]: Original exception was:
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]: Traceback (most recent call last):
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:   File "/opt/a-esthetic-api/server.py", line 421, in <module>
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:     init_db()
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:   File "/opt/a-esthetic-api/server.py", line 170, in init_db
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:     BOOTSTRAP_PATH.unlink()
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:   File "/usr/lib/python3.12/pathlib.py", line 1344, in unlink
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]:     os.unlink(self)
+Jul 25 16:30:25 Srv-HET-ad24f2 python3[19518]: PermissionError: [Errno 13] Permission denied: '/opt/a-esthetic-api/bootstrap_admin.json'
+Jul 25 16:30:26 Srv-HET-ad24f2 systemd[1]: a-esthetic-api.service: Main process exited, code=exited, status=1/FAILURE
+Jul 25 16:30:26 Srv-HET-ad24f2 systemd[1]: a-esthetic-api.service: Failed with result 'exit-code'.
+Jul 25 16:30:26 Srv-HET-ad24f2 systemd[1]: Stopped a-esthetic-api.service - A+ Esthetic secure API.
+Jul 25 16:30:26 Srv-HET-ad24f2 systemd[1]: Started a-esthetic-api.service - A+ Esthetic secure API.
 journal_end
