@@ -58,13 +58,29 @@ jobs:
           fi
 
       - name: Validate application
+        id: validate_application
+        continue-on-error: true
         run: |
-          python manage.py check
-          python manage.py migrate --noinput
-          python manage.py seed_platform
-          python manage.py seed_complete_features
-          python manage.py test --verbosity 2
-          python manage.py collectstatic --noinput
+          set -o pipefail
+          : > /tmp/aesthetic-validation.log
+          python manage.py check 2>&1 | tee -a /tmp/aesthetic-validation.log
+          python manage.py migrate --noinput 2>&1 | tee -a /tmp/aesthetic-validation.log
+          python manage.py seed_platform 2>&1 | tee -a /tmp/aesthetic-validation.log
+          python manage.py seed_complete_features 2>&1 | tee -a /tmp/aesthetic-validation.log
+          python manage.py test --verbosity 2 2>&1 | tee -a /tmp/aesthetic-validation.log
+          python manage.py collectstatic --noinput 2>&1 | tee -a /tmp/aesthetic-validation.log
+
+      - name: Upload validation log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: complete-validation-log-${{ github.run_id }}
+          path: /tmp/aesthetic-validation.log
+          if-no-files-found: error
+
+      - name: Stop when validation failed
+        if: steps.validate_application.outcome == 'failure'
+        run: exit 1
 
       - name: Build release
         run: |
