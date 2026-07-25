@@ -1,0 +1,47 @@
+name: Materialize complete A+ Esthetic source
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: a-esthetic-materialize
+  cancel-in-progress: true
+
+jobs:
+  materialize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Expand source package
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          parts=(.release/complete.part*)
+          if [ ${#parts[@]} -eq 0 ]; then
+            echo "No package parts remain."
+            exit 0
+          fi
+          cat .release/complete.part* > /tmp/complete.b64
+          base64 -d /tmp/complete.b64 > /tmp/complete.tar.gz
+          echo "9edc7ee473f05238dd8c3f5516a802eef3b5946856e85ff2c3bbfb4901c081bc  /tmp/complete.tar.gz" | sha256sum -c -
+          tar -tzf /tmp/complete.tar.gz >/dev/null
+          tar -xzf /tmp/complete.tar.gz
+          rm -rf .release
+          python3 -m compileall -q experience_app config
+      - name: Commit readable source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Materialize complete A+ Esthetic source"
+          git push origin HEAD:${{ github.head_ref }}
