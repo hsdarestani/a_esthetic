@@ -1,13 +1,13 @@
-timestamp=2026-07-25T17:43:23Z
+timestamp=2026-07-25T17:45:22Z
 api_active=active
 nginx_active=active
 nginx_test=nginx: the configuration file /etc/nginx/nginx.conf syntax is ok nginx: configuration file /etc/nginx/nginx.conf test is successful 
 listen_ports_start
-LISTEN 0      5          127.0.0.1:8765      0.0.0.0:*    users:(("python3",pid=21299,fd=8))                                                  
-LISTEN 0      511          0.0.0.0:443       0.0.0.0:*    users:(("nginx",pid=21309,fd=11),("nginx",pid=21308,fd=11),("nginx",pid=4932,fd=11))
-LISTEN 0      511          0.0.0.0:80        0.0.0.0:*    users:(("nginx",pid=21309,fd=5),("nginx",pid=21308,fd=5),("nginx",pid=4932,fd=5))   
-LISTEN 0      511             [::]:443          [::]:*    users:(("nginx",pid=21309,fd=12),("nginx",pid=21308,fd=12),("nginx",pid=4932,fd=12))
-LISTEN 0      511             [::]:80           [::]:*    users:(("nginx",pid=21309,fd=6),("nginx",pid=21308,fd=6),("nginx",pid=4932,fd=6))   
+LISTEN 0      5          127.0.0.1:8765      0.0.0.0:*    users:(("python3",pid=21846,fd=8))                                                  
+LISTEN 0      511          0.0.0.0:443       0.0.0.0:*    users:(("nginx",pid=21727,fd=11),("nginx",pid=21726,fd=11),("nginx",pid=4932,fd=11))
+LISTEN 0      511          0.0.0.0:80        0.0.0.0:*    users:(("nginx",pid=21727,fd=5),("nginx",pid=21726,fd=5),("nginx",pid=4932,fd=5))   
+LISTEN 0      511             [::]:443          [::]:*    users:(("nginx",pid=21727,fd=12),("nginx",pid=21726,fd=12),("nginx",pid=4932,fd=12))
+LISTEN 0      511             [::]:80           [::]:*    users:(("nginx",pid=21727,fd=6),("nginx",pid=21726,fd=6),("nginx",pid=4932,fd=6))   
 listen_ports_end
 cert_fullchain=yes
 cert_privkey=yes
@@ -67,25 +67,11 @@ server {
 }
 
 nginx_config_end
-local_api_http=200 body={"ok": true, "service": "A+ Esthetic API", "time": "2026-07-25T17:43:23+00:00"}
+local_api_http=200 body={"ok": true, "service": "A+ Esthetic API", "time": "2026-07-25T17:45:22+00:00"}
 origin_http=301 body=<html><head><title>301 Moved Permanently</title></head><body><center><h1>301 Moved Permanently</h1></center><hr><center>nginx/1.24.0 (Ubuntu)</center></body></html>
-origin_https=200 body={"ok": true, "service": "A+ Esthetic API", "time": "2026-07-25T17:43:23+00:00"}
-public_https=200 body={"ok": true, "service": "A+ Esthetic API", "time": "2026-07-25T17:43:23+00:00"}
+origin_https=200 body={"ok": true, "service": "A+ Esthetic API", "time": "2026-07-25T17:45:22+00:00"}
+public_https=200 body={"ok": true, "service": "A+ Esthetic API", "time": "2026-07-25T17:45:22+00:00"}
 letsencrypt_log_start
-2026-07-25 15:47:43,814:DEBUG:certbot_nginx._internal.parser:Writing nginx conf tree to /etc/nginx/sites-enabled/a-esthetic-web.conf:
-server {
-    server_name esthetic.smarbiz.sbs;
-    root /opt/a-esthetic-web/site;
-    index index.html;
-    location / { try_files $uri $uri/ /index.html; }
-    location = /sw.js { add_header Cache-Control "no-cache, no-store, must-revalidate" always; }
-    add_header X-Content-Type-Options nosniff always;
-    add_header X-Frame-Options DENY always;
-    add_header Referrer-Policy strict-origin-when-cross-origin always;
-    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-    add_header Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
-
-    listen [::]:443 ssl ipv6only=on; # managed by Certbot
     listen 443 ssl; # managed by Certbot
     ssl_certificate /etc/letsencrypt/live/esthetic.smarbiz.sbs/fullchain.pem; # managed by Certbot
     ssl_certificate_key /etc/letsencrypt/live/esthetic.smarbiz.sbs/privkey.pem; # managed by Certbot
@@ -145,6 +131,20 @@ server {
 2026-07-25 17:43:23,597:DEBUG:certbot._internal.log:Root logging level set at 30
 2026-07-25 17:43:23,605:INFO:certbot.ocsp:Cannot extract OCSP URI from /etc/letsencrypt/live/esthetic.smarbiz.sbs/cert.pem
 2026-07-25 17:43:23,607:DEBUG:certbot._internal.display.obj:Notifying user: Found the following certs:
+  Certificate Name: esthetic.smarbiz.sbs
+    Serial Number: 585fe0906bbd45450d96e9aa132427d9ae1
+    Key Type: ECDSA
+    Domains: esthetic.smarbiz.sbs
+    Expiry Date: 2026-10-23 14:41:21+00:00 (VALID: 89 days)
+    Certificate Path: /etc/letsencrypt/live/esthetic.smarbiz.sbs/fullchain.pem
+    Private Key Path: /etc/letsencrypt/live/esthetic.smarbiz.sbs/privkey.pem
+2026-07-25 17:45:22,465:DEBUG:certbot._internal.main:certbot version: 2.9.0
+2026-07-25 17:45:22,465:DEBUG:certbot._internal.main:Location of certbot entry point: /usr/bin/certbot
+2026-07-25 17:45:22,465:DEBUG:certbot._internal.main:Arguments: []
+2026-07-25 17:45:22,465:DEBUG:certbot._internal.main:Discovered plugins: PluginsRegistry(PluginEntryPoint#manual,PluginEntryPoint#nginx,PluginEntryPoint#null,PluginEntryPoint#standalone,PluginEntryPoint#webroot)
+2026-07-25 17:45:22,469:DEBUG:certbot._internal.log:Root logging level set at 30
+2026-07-25 17:45:22,477:INFO:certbot.ocsp:Cannot extract OCSP URI from /etc/letsencrypt/live/esthetic.smarbiz.sbs/cert.pem
+2026-07-25 17:45:22,480:DEBUG:certbot._internal.display.obj:Notifying user: Found the following certs:
   Certificate Name: esthetic.smarbiz.sbs
     Serial Number: 585fe0906bbd45450d96e9aa132427d9ae1
     Key Type: ECDSA
