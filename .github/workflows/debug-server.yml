@@ -1,0 +1,49 @@
+name: Diagnose A+ Esthetic Server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/debug-server.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test SSH and inspect server
+        id: ssh
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 5m
+          script: |
+            set -eu
+            echo "SSH_OK"
+            uname -a
+            printf 'caddy='; command -v caddy || true
+            printf 'nginx='; command -v nginx || true
+            printf 'apache='; command -v apache2 || true
+            mkdir -p /opt/a-esthetic-web/site
+            test -w /opt/a-esthetic-web/site
+
+      - name: Record diagnostic result
+        if: always()
+        env:
+          SSH_OUTCOME: ${{ steps.ssh.outcome }}
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          printf '{\n  "ssh": "%s",\n  "commit": "%s",\n  "recorded_at": "%s"\n}\n' "$SSH_OUTCOME" "$RUN_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > server-diagnostic.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server-diagnostic.json
+          git commit -m "chore: record server diagnostic" || exit 0
+          git push
