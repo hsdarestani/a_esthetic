@@ -1,0 +1,132 @@
+name: Fix A+ Esthetic Origin Connectivity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-origin-connectivity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure public HTTP and HTTPS
+        id: origin
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 20m
+          script: |
+            set -eux
+            DOMAIN="esthetic.smarbiz.sbs"
+            WEBROOT="/opt/a-esthetic-web/site"
+
+            if command -v ufw >/dev/null 2>&1; then
+              ufw allow 80/tcp || true
+              ufw allow 443/tcp || true
+              ufw reload || true
+            fi
+            if command -v firewall-cmd >/dev/null 2>&1; then
+              firewall-cmd --permanent --add-service=http || true
+              firewall-cmd --permanent --add-service=https || true
+              firewall-cmd --reload || true
+            fi
+
+            if command -v caddy >/dev/null 2>&1; then
+              systemctl enable caddy || true
+              systemctl restart caddy
+              sleep 5
+              curl -fsS --max-time 20 http://127.0.0.1 -H "Host: $DOMAIN" | grep -q "A+ Esthetic"
+              curl -kfsS --max-time 20 https://127.0.0.1 -H "Host: $DOMAIN" | grep -q "A+ Esthetic" || true
+            elif command -v nginx >/dev/null 2>&1; then
+              apt-get update -y
+              DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx openssl
+              nginx -t
+              systemctl restart nginx
+              certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+
+              if ! ss -lnt | grep -q ':443 '; then
+                mkdir -p /etc/ssl/a-esthetic
+                openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+                  -keyout /etc/ssl/a-esthetic/origin.key \
+                  -out /etc/ssl/a-esthetic/origin.crt \
+                  -subj "/CN=$DOMAIN"
+                cat > /etc/nginx/sites-available/a-esthetic-web.conf <<'NGINXSSL'
+            server {
+                listen 80;
+                listen [::]:80;
+                server_name esthetic.smarbiz.sbs;
+                return 301 https://$host$request_uri;
+            }
+            server {
+                listen 443 ssl;
+                listen [::]:443 ssl;
+                server_name esthetic.smarbiz.sbs;
+                ssl_certificate /etc/ssl/a-esthetic/origin.crt;
+                ssl_certificate_key /etc/ssl/a-esthetic/origin.key;
+                ssl_protocols TLSv1.2 TLSv1.3;
+                root /opt/a-esthetic-web/site;
+                index index.html;
+                location / { try_files $uri $uri/ /index.html; }
+                location = /sw.js { add_header Cache-Control "no-cache, no-store, must-revalidate" always; }
+                add_header X-Content-Type-Options nosniff always;
+                add_header X-Frame-Options DENY always;
+                add_header Referrer-Policy strict-origin-when-cross-origin always;
+                add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+                add_header Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+            }
+            NGINXSSL
+                ln -sfn /etc/nginx/sites-available/a-esthetic-web.conf /etc/nginx/sites-enabled/a-esthetic-web.conf
+                nginx -t
+                systemctl restart nginx
+              fi
+              curl -kfsS --max-time 20 https://127.0.0.1 -H "Host: $DOMAIN" | grep -q "A+ Esthetic"
+            elif command -v apache2 >/dev/null 2>&1; then
+              apt-get update -y
+              DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-apache
+              a2enmod ssl headers rewrite
+              systemctl restart apache2
+              certbot --apache -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+            else
+              exit 1
+            fi
+
+            ss -lnt | grep -E ':80 |:443 '
+
+      - name: Verify through public domain
+        id: public
+        if: always()
+        continue-on-error: true
+        run: |
+          sleep 10
+          CODE=$(curl -k -L -sS --max-time 40 -o /tmp/public-body -w "%{http_code}" https://esthetic.smarbiz.sbs/ || echo 000)
+          if grep -q "A+ Esthetic" /tmp/public-body 2>/dev/null; then MARKER=true; else MARKER=false; fi
+          if [ "$CODE" = "200" ] && [ "$MARKER" = "true" ]; then STATUS=success; else STATUS=failure; fi
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "marker=$MARKER" >> "$GITHUB_OUTPUT"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+      - name: Record connectivity result
+        if: always()
+        env:
+          ORIGIN_OUTCOME: ${{ steps.origin.outcome }}
+          PUBLIC_STATUS: ${{ steps.public.outputs.status }}
+          HTTP_CODE: ${{ steps.public.outputs.code }}
+          MARKER: ${{ steps.public.outputs.marker }}
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          printf '{\n  "origin_configuration": "%s",\n  "public_status": "%s",\n  "http_code": "%s",\n  "app_marker_found": "%s",\n  "commit": "%s",\n  "url": "https://esthetic.smarbiz.sbs/",\n  "recorded_at": "%s"\n}\n' "$ORIGIN_OUTCOME" "$PUBLIC_STATUS" "$HTTP_CODE" "$MARKER" "$RUN_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > origin-connectivity-status.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add origin-connectivity-status.json
+          git commit -m "chore: record origin connectivity status" || exit 0
+          git push
