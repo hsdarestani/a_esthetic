@@ -3,9 +3,10 @@
   "short_name": "A+ Esthetic",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f5f1eb",
+  "background_color": "#f7f3ed",
   "theme_color": "#17212a",
   "lang": "de",
-  "description": "A+ Esthetic Beauty Club Web-App",
+  "description": "A+ Esthetic Beauty Club Web-App mit sicherer API und Admin-Bereich",
+  "version": "3.0.0",
   "icons": []
 }
