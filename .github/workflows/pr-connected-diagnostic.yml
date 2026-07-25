@@ -1,0 +1,77 @@
+name: Diagnose connected A+ Esthetic deployment
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect production state
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          envs: GH_TOKEN,GH_REPO
+          command_timeout: 10m
+          script: |
+            set +e
+            OUT=/tmp/aesthetic-diagnostic.txt
+            : > "$OUT"
+            {
+              echo "timestamp=$(date -u +%FT%TZ)"
+              echo "caddy_active=$(systemctl is-active caddy 2>/dev/null)"
+              echo "nginx_active=$(systemctl is-active nginx 2>/dev/null)"
+              echo "api_active=$(systemctl is-active a-esthetic-api 2>/dev/null)"
+              echo "api_enabled=$(systemctl is-enabled a-esthetic-api 2>/dev/null)"
+              echo "api_file=$(test -s /opt/a-esthetic-api/server.py && echo yes || echo no)"
+              echo "db_file=$(test -s /opt/a-esthetic-api/data/app.db && echo yes || echo no)"
+              echo "web_index=$(test -s /opt/a-esthetic-web/site/index.html && echo yes || echo no)"
+              echo "local_health=$(curl -sS -o /tmp/local-health -w '%{http_code}' --max-time 8 http://127.0.0.1:8765/api/health)"
+              echo "local_body=$(tr -d '\n' < /tmp/local-health 2>/dev/null | head -c 300)"
+              echo "public_health=$(curl -sS -o /tmp/public-health -w '%{http_code}' --max-time 15 https://esthetic.smarbiz.sbs/api/health)"
+              echo "public_body=$(tr -d '\n' < /tmp/public-health 2>/dev/null | head -c 300)"
+              echo "package_check_start"
+              rm -f /tmp/diag.b64 /tmp/diag.tar.gz
+              for part in 00 01 02 03 04 05; do
+                code=$(curl -sS -o /tmp/diag.part -w '%{http_code}' --max-time 10 "https://raw.githubusercontent.com/${GH_REPO}/main/.deploy/v2.part${part}")
+                echo "part${part}_http=${code} bytes=$(wc -c < /tmp/diag.part 2>/dev/null)"
+                cat /tmp/diag.part >> /tmp/diag.b64
+              done
+              base64 --decode /tmp/diag.b64 > /tmp/diag.tar.gz 2>/tmp/base64-error
+              echo "base64_rc=$?"
+              echo "package_sha=$(sha256sum /tmp/diag.tar.gz 2>/dev/null | awk '{print $1}')"
+              echo "expected_sha=ea16c08f884c9eef20aec68822937af6112c8b6e098e1314edeb5261182a3cd1"
+              echo "tar_test=$(tar -tzf /tmp/diag.tar.gz >/dev/null 2>&1; echo $?)"
+              echo "journal_start"
+              journalctl -u a-esthetic-api -n 25 --no-pager 2>&1 | sed -E 's/(password|token|secret)=[^ ]+/\1=[REDACTED]/Ig'
+              echo "journal_end"
+            } >> "$OUT" 2>&1
+
+            python3 - "$OUT" <<'PY'
+            import base64, json, os, sys, urllib.error, urllib.request
+            path=sys.argv[1]; token=os.environ['GH_TOKEN']; repo=os.environ['GH_REPO']
+            api=f'https://api.github.com/repos/{repo}/contents/.deploy/diagnostic.txt'
+            headers={'Authorization':f'Bearer {token}','Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
+            sha=None
+            try:
+                with urllib.request.urlopen(urllib.request.Request(api,headers=headers)) as response:
+                    sha=json.load(response).get('sha')
+            except urllib.error.HTTPError as exc:
+                if exc.code != 404: raise
+            content=open(path,'rb').read()
+            payload={'message':'record connected deployment diagnostic','content':base64.b64encode(content).decode(),'branch':'main'}
+            if sha: payload['sha']=sha
+            request=urllib.request.Request(api,data=json.dumps(payload).encode(),headers={**headers,'Content-Type':'application/json'},method='PUT')
+            with urllib.request.urlopen(request) as response: json.load(response)
+            PY
