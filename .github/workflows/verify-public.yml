@@ -1,0 +1,45 @@
+name: Verify A+ Esthetic Public Domain
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/verify-public.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check public website
+        id: check
+        continue-on-error: true
+        run: |
+          set -u
+          URL="https://esthetic.smarbiz.sbs/"
+          HTTP_CODE=$(curl -k -L -sS --max-time 30 -o /tmp/aesthetic-body -w "%{http_code}" "$URL" || echo "000")
+          if grep -q "A+ Esthetic" /tmp/aesthetic-body 2>/dev/null; then MARKER=true; else MARKER=false; fi
+          if [ "$HTTP_CODE" = "200" ] && [ "$MARKER" = "true" ]; then PUBLIC_STATUS=success; else PUBLIC_STATUS=failure; fi
+          echo "http_code=$HTTP_CODE" >> "$GITHUB_OUTPUT"
+          echo "marker=$MARKER" >> "$GITHUB_OUTPUT"
+          echo "public_status=$PUBLIC_STATUS" >> "$GITHUB_OUTPUT"
+
+      - name: Record public verification
+        if: always()
+        env:
+          PUBLIC_STATUS: ${{ steps.check.outputs.public_status }}
+          HTTP_CODE: ${{ steps.check.outputs.http_code }}
+          MARKER: ${{ steps.check.outputs.marker }}
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          printf '{\n  "status": "%s",\n  "http_code": "%s",\n  "app_marker_found": "%s",\n  "commit": "%s",\n  "url": "https://esthetic.smarbiz.sbs/",\n  "recorded_at": "%s"\n}\n' "$PUBLIC_STATUS" "$HTTP_CODE" "$MARKER" "$RUN_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > public-verification.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public-verification.json
+          git commit -m "chore: record public verification" || exit 0
+          git push
