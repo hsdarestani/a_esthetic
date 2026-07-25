@@ -1,0 +1,11 @@
+{
+  "name": "A+ Esthetic Beauty Club",
+  "short_name": "A+ Esthetic",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f1eb",
+  "theme_color": "#17212a",
+  "lang": "de",
+  "description": "A+ Esthetic Beauty Club Web-App",
+  "icons": []
+}
