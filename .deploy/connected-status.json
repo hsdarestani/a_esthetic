@@ -1,0 +1,10 @@
+{
+  "status": "success",
+  "api": "connected",
+  "database": "sqlite",
+  "admin_user": "admin",
+  "login_verified": true,
+  "tls": "letsencrypt",
+  "public_health": 200,
+  "domain": "esthetic.smarbiz.sbs"
+}
