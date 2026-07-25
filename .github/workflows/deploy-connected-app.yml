@@ -1,0 +1,253 @@
+name: Deploy connected A+ Esthetic app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".deploy/full-app.tar.gz.b64"
+      - ".github/workflows/deploy-connected-app.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: a-esthetic-connected-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate package
+        run: |
+          set -euo pipefail
+          base64 --decode .deploy/full-app.tar.gz.b64 > /tmp/full-app.tar.gz
+          echo "40e5b0d76459786a63670184593f7cd986b3db4c45d3df55197acc7f49bee6d9  /tmp/full-app.tar.gz" | sha256sum -c -
+          tar -tzf /tmp/full-app.tar.gz | grep -q '^backend/server.py$'
+          tar -tzf /tmp/full-app.tar.gz | grep -q '^index.html$'
+
+      - name: Deploy API and web app
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          envs: GH_TOKEN,GH_REPO,GH_SHA
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+            DOMAIN="esthetic.smarbiz.sbs"
+            WEBROOT="/opt/a-esthetic-web/site"
+            APIROOT="/opt/a-esthetic-api"
+            PACKAGE="/tmp/a-esthetic-full-app.tar.gz"
+            ADMIN_CREATED="false"
+
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -y >/dev/null
+            apt-get install -y python3 nginx curl openssl ca-certificates >/dev/null
+
+            if ! id aesthetic >/dev/null 2>&1; then
+              useradd --system --home-dir "$APIROOT" --shell /usr/sbin/nologin aesthetic
+            fi
+
+            mkdir -p "$WEBROOT" "$APIROOT/data" /tmp/aesthetic-release
+            chmod 700 "$APIROOT/data"
+            curl -fsSL "https://raw.githubusercontent.com/${GH_REPO}/${GH_SHA}/.deploy/full-app.tar.gz.b64" | base64 --decode > "$PACKAGE"
+            echo "40e5b0d76459786a63670184593f7cd986b3db4c45d3df55197acc7f49bee6d9  $PACKAGE" | sha256sum -c -
+            rm -rf /tmp/aesthetic-release/*
+            tar -xzf "$PACKAGE" -C /tmp/aesthetic-release
+            python3 -m py_compile /tmp/aesthetic-release/backend/server.py
+
+            install -m 0644 /tmp/aesthetic-release/index.html "$WEBROOT/index.html"
+            install -m 0644 /tmp/aesthetic-release/styles.css "$WEBROOT/styles.css"
+            install -m 0644 /tmp/aesthetic-release/app.js "$WEBROOT/app.js"
+            install -m 0644 /tmp/aesthetic-release/sw.js "$WEBROOT/sw.js"
+            install -m 0750 /tmp/aesthetic-release/backend/server.py "$APIROOT/server.py"
+
+            if [ ! -f "$APIROOT/data/app.db" ]; then
+              ADMIN_CREATED="true"
+              ADMIN_PASSWORD="$(python3 - <<'PY'
+            import secrets, string
+            alphabet = string.ascii_letters + string.digits + '!@#%_-'
+            while True:
+                value = 'A+' + ''.join(secrets.choice(alphabet) for _ in range(22)) + '9x'
+                if any(c.isupper() for c in value) and any(c.islower() for c in value) and any(c.isdigit() for c in value):
+                    print(value)
+                    break
+            PY
+              )"
+              python3 - "$APIROOT/bootstrap_admin.json" "$ADMIN_PASSWORD" <<'PY'
+            import json, os, sys
+            path, password = sys.argv[1], sys.argv[2]
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump({'username':'admin','email':'admin@a-esthetic.de','password':password}, f)
+            os.chmod(path, 0o600)
+            PY
+              chown aesthetic:aesthetic "$APIROOT/bootstrap_admin.json"
+            fi
+
+            chown -R root:root "$WEBROOT"
+            chown root:aesthetic "$APIROOT/server.py"
+            chown -R aesthetic:aesthetic "$APIROOT/data"
+
+            cat > /etc/systemd/system/a-esthetic-api.service <<'SERVICE'
+            [Unit]
+            Description=A+ Esthetic secure API
+            After=network.target
+
+            [Service]
+            Type=simple
+            User=aesthetic
+            Group=aesthetic
+            WorkingDirectory=/opt/a-esthetic-api
+            Environment=AESTHETIC_APP_DIR=/opt/a-esthetic-api
+            Environment=AESTHETIC_API_HOST=127.0.0.1
+            Environment=AESTHETIC_API_PORT=8765
+            ExecStart=/usr/bin/python3 /opt/a-esthetic-api/server.py
+            Restart=on-failure
+            RestartSec=3
+            UMask=0077
+            NoNewPrivileges=true
+            PrivateTmp=true
+            PrivateDevices=true
+            ProtectSystem=strict
+            ProtectHome=true
+            ProtectKernelTunables=true
+            ProtectKernelModules=true
+            ProtectControlGroups=true
+            RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+            ReadWritePaths=/opt/a-esthetic-api
+            MemoryDenyWriteExecute=true
+            LockPersonality=true
+
+            [Install]
+            WantedBy=multi-user.target
+            SERVICE
+
+            systemctl daemon-reload
+            systemctl enable --now a-esthetic-api
+            systemctl restart a-esthetic-api
+
+            if systemctl is-active --quiet caddy && command -v caddy >/dev/null 2>&1; then
+              CADDYFILE="/etc/caddy/Caddyfile"
+              touch "$CADDYFILE"
+              awk '
+                /^# BEGIN A_ESTHETIC_WEB$/ {skip=1; next}
+                /^# END A_ESTHETIC_WEB$/ {skip=0; next}
+                !skip {print}
+              ' "$CADDYFILE" > /tmp/Caddyfile.clean
+              cat >> /tmp/Caddyfile.clean <<'CADDY'
+            # BEGIN A_ESTHETIC_WEB
+            esthetic.smarbiz.sbs {
+              encode zstd gzip
+              handle /api/* {
+                reverse_proxy 127.0.0.1:8765
+              }
+              handle {
+                root * /opt/a-esthetic-web/site
+                try_files {path} /index.html
+                file_server
+              }
+              header {
+                X-Content-Type-Options nosniff
+                X-Frame-Options DENY
+                Referrer-Policy strict-origin-when-cross-origin
+                Permissions-Policy "camera=(), microphone=(), geolocation=()"
+                Content-Security-Policy "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+              }
+              @serviceWorker path /sw.js
+              header @serviceWorker Cache-Control "no-cache, no-store, must-revalidate"
+            }
+            # END A_ESTHETIC_WEB
+            CADDY
+              mv /tmp/Caddyfile.clean "$CADDYFILE"
+              caddy validate --config "$CADDYFILE"
+              systemctl reload caddy
+            else
+              cat > /etc/nginx/sites-available/a-esthetic-connected.conf <<'NGINX'
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name esthetic.smarbiz.sbs;
+              root /opt/a-esthetic-web/site;
+              index index.html;
+              client_max_body_size 1m;
+
+              location /api/ {
+                proxy_pass http://127.0.0.1:8765;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_connect_timeout 5s;
+                proxy_read_timeout 30s;
+              }
+              location / { try_files $uri $uri/ /index.html; }
+              location = /sw.js { add_header Cache-Control "no-cache, no-store, must-revalidate" always; }
+              add_header X-Content-Type-Options nosniff always;
+              add_header X-Frame-Options DENY always;
+              add_header Referrer-Policy strict-origin-when-cross-origin always;
+              add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+              add_header Content-Security-Policy "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+            }
+            NGINX
+              rm -f /etc/nginx/sites-enabled/default
+              ln -sfn /etc/nginx/sites-available/a-esthetic-connected.conf /etc/nginx/sites-enabled/a-esthetic-connected.conf
+              nginx -t
+              systemctl enable --now nginx
+              systemctl reload nginx
+            fi
+
+            sleep 4
+            curl -fsS --max-time 15 http://127.0.0.1:8765/api/health | grep -q 'A+ Esthetic API'
+            curl -fsS --max-time 25 "https://${DOMAIN}/api/health" | grep -q 'A+ Esthetic API'
+            curl -fsS --max-time 25 "https://${DOMAIN}/" | grep -q 'Ihr digitaler Beauty Club'
+
+            if [ "$ADMIN_CREATED" = "true" ]; then
+              cat > /tmp/aesthetic-public.pem <<'PUBKEY'
+            -----BEGIN PUBLIC KEY-----
+            MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsG9LOU6zBawY/vmOAUZw
+            O1GwgS2B9KlNtsLzgU1C+4L4Ya0EI8bzKNt+NKo5BBAC4yKkNRjPNa1JuslXmnbF
+            Kxp9vI3coQDed7LMOCsQSKGUDxEwffIc4iYGQbrBL51EA1hNUdwtIJuoOwAGblJJ
+            zjZXt/RHCj+lhZRjHhG6XCdsSzqHT6GwJGzQn3ZMviaDPEx3bYOrWBvJslhqfeBL
+            aqtnNqAvFi5+xDWL5qGueVRY8jcCXUn+sFEbtBEPr09YIOSZCqjHuqItY+98LjsM
+            zAHM51b4S/QQ1qxJ7u+c81BvrCseoMI+05OiU0vwgvg9yO2xCqgKe44GadL4VqoP
+            TQIDAQAB
+            -----END PUBLIC KEY-----
+            PUBKEY
+              printf '%s' "$ADMIN_PASSWORD" | openssl pkeyutl -encrypt -pubin -inkey /tmp/aesthetic-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 > /tmp/aesthetic-admin.enc
+              base64 -w0 /tmp/aesthetic-admin.enc > /tmp/aesthetic-admin.enc.b64
+            fi
+
+            python3 - <<'PY'
+            import base64, json, os, urllib.error, urllib.request
+            token=os.environ['GH_TOKEN']; repo=os.environ['GH_REPO']
+            headers={'Authorization':f'Bearer {token}','Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
+            def put(path, content, message):
+                api=f'https://api.github.com/repos/{repo}/contents/{path}'
+                sha=None
+                try:
+                    req=urllib.request.Request(api,headers=headers)
+                    with urllib.request.urlopen(req) as r: sha=json.load(r).get('sha')
+                except urllib.error.HTTPError as e:
+                    if e.code != 404: raise
+                payload={'message':message,'content':base64.b64encode(content.encode()).decode(),'branch':'main'}
+                if sha: payload['sha']=sha
+                req=urllib.request.Request(api,data=json.dumps(payload).encode(),headers={**headers,'Content-Type':'application/json'},method='PUT')
+                with urllib.request.urlopen(req) as r: json.load(r)
+            status=json.dumps({'status':'success','api':'connected','database':'sqlite','admin_user':'admin','domain':'esthetic.smarbiz.sbs'},indent=2)
+            put('.deploy/connected-status.json',status,'record connected deployment status')
+            cred='/tmp/aesthetic-admin.enc.b64'
+            if os.path.exists(cred):
+                put('.deploy/admin-credential.enc',open(cred).read(),'store encrypted initial admin credential')
+            PY
+
+            rm -rf /tmp/aesthetic-release "$PACKAGE" /tmp/aesthetic-admin.enc /tmp/aesthetic-admin.enc.b64 /tmp/aesthetic-public.pem
