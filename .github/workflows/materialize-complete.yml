@@ -21,48 +21,23 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
-      - name: Verify transfer part 00
-        if: ${{ hashFiles('.release/complete.part00') != '' }}
-        run: echo "46549391d45d160677c58d16f34ddea2eae55beee6058ae1619c928a3e8f2fd9  .release/complete.part00" | sha256sum -c -
-      - name: Verify transfer part 01a
-        if: ${{ hashFiles('.release/complete.part01a') != '' }}
-        run: echo "207259f0d427b1a1b83a65f3d4fa4b47aa5d1b4bd508d02828593ecb56526eb6  .release/complete.part01a" | sha256sum -c -
-      - name: Verify transfer part 01b
-        if: ${{ hashFiles('.release/complete.part01b') != '' }}
-        run: echo "8dbe7f98131223d79205704e0fe25645c7e2617090cf38bd09a1bfda2f89fa96  .release/complete.part01b" | sha256sum -c -
-      - name: Verify transfer part 02
-        if: ${{ hashFiles('.release/complete.part02') != '' }}
-        run: echo "f80f5618a7c604f609756be73d30ddf4b702a8c2e9c16094d0789185785df6ca  .release/complete.part02" | sha256sum -c -
-      - name: Verify transfer part 03
-        if: ${{ hashFiles('.release/complete.part03') != '' }}
-        run: echo "8b49b2f62c7ff5eb091cdb777e49060d48f6435a5d70c86fbdc9fa594957988a  .release/complete.part03" | sha256sum -c -
-      - name: Verify transfer part 04
-        if: ${{ hashFiles('.release/complete.part04') != '' }}
-        run: echo "fc5cce7c57b1efbbaa608a6d80c87b7c7f3622d875cfd13c15a46e7d4a92b416  .release/complete.part04" | sha256sum -c -
-      - name: Verify transfer part 05
-        if: ${{ hashFiles('.release/complete.part05') != '' }}
-        run: echo "1b8cd04bc28bab8c365896f6962dcfbff226b2344376ccb5554c9c43dac8d2de  .release/complete.part05" | sha256sum -c -
-      - name: Expand source package
+      - name: Record transfer checksums
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          parts=(.release/complete.part*)
-          if [ ${#parts[@]} -eq 0 ]; then
-            echo "No package parts remain."
-            exit 0
-          fi
-          cat .release/complete.part* > /tmp/complete.b64
-          base64 -d /tmp/complete.b64 > /tmp/complete.tar.gz
-          echo "9edc7ee473f05238dd8c3f5516a802eef3b5946856e85ff2c3bbfb4901c081bc  /tmp/complete.tar.gz" | sha256sum -c -
-          tar -tzf /tmp/complete.tar.gz >/dev/null
-          tar -xzf /tmp/complete.tar.gz
-          rm -rf .release
-          python3 -m compileall -q experience_app config
-      - name: Commit readable source
+          {
+            for file in .release/complete.part*; do
+              [ -f "$file" ] || continue
+              case "$file" in *actual-checksums.txt) continue;; esac
+              printf '%s %s ' "$(wc -c < "$file")" "$(sha256sum "$file" | cut -d' ' -f1)"
+              echo "$file"
+            done
+          } > .release/actual-checksums.txt
+          cat .release/actual-checksums.txt
+      - name: Commit checksum report
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add .release/actual-checksums.txt
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Materialize complete A+ Esthetic source"
+          git commit -m "Record transfer checksums"
           git push origin HEAD:${{ github.head_ref }}
