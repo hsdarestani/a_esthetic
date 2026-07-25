@@ -1,0 +1,34 @@
+name: Diagnose complete release packaging
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-release:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Run release packaging with diagnostics
+        id: package
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pwd | tee /tmp/release-build.log
+          ls -la | tee -a /tmp/release-build.log
+          tar --exclude=.git --exclude=.github --exclude='db.sqlite3' --exclude='private_media' --exclude='__pycache__' --exclude='*.pyc' -czvf aesthetic-complete-release.tar.gz . 2>&1 | tee -a /tmp/release-build.log
+          printf 'tar_exit=%s\n' "$?" | tee -a /tmp/release-build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-build-diagnostic-${{ github.run_id }}
+          path: /tmp/release-build.log
+      - if: steps.package.outcome == 'failure'
+        run: exit 1
