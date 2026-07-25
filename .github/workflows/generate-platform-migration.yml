@@ -1,4 +1,4 @@
-name: Generate retained platform migration
+name: Generate retained platform migrations
 
 on:
   pull_request:
@@ -31,17 +31,17 @@ jobs:
           python-version: '3.13'
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Generate and commit missing migration
+      - name: Generate and commit missing migrations
         env:
           TARGET_BRANCH: ${{ github.head_ref }}
         run: |
           set -euo pipefail
-          python manage.py makemigrations platform_app --noinput
-          if git diff --quiet -- platform_app/migrations; then exit 0; fi
+          python manage.py makemigrations platform_app experience_app --noinput
+          if [ -z "$(git status --porcelain -- platform_app/migrations experience_app/migrations)" ]; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add platform_app/migrations
-          git commit -m "Generate platform app migrations"
+          git add platform_app/migrations experience_app/migrations
+          git commit -m "Generate retained application migrations"
           git fetch origin "$TARGET_BRANCH"
           if ! git merge-base --is-ancestor "origin/$TARGET_BRANCH" HEAD; then git rebase "origin/$TARGET_BRANCH"; fi
           git push origin "HEAD:$TARGET_BRANCH"
