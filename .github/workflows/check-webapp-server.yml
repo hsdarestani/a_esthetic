@@ -1,0 +1,39 @@
+name: Check A+ Esthetic web app server
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+jobs:
+  server-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect production server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 5m
+          script: |
+            set -u
+            echo '=== SERVER ==='
+            hostname
+            date -u
+            echo '=== DNS ==='
+            getent ahostsv4 esthetic.smarbiz.sbs || true
+            echo '=== APP PATH ==='
+            ls -la /opt/aesthetic-platform || true
+            readlink -f /opt/aesthetic-platform/current || true
+            echo '=== SERVICES ==='
+            systemctl is-active aesthetic-platform || true
+            systemctl is-active nginx || true
+            systemctl --no-pager --full status aesthetic-platform | tail -n 35 || true
+            echo '=== LOCAL HEALTH ==='
+            curl -sS --max-time 10 http://127.0.0.1:8766/health/ || true
+            echo
+            echo '=== PUBLIC HEALTH ==='
+            curl -k -sS --max-time 15 https://esthetic.smarbiz.sbs/health/ || true
+            echo
