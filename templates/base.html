@@ -1,30 +1,96 @@
 {% load static %}
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111a22"><meta name="description" content="A+ Esthetic Beauty Club – Termine, Membership, Rewards und persönliche Beauty Services in einer sicheren Web App."><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="A+ Esthetic"><link rel="manifest" href="/manifest.json"><link rel="stylesheet" href="{% static 'app.css' %}"><link rel="stylesheet" href="{% static 'experience.css' %}"><link rel="stylesheet" href="{% static 'wallet-polish.css' %}"><title>{% block title %}A+ Esthetic{% endblock %}</title></head>
-<body><div class="shell"><aside class="sidebar" id="sidebar"><a class="brand" href="{% url 'dashboard' %}"><span class="brandmark">A+</span><span><b>A+ ESTHETIC</b><small>BEAUTY CLUB</small></span></a><nav>
-<a class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}">⌂ <span>Übersicht</span></a>
-<span class="nav-label">Club & Termine</span>
-{% if feature_modules.membership.enabled %}<a href="{% url 'experience:member_center' %}">♢ <span>Mitgliedskarte</span></a>{% endif %}
-{% if feature_modules.wallet.enabled %}<a href="{% url 'experience:wallet_center' %}">◇ <span>Wallet & Rewards</span></a>{% endif %}
-{% if feature_modules.booking.enabled %}<a href="{% url 'experience:booking_calendar' %}">◷ <span>Termine</span></a>{% endif %}
-{% if feature_modules.passport.enabled %}<a href="{% url 'passport' %}">▤ <span>Beauty Passport</span></a>{% endif %}
-{% if feature_modules.before_after.enabled %}<a href="{% url 'experience:photo_center' %}">▧ <span>Vorher-Nachher</span></a>{% endif %}
-{% if feature_modules.followup.enabled %}<a href="{% url 'experience:aftercare_center' %}">✓ <span>Nachsorge</span></a>{% endif %}
-<span class="nav-label">Plan & Pflege</span>
-{% if feature_modules.beauty_plan.enabled %}<a href="{% url 'experience:beauty_plans' %}">◫ <span>Beauty Plan</span></a>{% endif %}
-{% if feature_modules.ai.enabled %}<a href="{% url 'experience:assistant' %}">✦ <span>Wissensassistent</span></a>{% endif %}
-{% if feature_modules.cabinet.enabled %}<a href="{% url 'experience:cabinet' %}">▣ <span>Beauty Cabinet</span></a>{% endif %}
-{% if feature_modules.reminders.enabled %}<a href="{% url 'reminders' %}">◉ <span>Erinnerungen</span></a>{% endif %}
-<span class="nav-label">Entdecken</span>
-{% if feature_modules.shop.enabled %}<a href="{% url 'experience:shop' %}">▱ <span>A+ Shop</span></a>{% endif %}
-{% if feature_modules.gamification.enabled %}<a href="{% url 'experience:gamification' %}">◆ <span>Challenges</span></a>{% endif %}
-{% if feature_modules.offers.enabled or feature_modules.events.enabled %}<a href="{% url 'experience:offers_events' %}">✧ <span>Angebote & Events</span></a>{% endif %}
-{% if feature_modules.content.enabled %}<a href="{% url 'experience:content_library' %}">▤ <span>Inhalte</span></a>{% endif %}
-<span class="nav-label">Kontakt & Konto</span>
-{% if feature_modules.communication.enabled %}<a href="{% url 'experience:communication_center' %}">✉ <span>Kontakt & Support</span></a>{% endif %}
-{% if feature_modules.feedback.enabled %}<a href="{% url 'experience:feedback_center' %}">☆ <span>Feedback</span></a>{% endif %}
-{% if feature_modules.concierge.enabled %}<a href="{% url 'experience:concierge' %}">♛ <span>Premium Support</span></a>{% endif %}
-<a href="{% url 'profile' %}">⚙ <span>Profil & Einwilligungen</span></a>
-{% if feature_modules.privacy.enabled %}<a href="{% url 'experience:privacy_center' %}">⌾ <span>Datenschutz-Center</span></a>{% endif %}
-<a href="{% url 'mfa_index' %}">⌁ <span>Passkeys & MFA</span></a>
-{% if request.user.is_staff %}<hr><a href="{% url 'management' %}">▦ <span>Management</span></a><a href="{% url 'experience:management_catalog' %}">▦ <span>Modulkatalog</span></a><a href="/secure-admin/">⚒ <span>Django Admin</span></a>{% endif %}
-</nav><div class="legal-note"><b>Medizinischer Hinweis</b><br>Die App stellt keine Diagnose, Therapieempfehlung oder Dosierungsangabe bereit. Medizinische Entscheidungen erfolgen ausschließlich nach persönlicher ärztlicher Aufklärung.</div></aside><main><header class="topbar"><button class="menu" data-menu aria-label="Menü öffnen">☰</button><div><b>{% block page_title %}A+ Esthetic{% endblock %}</b><small>{% block page_subtitle %}Beauty Club{% endblock %}</small></div><div class="top-actions"><span class="privacy">🔒 DSGVO</span><span class="avatar">{{ request.user.first_name|default:request.user.username|slice:':1'|upper }}</span><form method="post" action="{% url 'account_logout' %}">{% csrf_token %}<button class="linkbutton">Abmelden</button></form></div></header><section class="content">{% if messages %}<div class="alerts">{% for message in messages %}<div class="alert {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</section></main></div><script src="{% static 'app.js' %}"></script>{% block scripts %}{% endblock %}</body></html>
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101920">
+  <meta name="description" content="A+ Esthetic Beauty Club – Termine, Membership, Wallet und persönliche Services in einer sicheren Web-App.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="A+ Esthetic">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="{% static 'app.css' %}">
+  <link rel="stylesheet" href="{% static 'experience.css' %}">
+  <link rel="stylesheet" href="{% static 'wallet-polish.css' %}">
+  <link rel="stylesheet" href="{% static 'final-polish.css' %}">
+  <title>{% block title %}A+ Esthetic{% endblock %}</title>
+</head>
+<body>
+{% with current=request.resolver_match.url_name %}
+<div class="shell">
+  <aside class="sidebar" id="sidebar" aria-label="Hauptnavigation">
+    <a class="brand" href="{% url 'dashboard' %}">
+      <span class="brandmark">A+</span>
+      <span><b>A+ ESTHETIC</b><small>BEAUTY CLUB</small></span>
+    </a>
+
+    <nav>
+      <a class="{% if current == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><span class="nav-icon">⌂</span><span>Übersicht</span></a>
+
+      <span class="nav-label">Club & Termine</span>
+      {% if feature_modules.membership.enabled %}<a class="{% if current == 'member_center' or current == 'club' %}active{% endif %}" href="{% url 'experience:member_center' %}"><span class="nav-icon">♢</span><span>Mitgliedskarte</span></a>{% endif %}
+      {% if feature_modules.wallet.enabled %}<a class="{% if current == 'wallet_center' or current == 'wallet' %}active{% endif %}" href="{% url 'experience:wallet_center' %}"><span class="nav-icon">◇</span><span>Wallet & Rewards</span></a>{% endif %}
+      {% if feature_modules.booking.enabled %}<a class="{% if current == 'booking_calendar' or current == 'booking' %}active{% endif %}" href="{% url 'experience:booking_calendar' %}"><span class="nav-icon">◷</span><span>Termine</span></a>{% endif %}
+      {% if feature_modules.passport.enabled %}<a class="{% if current == 'passport' %}active{% endif %}" href="{% url 'passport' %}"><span class="nav-icon">▤</span><span>Beauty Passport</span></a>{% endif %}
+      {% if feature_modules.before_after.enabled %}<a class="{% if current == 'photo_center' %}active{% endif %}" href="{% url 'experience:photo_center' %}"><span class="nav-icon">▧</span><span>Vorher-Nachher</span></a>{% endif %}
+      {% if feature_modules.followup.enabled %}<a class="{% if current == 'aftercare_center' %}active{% endif %}" href="{% url 'experience:aftercare_center' %}"><span class="nav-icon">✓</span><span>Nachsorge</span></a>{% endif %}
+
+      <span class="nav-label">Plan & Pflege</span>
+      {% if feature_modules.beauty_plan.enabled %}<a class="{% if current == 'beauty_plans' %}active{% endif %}" href="{% url 'experience:beauty_plans' %}"><span class="nav-icon">◫</span><span>Beauty Plan</span></a>{% endif %}
+      {% if feature_modules.ai.enabled %}<a class="{% if current == 'assistant' or current == 'beauty_assistant' %}active{% endif %}" href="{% url 'experience:assistant' %}"><span class="nav-icon">✦</span><span>Wissensassistent</span></a>{% endif %}
+      {% if feature_modules.cabinet.enabled %}<a class="{% if current == 'cabinet' %}active{% endif %}" href="{% url 'experience:cabinet' %}"><span class="nav-icon">▣</span><span>Beauty Cabinet</span></a>{% endif %}
+      {% if feature_modules.reminders.enabled %}<a class="{% if current == 'reminders' %}active{% endif %}" href="{% url 'reminders' %}"><span class="nav-icon">◉</span><span>Erinnerungen</span></a>{% endif %}
+
+      <span class="nav-label">Entdecken</span>
+      {% if feature_modules.shop.enabled %}<a class="{% if current == 'shop' %}active{% endif %}" href="{% url 'experience:shop' %}"><span class="nav-icon">▱</span><span>A+ Shop</span></a>{% endif %}
+      {% if feature_modules.gamification.enabled %}<a class="{% if current == 'gamification' %}active{% endif %}" href="{% url 'experience:gamification' %}"><span class="nav-icon">◆</span><span>Challenges</span></a>{% endif %}
+      {% if feature_modules.offers.enabled or feature_modules.events.enabled %}<a class="{% if current == 'offers_events' %}active{% endif %}" href="{% url 'experience:offers_events' %}"><span class="nav-icon">✧</span><span>Angebote & Events</span></a>{% endif %}
+      {% if feature_modules.content.enabled %}<a class="{% if current == 'content_library' %}active{% endif %}" href="{% url 'experience:content_library' %}"><span class="nav-icon">▤</span><span>Inhalte</span></a>{% endif %}
+
+      <span class="nav-label">Kontakt & Konto</span>
+      {% if feature_modules.communication.enabled %}<a class="{% if current == 'communication_center' or current == 'chat' %}active{% endif %}" href="{% url 'experience:communication_center' %}"><span class="nav-icon">✉</span><span>Kontakt & Support</span></a>{% endif %}
+      {% if feature_modules.feedback.enabled %}<a class="{% if current == 'feedback_center' %}active{% endif %}" href="{% url 'experience:feedback_center' %}"><span class="nav-icon">☆</span><span>Feedback</span></a>{% endif %}
+      {% if feature_modules.concierge.enabled %}<a class="{% if current == 'concierge' %}active{% endif %}" href="{% url 'experience:concierge' %}"><span class="nav-icon">♛</span><span>Premium Support</span></a>{% endif %}
+      <a class="{% if current == 'profile' %}active{% endif %}" href="{% url 'profile' %}"><span class="nav-icon">⚙</span><span>Profil & Einwilligungen</span></a>
+      {% if feature_modules.privacy.enabled %}<a class="{% if current == 'privacy_center' %}active{% endif %}" href="{% url 'experience:privacy_center' %}"><span class="nav-icon">⌾</span><span>Datenschutz-Center</span></a>{% endif %}
+      <a class="{% if current == 'mfa_index' %}active{% endif %}" href="{% url 'mfa_index' %}"><span class="nav-icon">⌁</span><span>Passkeys & MFA</span></a>
+
+      {% if request.user.is_staff %}
+      <span class="nav-label">Verwaltung</span>
+      <a class="{% if current == 'management' %}active{% endif %}" href="{% url 'management' %}"><span class="nav-icon">▦</span><span>Management</span></a>
+      <a href="/secure-admin/"><span class="nav-icon">⚒</span><span>Systemverwaltung</span></a>
+      {% endif %}
+    </nav>
+
+    <div class="sidebar-footer">
+      <span class="security-dot"></span>
+      <div><b>Sicherer Bereich</b><small>Geschützte A+ Esthetic Web-App</small></div>
+    </div>
+  </aside>
+
+  <button class="sidebar-backdrop" type="button" data-menu-close aria-label="Menü schließen"></button>
+
+  <main>
+    <header class="topbar">
+      <button class="menu" type="button" data-menu aria-label="Menü öffnen"><span></span><span></span><span></span></button>
+      <div class="topbar-title"><b>{% block page_title %}A+ Esthetic{% endblock %}</b><small>{% block page_subtitle %}Beauty Club{% endblock %}</small></div>
+      <div class="top-actions">
+        <span class="privacy"><span></span>Geschützt</span>
+        <span class="user-name">{{ request.user.first_name|default:request.user.email|default:request.user.username }}</span>
+        <span class="avatar">{{ request.user.first_name|default:request.user.username|slice:':1'|upper }}</span>
+        <form method="post" action="{% url 'account_logout' %}">{% csrf_token %}<button class="linkbutton">Abmelden</button></form>
+      </div>
+    </header>
+
+    <section class="content">
+      {% if messages %}<div class="alerts">{% for message in messages %}<div class="alert {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+      {% block content %}{% endblock %}
+    </section>
+  </main>
+</div>
+{% endwith %}
+<script src="{% static 'app.js' %}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
