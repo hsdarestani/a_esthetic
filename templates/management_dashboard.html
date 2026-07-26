@@ -50,7 +50,7 @@
       <article class="integration-card-clean">
         <div class="integration-symbol">{% if integration.provider == 'doctolib' %}D{% elif integration.provider == 'simplybook' %}S{% elif integration.provider == 'google' %}G{% else %}A{% endif %}</div>
         <div>
-          <b>{{ integration.get_provider_display }}</b>
+          <b>{% if integration.provider == 'doctolib' %}Doctolib{% elif integration.provider == 'simplybook' %}SimplyBook{% elif integration.provider == 'google' %}Google{% else %}Apple{% endif %}</b>
           {% if integration.last_sync_at %}<small>Zuletzt aktualisiert: {{ integration.last_sync_at|date:'d.m.Y H:i' }}</small>{% endif %}
         </div>
         <span class="connection-pill {% if integration.enabled %}connected{% endif %}">{% if integration.enabled %}Aktiv{% else %}Nicht verbunden{% endif %}</span>
