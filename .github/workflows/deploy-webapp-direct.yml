@@ -47,6 +47,7 @@ jobs:
           python manage.py migrate --noinput
           python manage.py seed_platform
           python manage.py seed_complete_features
+          python manage.py clean_production_placeholders
           python manage.py test --verbosity 2
           python manage.py smoke_webapp
           python manage.py collectstatic --noinput
@@ -119,10 +120,13 @@ jobs:
           "$APP/venv/bin/python" manage.py migrate --noinput
           "$APP/venv/bin/python" manage.py seed_platform
           "$APP/venv/bin/python" manage.py seed_complete_features
+          "$APP/venv/bin/python" manage.py clean_production_placeholders
           "$APP/venv/bin/python" manage.py collectstatic --noinput >/dev/null
           "$APP/venv/bin/python" manage.py check --deploy --fail-level ERROR
           "$APP/venv/bin/python" manage.py smoke_webapp
           test -s "$RELEASE/static/wallet-polish.css"
+          test -s "$RELEASE/static/final-polish.css"
+          grep -q 'management-hero' "$RELEASE/templates/management_dashboard.html"
           grep -q 'apple-wallet-pass-preview' "$RELEASE/templates/experience/member.html"
 
           if [ "${EMAIL_BACKEND:-}" = 'django.core.mail.backends.smtp.EmailBackend' ]; then
@@ -159,3 +163,4 @@ jobs:
           curl -fsSI --max-time 20 https://esthetic.smarbiz.sbs/ | grep -Eq 'HTTP/.* (200|302)'
           curl -fsSI --max-time 20 https://esthetic.smarbiz.sbs/accounts/login/ | grep -Eq 'HTTP/.* 200'
           curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/static/wallet-polish.css | grep -q 'wallet-overview'
+          curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/static/final-polish.css | grep -q 'management-hero'
