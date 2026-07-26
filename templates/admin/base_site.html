@@ -1,0 +1,8 @@
+{% extends "admin/base.html" %}
+{% load static %}
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}A+ Esthetic Verwaltung{% endblock %}
+{% block extrahead %}{{ block.super }}<link rel="stylesheet" href="{% static 'admin-polish.css' %}">{% endblock %}
+{% block branding %}
+<div class="aplus-admin-brand"><span>A+</span><div><b>A+ ESTHETIC</b><small>VERWALTUNG</small></div></div>
+{% endblock %}
+{% block nav-global %}<a class="aplus-admin-back" href="{% url 'management' %}">Zur Management-Übersicht</a>{% endblock %}
