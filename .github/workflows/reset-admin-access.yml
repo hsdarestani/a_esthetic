@@ -1,0 +1,72 @@
+name: Reset A+ Esthetic admin access
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  reset-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate one-time password and reset admin
+        env:
+          HOST: ${{ secrets.HOST }}
+          PASS: ${{ secrets.PASS }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y sshpass >/dev/null
+          ADMIN_PASSWORD="$(python - <<'PY'
+          import secrets
+          alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#%_-'
+          print('A+' + ''.join(secrets.choice(alphabet) for _ in range(26)))
+          PY
+          )"
+          printf 'Username: admin\nPassword: %s\n' "$ADMIN_PASSWORD" > /tmp/admin-credentials.txt
+          chmod 600 /tmp/admin-credentials.txt
+          PASSWORD_B64="$(printf '%s' "$ADMIN_PASSWORD" | base64 -w0)"
+          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 root@"$HOST" "PASSWORD_B64='$PASSWORD_B64' bash -s" <<'REMOTE'
+          set -euo pipefail
+          APP='/opt/aesthetic-platform'
+          ENVFILE='/etc/aesthetic-platform.env'
+          test -s "$ENVFILE"
+          test -x "$APP/venv/bin/python"
+          PASSWORD="$(printf '%s' "$PASSWORD_B64" | base64 -d)"
+          set -a
+          . "$ENVFILE"
+          set +a
+          cd "$APP/current"
+          ADMIN_TEMP_PASSWORD="$PASSWORD" "$APP/venv/bin/python" manage.py shell <<'PY'
+          import os
+          from django.contrib.auth import authenticate, get_user_model
+
+          User = get_user_model()
+          password = os.environ['ADMIN_TEMP_PASSWORD']
+          user, _ = User.objects.get_or_create(
+              username='admin',
+              defaults={'email': 'admin@a-esthetic.de'},
+          )
+          user.email = user.email or 'admin@a-esthetic.de'
+          user.is_active = True
+          user.is_staff = True
+          user.is_superuser = True
+          user.set_password(password)
+          user.save()
+          assert user.check_password(password)
+          assert authenticate(username='admin', password=password) is not None
+          print('Admin account reset and verified.')
+          PY
+          unset PASSWORD
+          REMOTE
+
+      - name: Upload private credentials artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-esthetic-admin-credentials-${{ github.run_id }}
+          path: /tmp/admin-credentials.txt
+          retention-days: 1
+          if-no-files-found: error
