@@ -18,6 +18,14 @@ from platform_app.models import MemberAccount, WalletAccount
 from .models import MemberPass
 
 
+INK = "#111a22"
+INK_2 = "#253642"
+GOLD = "#c79a62"
+GOLD_LIGHT = "#f0d7ad"
+CREAM = "#f7f2ea"
+WHITE = "#ffffff"
+
+
 def _member_payload(user):
     member, _ = MemberAccount.objects.get_or_create(user=user)
     wallet, _ = WalletAccount.objects.get_or_create(user=user)
@@ -26,20 +34,74 @@ def _member_payload(user):
     return member, wallet, tier, full_name
 
 
-def _icon_bytes(size):
-    image = Image.new("RGB", (size, size), "#17212a")
+def _font(size, bold=False):
+    names = [
+        "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+    for name in names:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _gradient(width, height, start=INK, end=INK_2):
+    image = Image.new("RGB", (width, height), start)
+    start_rgb = tuple(int(start[index:index + 2], 16) for index in (1, 3, 5))
+    end_rgb = tuple(int(end[index:index + 2], 16) for index in (1, 3, 5))
     draw = ImageDraw.Draw(image)
-    try:
-        font = ImageFont.truetype("DejaVuSans-Bold.ttf", int(size * 0.42))
-    except OSError:
-        font = ImageFont.load_default()
+    for x in range(width):
+        ratio = x / max(width - 1, 1)
+        color = tuple(round(a + (b - a) * ratio) for a, b in zip(start_rgb, end_rgb))
+        draw.line((x, 0, x, height), fill=color)
+    return image
+
+
+def _icon_bytes(size):
+    image = _gradient(size, size)
+    draw = ImageDraw.Draw(image)
+    inset = max(2, size // 16)
+    draw.rounded_rectangle((inset, inset, size - inset, size - inset), radius=size // 4, outline=GOLD, width=max(1, size // 24))
+    font = _font(max(10, int(size * 0.39)), bold=True)
     text = "A+"
     bbox = draw.textbbox((0, 0), text, font=font)
-    x = (size - (bbox[2] - bbox[0])) / 2
-    y = (size - (bbox[3] - bbox[1])) / 2 - bbox[1]
-    draw.text((x, y), text, fill="#e0c79f", font=font)
+    draw.text(((size - (bbox[2] - bbox[0])) / 2, (size - (bbox[3] - bbox[1])) / 2 - bbox[1]), text, fill=GOLD_LIGHT, font=font)
     output = BytesIO()
-    image.save(output, format="PNG")
+    image.save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+def _logo_bytes(width, height):
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    mark_size = min(height - 4, int(width * 0.22))
+    draw.rounded_rectangle((2, 2, mark_size, height - 2), radius=max(5, height // 5), outline=GOLD_LIGHT, width=max(1, height // 22))
+    mark_font = _font(max(12, int(height * 0.42)), bold=True)
+    bbox = draw.textbbox((0, 0), "A+", font=mark_font)
+    draw.text(((mark_size - (bbox[2] - bbox[0])) / 2 + 1, (height - (bbox[3] - bbox[1])) / 2 - bbox[1]), "A+", fill=GOLD_LIGHT, font=mark_font)
+    word_font = _font(max(10, int(height * 0.25)), bold=True)
+    draw.text((mark_size + height * 0.18, height * 0.22), "A+ ESTHETIC", fill=WHITE, font=word_font)
+    small_font = _font(max(7, int(height * 0.14)))
+    draw.text((mark_size + height * 0.18, height * 0.57), "BEAUTY CLUB", fill=GOLD_LIGHT, font=small_font)
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+def _strip_bytes(width, height):
+    image = _gradient(width, height)
+    draw = ImageDraw.Draw(image, "RGBA")
+    draw.ellipse((width * 0.66, -height * 0.8, width * 1.12, height * 1.5), fill=(199, 154, 98, 50))
+    draw.ellipse((width * 0.77, -height * 0.55, width * 1.05, height * 1.15), outline=(240, 215, 173, 120), width=max(2, width // 180))
+    draw.line((width * 0.08, height * 0.78, width * 0.52, height * 0.78), fill=(240, 215, 173, 110), width=max(1, width // 260))
+    title_font = _font(max(20, int(height * 0.28)), bold=True)
+    subtitle_font = _font(max(10, int(height * 0.13)))
+    draw.text((width * 0.08, height * 0.21), "A+ BEAUTY CLUB", fill=WHITE, font=title_font)
+    draw.text((width * 0.08, height * 0.56), "YOUR BEAUTY. YOUR BENEFITS.", fill=GOLD_LIGHT, font=subtitle_font)
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=True)
     return output.getvalue()
 
 
@@ -48,24 +110,30 @@ def build_apple_pass(user):
     missing = [key for key in required if not os.environ.get(key)]
     if missing:
         raise ImproperlyConfigured("Apple-Wallet-Konfiguration fehlt: " + ", ".join(missing))
+
     member, wallet, tier, full_name = _member_payload(user)
     record, _ = MemberPass.objects.get_or_create(user=user, provider="apple")
-    pass_type = os.environ["APPLE_PASS_TYPE_ID"]
-    web_service_url = os.environ.get("APPLE_PASS_WEB_SERVICE_URL", "https://esthetic.smarbiz.sbs/wallet/apple/")
+    token = member.qr_token
+    barcode = {
+        "format": "PKBarcodeFormatQR",
+        "message": token,
+        "messageEncoding": "iso-8859-1",
+        "altText": member.member_number,
+    }
     pass_json = {
         "formatVersion": 1,
-        "passTypeIdentifier": pass_type,
+        "passTypeIdentifier": os.environ["APPLE_PASS_TYPE_ID"],
         "serialNumber": record.serial_number,
         "teamIdentifier": os.environ["APPLE_TEAM_ID"],
         "organizationName": "A+ Esthetic",
-        "description": "A+ Esthetic Mitgliedskarte",
+        "description": "A+ Esthetic Beauty Club Mitgliedskarte",
         "logoText": "A+ Esthetic",
-        "foregroundColor": "rgb(23, 33, 42)",
-        "backgroundColor": "rgb(246, 241, 234)",
-        "labelColor": "rgb(120, 92, 60)",
-        "webServiceURL": web_service_url.rstrip("/"),
-        "authenticationToken": member.qr_token,
-        "barcode": {"format": "PKBarcodeFormatQR", "message": member.qr_token, "messageEncoding": "iso-8859-1", "altText": member.member_number},
+        "foregroundColor": "rgb(255, 255, 255)",
+        "backgroundColor": "rgb(17, 26, 34)",
+        "labelColor": "rgb(240, 215, 173)",
+        "barcode": barcode,
+        "barcodes": [barcode],
+        "userInfo": {"memberNumber": member.member_number, "tier": tier},
         "storeCard": {
             "headerFields": [{"key": "tier", "label": "STATUS", "value": tier}],
             "primaryFields": [{"key": "name", "label": "MITGLIED", "value": full_name}],
@@ -76,19 +144,33 @@ def build_apple_pass(user):
             "auxiliaryFields": [{"key": "number", "label": "MITGLIEDSNUMMER", "value": member.member_number}],
             "backFields": [
                 {"key": "issuer", "label": "Herausgeber", "value": "A+ Esthetic"},
+                {"key": "website", "label": "Website", "value": "https://a-esthetic.de"},
+                {"key": "privacy", "label": "Datenschutz", "value": "Der QR-Code dient ausschließlich der sicheren Identifikation Ihrer A+ Mitgliedschaft."},
                 {"key": "medical", "label": "Medizinischer Hinweis", "value": "Die Mitgliedskarte enthält keine medizinische Empfehlung und verarbeitet keine Arztvergütung."},
             ],
         },
     }
+
+    service_url = os.environ.get("APPLE_PASS_WEB_SERVICE_URL", "").strip()
+    if service_url:
+        pass_json["webServiceURL"] = service_url.rstrip("/")
+        pass_json["authenticationToken"] = token
+
     files = {
         "pass.json": json.dumps(pass_json, ensure_ascii=False, separators=(",", ":")).encode(),
         "icon.png": _icon_bytes(29),
         "icon@2x.png": _icon_bytes(58),
-        "logo.png": _icon_bytes(80),
-        "logo@2x.png": _icon_bytes(160),
+        "icon@3x.png": _icon_bytes(87),
+        "logo.png": _logo_bytes(160, 50),
+        "logo@2x.png": _logo_bytes(320, 100),
+        "logo@3x.png": _logo_bytes(480, 150),
+        "strip.png": _strip_bytes(375, 123),
+        "strip@2x.png": _strip_bytes(750, 246),
+        "strip@3x.png": _strip_bytes(1125, 369),
     }
     manifest = {name: hashlib.sha1(content).hexdigest() for name, content in files.items()}
     files["manifest.json"] = json.dumps(manifest, separators=(",", ":")).encode()
+
     with tempfile.TemporaryDirectory() as directory:
         directory = Path(directory)
         for name, content in files.items():
@@ -110,6 +192,7 @@ def build_apple_pass(user):
                 archive.write(directory / name, name)
             archive.write(signature, "signature")
         output.seek(0)
+
     record.status = "active"
     record.last_synced_at = timezone.now()
     record.last_error = ""
@@ -158,10 +241,10 @@ def google_save_url(user):
             }],
         },
     }
-    token = jwt.encode(payload, credentials["private_key"], algorithm="RS256")
+    signed_token = jwt.encode(payload, credentials["private_key"], algorithm="RS256")
     record.external_object_id = object_id
     record.status = "active"
     record.last_synced_at = timezone.now()
     record.last_error = ""
     record.save(update_fields=["external_object_id", "status", "last_synced_at", "last_error", "updated_at"])
-    return "https://pay.google.com/gp/v/save/" + token
+    return "https://pay.google.com/gp/v/save/" + signed_token
