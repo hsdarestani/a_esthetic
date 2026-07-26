@@ -1,0 +1,14 @@
+Willkommen bei A+ Esthetic.
+
+Bitte bestätigen Sie Ihre E-Mail-Adresse, damit wir Ihren persönlichen Zugang sicher aktivieren können:
+
+{{ activate_url }}
+
+Der Link ist ausschließlich für die Aktivierung Ihres Kontos bestimmt. Falls Sie sich nicht bei A+ Esthetic registriert haben, können Sie diese Nachricht ignorieren.
+
+Viele Grüße
+Ihr A+ Esthetic Team
+
+A+ Esthetic
+https://a-esthetic.de
+App: https://esthetic.smarbiz.sbs
