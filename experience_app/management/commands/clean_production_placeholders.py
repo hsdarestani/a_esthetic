@@ -5,6 +5,7 @@ from platform_app.models import (
     FeatureModule,
     GiftCard,
     IntegrationConfig,
+    MemberPackage,
     PackageDefinition,
     Referral,
     Reward,
@@ -28,14 +29,12 @@ class Command(BaseCommand):
     help = "Entfernt ausschließlich bekannte Seed- und Platzhalterinhalte."
 
     def handle(self, *args, **options):
-        # Keep the integration objects, but remove technical placeholder copy from the UI/admin.
         IntegrationConfig.objects.update(
             status="",
             credential_reference="",
             settings={},
         )
 
-        # Remove generic copy that was only added to make an early prototype look populated.
         MembershipBenefit.objects.filter(
             description="Von A+ Esthetic bereitgestellter Vorteil."
         ).update(description="")
@@ -71,13 +70,13 @@ class Command(BaseCommand):
                 "A+ Event Einladung",
             ]
         ).delete()
-        PackageDefinition.objects.filter(name="Laser Pflegepaket").delete()
+        demo_packages = PackageDefinition.objects.filter(name="Laser Pflegepaket")
+        MemberPackage.objects.filter(definition__in=demo_packages).delete()
+        demo_packages.delete()
         Campaign.objects.filter(name="A+ Beauty Club Willkommen").delete()
         GiftCard.objects.filter(code="APLUS-DEMO-100").delete()
         Referral.objects.filter(code="APLUS-SOPHIE").delete()
 
-        # Module descriptions are real product labels, not demo content. Keep them available
-        # for API clients, but the polished management views no longer display them.
         count = FeatureModule.objects.count()
         self.stdout.write(
             self.style.SUCCESS(
