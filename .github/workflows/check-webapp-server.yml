@@ -23,18 +23,38 @@ jobs:
           set -o pipefail
           sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 root@"$HOST" 'bash -s' > /tmp/server-report.txt 2>&1 <<'REMOTE'
           set -u
+          APP=/opt/aesthetic-platform
           echo '=== SERVER ==='
           hostname
           date -u
           echo '=== DNS ==='
           getent ahostsv4 esthetic.smarbiz.sbs || true
-          echo '=== APP PATH ==='
-          ls -la /opt/aesthetic-platform || true
-          readlink -f /opt/aesthetic-platform/current || true
+          echo '=== RELEASES ==='
+          find "$APP/releases" -mindepth 1 -maxdepth 1 -type d -printf '%TY-%Tm-%Td %TH:%TM:%TS %f\n' 2>/dev/null | sort -r | head -n 12 || true
+          echo '=== CURRENT ==='
+          ls -ld "$APP/current" || true
+          readlink -f "$APP/current" || true
+          if [ -L "$APP/current" ]; then
+            test -f "$APP/current/templates/experience/member.html" && grep -o 'apple-wallet-pass-preview' "$APP/current/templates/experience/member.html" | head -n 1 || true
+            test -f "$APP/current/static/wallet-polish.css" && wc -c "$APP/current/static/wallet-polish.css" || true
+          fi
           echo '=== SERVICES ==='
           systemctl is-active aesthetic-platform || true
           systemctl is-active nginx || true
-          systemctl --no-pager --full status aesthetic-platform | tail -n 35 || true
+          systemctl --no-pager --full status aesthetic-platform | tail -n 45 || true
+          echo '=== APP JOURNAL ==='
+          journalctl -u aesthetic-platform --no-pager -n 80 || true
+          echo '=== NGINX ERRORS ==='
+          tail -n 50 /var/log/nginx/error.log || true
+          echo '=== RELEASE 6819 ==='
+          ls -la "$APP/releases/6819df5fcad0fce80c7bde28f819c17485486a9a" 2>/dev/null | head -n 30 || true
+          if [ -f /etc/aesthetic-platform.env ] && [ -x "$APP/venv/bin/python" ]; then
+            echo '=== DJANGO CHECK CURRENT ==='
+            set -a; . /etc/aesthetic-platform.env; set +a
+            cd "$APP/current" 2>/dev/null && "$APP/venv/bin/python" manage.py check || true
+            echo '=== MIGRATIONS ==='
+            cd "$APP/current" 2>/dev/null && "$APP/venv/bin/python" manage.py showmigrations platform_app experience_app | tail -n 80 || true
+          fi
           echo '=== LOCAL HEALTH ==='
           curl -sS --max-time 10 http://127.0.0.1:8766/health/ || true
           echo
