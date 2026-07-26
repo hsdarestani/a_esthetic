@@ -2,9 +2,9 @@ name: Check A+ Esthetic web app server
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    types: [synchronize]
+
+permissions:
+  contents: read
 
 jobs:
   server-check:
@@ -46,17 +46,19 @@ jobs:
           journalctl -u aesthetic-platform --no-pager -n 80 || true
           echo '=== NGINX ERRORS ==='
           tail -n 50 /var/log/nginx/error.log || true
-          echo '=== RELEASE 6819 ==='
-          ls -la "$APP/releases/6819df5fcad0fce80c7bde28f819c17485486a9a" 2>/dev/null | head -n 30 || true
+          echo '=== CURRENT RELEASE FILES ==='
+          ls -la "$APP/current" 2>/dev/null | head -n 35 || true
           if [ -f /etc/aesthetic-platform.env ] && [ -x "$APP/venv/bin/python" ]; then
             echo '=== DJANGO CHECK CURRENT ==='
             set -a; . /etc/aesthetic-platform.env; set +a
             cd "$APP/current" 2>/dev/null && "$APP/venv/bin/python" manage.py check || true
             echo '=== MIGRATIONS ==='
             cd "$APP/current" 2>/dev/null && "$APP/venv/bin/python" manage.py showmigrations platform_app experience_app | tail -n 80 || true
+            echo '=== AUTHENTICATED SMOKE ==='
+            cd "$APP/current" 2>/dev/null && "$APP/venv/bin/python" manage.py smoke_webapp || true
           fi
           echo '=== LOCAL HEALTH ==='
-          curl -sS --max-time 10 http://127.0.0.1:8766/health/ || true
+          curl -sS --max-time 10 -H 'Host: esthetic.smarbiz.sbs' -H 'X-Forwarded-Proto: https' http://127.0.0.1:8766/health/ || true
           echo
           echo '=== PUBLIC HEALTH ==='
           curl -k -sS --max-time 15 https://esthetic.smarbiz.sbs/health/ || true
