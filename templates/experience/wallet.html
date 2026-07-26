@@ -1,6 +1,65 @@
-{% extends 'base.html' %}{% block title %}{{ page_title }} – A+ Esthetic{% endblock %}{% block page_title %}{{ page_title }}{% endblock %}{% block page_subtitle %}{{ page_subtitle }}{% endblock %}
+{% extends 'base.html' %}
+{% block title %}{{ page_title }} – A+ Esthetic{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block page_subtitle %}{{ page_subtitle }}{% endblock %}
 {% block content %}
-<div class="wallet-grid"><section class="wallet-card"><span>A+ CREDIT</span><b>{{ wallet.balance_cents }} <small>Cent</small></b><p>Echtes Kundenguthaben bei A+ Esthetic.</p></section><section class="wallet-card light"><span>A+ COINS</span><b>{{ wallet.coin_balance }} <small>Coins</small></b><p>Nicht monetäre Loyalty-Punkte von A+ Esthetic.</p></section></div>
-<div class="grid two gap-top"><section class="panel"><h2>Reward Shop</h2>{% for reward in rewards %}<article class="reward-row"><div><h3>{{ reward.name }}</h3><p>{{ reward.description|default:'A+ Beauty Club Prämie' }}</p><small>Herausgeber: {{ reward.issuer }}</small></div><form method="post" action="{% url 'experience:redeem_reward' reward.id %}">{% csrf_token %}<button class="btn primary" {% if wallet.coin_balance < reward.coin_cost %}disabled{% endif %}>{{ reward.coin_cost }} Coins</button></form></article>{% empty %}<p class="empty">Keine Rewards verfügbar.</p>{% endfor %}<hr><h2>Reservierte Rewards</h2>{% for item in redemptions %}<div class="list-row"><div><b>{{ item.reward.name }}</b><small>{{ item.code }} · {{ item.get_status_display }}</small></div><strong>{{ item.coins_spent }} Coins</strong></div>{% empty %}<p class="empty">Noch keine Einlösungen.</p>{% endfor %}</section><section class="panel"><h2>Gift Card erstellen</h2><form method="post" action="{% url 'experience:create_giftcard' %}" class="form-stack">{% csrf_token %}<label>Betrag in Cent<input type="number" name="amount_cents" min="1000" max="100000" value="5000" required></label><label>Empfängername<input name="recipient_name"></label><label>Empfänger-E-Mail<input type="email" name="recipient_email"></label><label>Persönliche Nachricht<textarea name="personal_message" rows="3"></textarea></label><label class="checkline"><input type="checkbox" name="hidden_until_opened"><span>Inhalt erst beim Öffnen anzeigen</span></label><button class="btn primary">Mit A+ Credit erstellen</button></form><hr><h2>Ihre Gift Cards</h2>{% for card in giftcards %}<div class="gift-card"><b>{{ card.code }}</b><strong>{{ card.balance_cents }} ct</strong><small>{{ card.get_status_display }} · gültig bis {{ card.expires_at|date:'d.m.Y' }}</small></div>{% empty %}<p class="empty">Keine Gift Cards.</p>{% endfor %}</section></div>
-<div class="grid two gap-top"><section class="panel"><h2>Pakete & Service Balance</h2>{% for package in packages %}<div class="package"><b>{{ package.definition.name }}</b><strong>{{ package.remaining_sessions }} / {{ package.definition.sessions }}</strong><small>Gültig bis {{ package.expires_at|date:'d.m.Y' }}</small></div>{% empty %}<p class="empty">Keine aktiven Pakete.</p>{% endfor %}</section><section class="panel"><h2>Transaktionen</h2>{% for tx in transactions %}<div class="list-row"><div><b>{{ tx.description }}</b><small>{{ tx.created_at|date:'d.m.Y H:i' }} · {{ tx.issuer }}</small></div><strong>{% if tx.kind == 'coin' %}{{ tx.coin_amount }} Coins{% else %}{{ tx.amount_cents }} ct{% endif %}</strong></div>{% empty %}<p class="empty">Noch keine Transaktionen.</p>{% endfor %}</section></div>
+<section class="wallet-overview">
+  <div class="wallet-card wallet-card-credit">
+    <div class="wallet-card-kicker"><span>A+ CREDIT</span><i>€</i></div>
+    <b>{{ wallet.balance_cents }} <small>Cent</small></b>
+    <p>Ihr persönliches Guthaben für Produkte, Beauty-Club-Vorteile und freigegebene A+ Leistungen.</p>
+    <div class="wallet-card-footer-line"><span>{{ member.member_number }}</span><strong>A+ ESTHETIC</strong></div>
+  </div>
+  <div class="wallet-card light wallet-card-coins">
+    <div class="wallet-card-kicker"><span>A+ COINS</span><i>✦</i></div>
+    <b>{{ wallet.coin_balance }} <small>Coins</small></b>
+    <p>Ihre Loyalty-Punkte für Challenges, Check-ins, Inhalte und Beauty-Club-Aktivitäten.</p>
+    <div class="wallet-card-footer-line"><span>LOYALTY BALANCE</span><strong>BEAUTY CLUB</strong></div>
+  </div>
+</section>
+
+<div class="grid two gap-top wallet-main-grid">
+  <section class="panel elevated-panel">
+    <div class="panel-head"><div><span class="eyebrow dark">REWARD SHOP</span><h2>Coins einlösen</h2></div><span class="panel-icon">✦</span></div>
+    {% for reward in rewards %}
+    <article class="reward-row reward-premium-row">
+      <div><span class="reward-kicker">A+ REWARD</span><h3>{{ reward.name }}</h3><p>{{ reward.description|default:'Exklusive A+ Beauty Club Prämie' }}</p><small>Herausgeber: {{ reward.issuer }}</small></div>
+      <form method="post" action="{% url 'experience:redeem_reward' reward.id %}">{% csrf_token %}<button class="btn primary" {% if wallet.coin_balance < reward.coin_cost %}disabled{% endif %}>{{ reward.coin_cost }} Coins</button></form>
+    </article>
+    {% empty %}<p class="empty">Aktuell sind keine Rewards verfügbar.</p>{% endfor %}
+
+    <div class="section-divider"></div>
+    <div class="panel-head compact"><div><span class="eyebrow dark">RESERVIERT</span><h2>Ihre Reward-Codes</h2></div></div>
+    {% for item in redemptions %}
+    <div class="list-row code-row"><div><b>{{ item.reward.name }}</b><small>{{ item.code }} · {{ item.get_status_display }}</small></div><strong>{{ item.coins_spent }} Coins</strong></div>
+    {% empty %}<p class="empty">Noch keine Einlösungen.</p>{% endfor %}
+  </section>
+
+  <section class="panel elevated-panel giftcard-panel">
+    <div class="panel-head"><div><span class="eyebrow dark">GIFT CARD</span><h2>Beauty verschenken</h2></div><span class="panel-icon">◇</span></div>
+    <div class="gift-card-preview"><span>A+ ESTHETIC</span><b>BEAUTY GIFT</b><small>Ein persönliches Geschenk mit Stil.</small></div>
+    <form method="post" action="{% url 'experience:create_giftcard' %}" class="form-stack premium-form">{% csrf_token %}
+      <label>Betrag in Cent<input type="number" name="amount_cents" min="1000" max="100000" value="5000" required></label>
+      <label>Empfängername<input name="recipient_name" placeholder="Vor- und Nachname"></label>
+      <label>Empfänger-E-Mail<input type="email" name="recipient_email" placeholder="name@example.com"></label>
+      <label>Persönliche Nachricht<textarea name="personal_message" rows="3" placeholder="Eine persönliche Nachricht …"></textarea></label>
+      <label class="checkline premium-checkline"><input type="checkbox" name="hidden_until_opened"><span>Inhalt erst beim Öffnen anzeigen</span></label>
+      <button class="btn primary">Mit A+ Credit erstellen</button>
+    </form>
+    <div class="section-divider"></div>
+    <h2>Ihre Gift Cards</h2>
+    {% for card in giftcards %}<div class="gift-card gift-card-item"><div><b>{{ card.code }}</b><small>{{ card.get_status_display }} · gültig bis {{ card.expires_at|date:'d.m.Y' }}</small></div><strong>{{ card.balance_cents }} ct</strong></div>{% empty %}<p class="empty">Noch keine Gift Cards.</p>{% endfor %}
+  </section>
+</div>
+
+<div class="grid two gap-top">
+  <section class="panel elevated-panel">
+    <div class="panel-head"><div><span class="eyebrow dark">PACKAGES</span><h2>Pakete & Service Balance</h2></div><span class="panel-icon">▣</span></div>
+    {% for package in packages %}<div class="package package-progress"><div><b>{{ package.definition.name }}</b><small>Gültig bis {{ package.expires_at|date:'d.m.Y' }}</small></div><strong>{{ package.remaining_sessions }} / {{ package.definition.sessions }}</strong></div>{% empty %}<p class="empty">Keine aktiven Pakete.</p>{% endfor %}
+  </section>
+  <section class="panel elevated-panel">
+    <div class="panel-head"><div><span class="eyebrow dark">HISTORY</span><h2>Transaktionen</h2></div><span class="panel-icon">↗</span></div>
+    {% for tx in transactions %}<div class="list-row transaction-row"><div><b>{{ tx.description }}</b><small>{{ tx.created_at|date:'d.m.Y H:i' }} · {{ tx.issuer }}</small></div><strong class="{% if tx.coin_amount < 0 or tx.amount_cents < 0 %}danger-text{% endif %}">{% if tx.kind == 'coin' %}{{ tx.coin_amount }} Coins{% else %}{{ tx.amount_cents }} ct{% endif %}</strong></div>{% empty %}<p class="empty">Noch keine Transaktionen.</p>{% endfor %}
+  </section>
+</div>
 {% endblock %}
