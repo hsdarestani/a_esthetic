@@ -7,6 +7,13 @@ from django.urls import reverse
 class Command(BaseCommand):
     help = "Render the important A+ Esthetic web-app routes with seeded users."
 
+    public_routes = [
+        ("account_login", "Anmeldung", ("Willkommen zurück", "auth-card")),
+        ("account_signup", "Registrierung", ("Konto erstellen", "Sicher registrieren")),
+        ("account_reset_password", "Passwort zurücksetzen", ("Passwort zurücksetzen", "Link zum Zurücksetzen")),
+        ("account_email_verification_sent", "E-Mail-Verifizierung", ("E-Mail-Adresse", "auth-status-icon")),
+    ]
+
     customer_routes = [
         ("dashboard", "Dashboard"),
         ("experience:member_center", "Mitgliedskarte"),
@@ -51,6 +58,18 @@ class Command(BaseCommand):
         return response
 
     def handle(self, *args, **options):
+        public_client = Client()
+        for route_name, label, markers in self.public_routes:
+            response = self._check(public_client, route_name, label)
+            html = response.content.decode("utf-8", errors="replace")
+            missing = [marker for marker in markers if marker not in html]
+            if missing:
+                raise CommandError(
+                    f"{label} is missing branded German markers: {', '.join(missing)}"
+                )
+            if "Menu:" in html or "Sign Up" in html or "Verify Your Email Address" in html:
+                raise CommandError(f"{label} still contains raw allauth English markup.")
+
         User = get_user_model()
         try:
             customer = User.objects.get(username="demo@a-esthetic.de")
@@ -103,9 +122,7 @@ class Command(BaseCommand):
         for route_name, label in self.staff_routes:
             self._check(staff_client, route_name, label)
 
+        total = len(self.public_routes) + len(self.customer_routes) + len(self.staff_routes) + 2
         self.stdout.write(
-            self.style.SUCCESS(
-                f"A+ web-app smoke test passed: "
-                f"{len(self.customer_routes) + len(self.staff_routes) + 2} routes."
-            )
+            self.style.SUCCESS(f"A+ web-app smoke test passed: {total} routes.")
         )
