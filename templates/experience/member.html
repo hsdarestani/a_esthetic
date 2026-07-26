@@ -1,6 +1,74 @@
-{% extends 'base.html' %}{% block title %}{{ page_title }} – A+ Esthetic{% endblock %}{% block page_title %}{{ page_title }}{% endblock %}{% block page_subtitle %}{{ page_subtitle }}{% endblock %}
+{% extends 'base.html' %}
+{% block title %}{{ page_title }} – A+ Esthetic{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block page_subtitle %}{{ page_subtitle }}{% endblock %}
 {% block content %}
-<div class="hero-grid"><section class="member-card member-card-large"><div class="member-top"><span>{{ member.tier.name|default:'A+ Member' }}</span><span class="status-dot">{{ member.get_status_display }}</span></div><h2>{{ request.user.get_full_name|default:request.user.username }}</h2><p>{{ member.member_number }}</p><div class="member-bottom"><div><b>{{ wallet.coin_balance }}</b><small>A+ Coins</small></div><div><b>{{ wallet.balance_cents }} ct</b><small>A+ Credit</small></div><img src="{% url 'experience:member_qr' %}" alt="Persönlicher QR-Code"></div></section><section class="panel"><h2>Smartphone Wallet</h2><p class="muted">Die Karte wird ausschließlich von A+ Esthetic ausgegeben. Medizinische Vergütungen oder Arztumsätze sind nicht Bestandteil der Karte.</p><div class="action-stack"><a class="btn primary {% if not apple_ready %}disabled-link{% endif %}" href="{% url 'experience:apple_wallet_pass' %}"> Zu Apple Wallet</a><a class="btn outline {% if not google_ready %}disabled-link{% endif %}" href="{% url 'experience:google_wallet_pass' %}">G Zu Google Wallet</a></div>{% if not apple_ready or not google_ready %}<div class="notice"><b>Externe Konfiguration:</b> Die Buttons werden nach Hinterlegung der offiziellen Wallet-Credentials aktiviert.</div>{% endif %}</section></div>
-<div class="grid two gap-top"><section class="panel"><h2>Membership</h2>{% if subscription %}<div class="list-row"><div><b>{{ subscription.tier.name }}</b><small>{{ subscription.get_interval_display }} · {{ subscription.get_status_display }}</small></div><span class="badge">{% if subscription.renews_on %}Verlängerung {{ subscription.renews_on|date:'d.m.Y' }}{% else %}Ohne Auto-Renew{% endif %}</span></div>{% else %}<p class="empty">Keine kostenpflichtige Membership aktiv.</p>{% endif %}</section><section class="panel"><h2>Ihre A+ Vorteile</h2>{% for benefit in benefits %}<div class="list-row"><div><b>{{ benefit.title }}</b><small>{{ benefit.description }}</small></div><span class="badge">{{ benefit.get_benefit_type_display }}</span></div>{% empty %}<p class="empty">Für diese Stufe wurden noch keine Vorteile hinterlegt.</p>{% endfor %}</section></div>
-<div class="notice gap-top"><b>Rechtlicher Rahmen:</b> Alle Membership-Vorteile, Coins, Credits, Gift Cards und Rewards werden ausschließlich durch A+ Esthetic verwaltet. Die App verarbeitet keine Arztvergütung und verspricht keine medizinische Leistung.</div>
+<section class="member-showcase">
+  <div class="member-card member-card-large premium-member-card">
+    <div class="premium-orb premium-orb-one"></div>
+    <div class="premium-orb premium-orb-two"></div>
+    <div class="member-top premium-card-head">
+      <div class="premium-brand-lockup"><span class="premium-brand-mark">A+</span><span><b>A+ ESTHETIC</b><small>BEAUTY CLUB</small></span></div>
+      <span class="status-dot premium-status">{{ member.get_status_display }}</span>
+    </div>
+    <div class="premium-chip" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="premium-card-copy">
+      <span class="premium-label">{{ member.tier.name|default:'A+ Member' }}</span>
+      <h2>{{ request.user.get_full_name|default:request.user.username }}</h2>
+      <p>{{ member.member_number }}</p>
+    </div>
+    <div class="member-bottom premium-card-footer">
+      <div><small>A+ COINS</small><b>{{ wallet.coin_balance }}</b></div>
+      <div><small>A+ CREDIT</small><b>{{ wallet.balance_cents }} ct</b></div>
+      <div class="premium-qr-wrap"><img src="{% url 'experience:member_qr' %}" alt="Persönlicher QR-Code"><span>SCAN</span></div>
+    </div>
+  </div>
+
+  <div class="wallet-preview-panel">
+    <div class="wallet-preview-head">
+      <div><span class="eyebrow">DIGITAL MEMBER CARD</span><h2>Ihre Karte in Apple Wallet</h2></div>
+      <span class="wallet-ready-state {% if apple_ready %}ready{% endif %}">{% if apple_ready %}Signierung aktiv{% else %}Struktur bereit{% endif %}</span>
+    </div>
+    <p>Die Wallet-Karte übernimmt dieselbe A+ Identität wie Ihre Web-Mitgliedskarte – inklusive Status, Coins, Credit und persönlichem QR-Code.</p>
+
+    <div class="apple-wallet-device">
+      <div class="apple-wallet-pass-preview">
+        <div class="apple-wallet-topline"><span class="wallet-mini-logo">A+</span><strong>A+ ESTHETIC</strong><small>{{ member.tier.name|default:'A+ Member' }}</small></div>
+        <div class="apple-wallet-art"><span>A+ BEAUTY CLUB</span><small>YOUR BEAUTY. YOUR BENEFITS.</small></div>
+        <div class="apple-wallet-name"><small>MITGLIED</small><b>{{ request.user.get_full_name|default:request.user.username }}</b></div>
+        <div class="apple-wallet-values"><div><small>A+ COINS</small><b>{{ wallet.coin_balance }}</b></div><div><small>A+ CREDIT</small><b>{{ wallet.balance_cents }} ct</b></div></div>
+        <div class="apple-wallet-code"><img src="{% url 'experience:member_qr' %}" alt="QR-Code der Mitgliedskarte"><small>{{ member.member_number }}</small></div>
+      </div>
+    </div>
+
+    <div class="wallet-action-row">
+      <a class="btn apple-wallet-button {% if not apple_ready %}disabled-link{% endif %}" href="{% url 'experience:apple_wallet_pass' %}"><span class="apple-symbol"></span><span><small>Add to</small>Apple Wallet</span></a>
+      <a class="btn google-wallet-button {% if not google_ready %}disabled-link{% endif %}" href="{% url 'experience:google_wallet_pass' %}"><span class="google-symbol">G</span><span><small>Add to</small>Google Wallet</span></a>
+    </div>
+    {% if not apple_ready or not google_ready %}
+    <div class="wallet-setup-note"><b>Bereit für Credentials</b><span>Layout, Pass-Daten, QR-Struktur und Signierungsprozess sind vorbereitet. Nach dem Secret-Sync werden die Buttons automatisch aktiv.</span></div>
+    {% endif %}
+  </div>
+</section>
+
+<div class="grid two gap-top membership-detail-grid">
+  <section class="panel elevated-panel">
+    <div class="panel-head"><div><span class="eyebrow dark">MEMBERSHIP</span><h2>Ihr aktueller Status</h2></div><span class="panel-icon">✦</span></div>
+    {% if subscription %}
+    <div class="membership-status-card"><div><b>{{ subscription.tier.name }}</b><small>{{ subscription.get_interval_display }} · {{ subscription.get_status_display }}</small></div><span class="badge">{% if subscription.renews_on %}Verlängerung {{ subscription.renews_on|date:'d.m.Y' }}{% else %}Ohne Auto-Renew{% endif %}</span></div>
+    {% else %}
+    <p class="empty">Keine kostenpflichtige Membership aktiv.</p>
+    {% endif %}
+  </section>
+  <section class="panel elevated-panel">
+    <div class="panel-head"><div><span class="eyebrow dark">A+ BENEFITS</span><h2>Ihre Vorteile</h2></div><span class="panel-icon">◇</span></div>
+    {% for benefit in benefits %}
+    <div class="benefit-row"><span class="benefit-check">✓</span><div><b>{{ benefit.title }}</b><small>{{ benefit.description }}</small></div><span class="badge">{{ benefit.get_benefit_type_display }}</span></div>
+    {% empty %}
+    <p class="empty">Für diese Stufe wurden noch keine Vorteile hinterlegt.</p>
+    {% endfor %}
+  </section>
+</div>
+
+<div class="notice premium-legal-note gap-top"><span>i</span><div><b>Rechtlicher Rahmen</b><p>Alle Membership-Vorteile, Coins, Credits, Gift Cards und Rewards werden ausschließlich durch A+ Esthetic verwaltet. Die App verarbeitet keine Arztvergütung und verspricht keine medizinische Leistung.</p></div></div>
 {% endblock %}
