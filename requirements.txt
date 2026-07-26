@@ -3,3 +3,7 @@ gunicorn==23.0.0
 psycopg[binary]==3.2.9
 whitenoise==6.9.0
 qrcode[pil]==8.2
+django-allauth[socialaccount,mfa]==65.18.0
+cryptography>=45.0,<47
+PyJWT>=2.10,<3
+pywebpush>=2.0,<3

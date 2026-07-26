@@ -1,0 +1,75 @@
+name: Check A+ Esthetic web app server
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install SSH client helper
+        run: |
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y sshpass >/dev/null
+
+      - name: Inspect production server
+        env:
+          HOST: ${{ secrets.HOST }}
+          PASS: ${{ secrets.PASS }}
+        run: |
+          set -o pipefail
+          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 root@"$HOST" 'bash -s' > /tmp/server-report.txt 2>&1 <<'REMOTE'
+          set -u
+          APP=/opt/aesthetic-platform
+          echo '=== SERVER ==='
+          hostname
+          date -u
+          echo '=== DNS ==='
+          getent ahostsv4 esthetic.smarbiz.sbs || true
+          echo '=== RELEASES ==='
+          find "$APP/releases" -mindepth 1 -maxdepth 1 -type d -printf '%TY-%Tm-%Td %TH:%TM:%TS %f\n' 2>/dev/null | sort -r | head -n 12 || true
+          echo '=== CURRENT ==='
+          ls -ld "$APP/current" || true
+          readlink -f "$APP/current" || true
+          if [ -L "$APP/current" ]; then
+            test -f "$APP/current/templates/experience/member.html" && grep -o 'apple-wallet-pass-preview' "$APP/current/templates/experience/member.html" | head -n 1 || true
+            test -f "$APP/current/static/wallet-polish.css" && wc -c "$APP/current/static/wallet-polish.css" || true
+          fi
+          echo '=== SERVICES ==='
+          systemctl is-active aesthetic-platform || true
+          systemctl is-active nginx || true
+          systemctl --no-pager --full status aesthetic-platform | tail -n 45 || true
+          echo '=== APP JOURNAL ==='
+          journalctl -u aesthetic-platform --no-pager -n 80 || true
+          echo '=== NGINX ERRORS ==='
+          tail -n 50 /var/log/nginx/error.log || true
+          echo '=== CURRENT RELEASE FILES ==='
+          ls -la "$APP/current" 2>/dev/null | head -n 35 || true
+          if [ -f /etc/aesthetic-platform.env ] && [ -x "$APP/venv/bin/python" ]; then
+            echo '=== DJANGO CHECK CURRENT ==='
+            set -a; . /etc/aesthetic-platform.env; set +a
+            cd "$APP/current" 2>/dev/null && "$APP/venv/bin/python" manage.py check || true
+            echo '=== MIGRATIONS ==='
+            cd "$APP/current" 2>/dev/null && "$APP/venv/bin/python" manage.py showmigrations platform_app experience_app | tail -n 80 || true
+            echo '=== AUTHENTICATED SMOKE ==='
+            cd "$APP/current" 2>/dev/null && "$APP/venv/bin/python" manage.py smoke_webapp || true
+          fi
+          echo '=== LOCAL HEALTH ==='
+          curl -sS --max-time 10 -H 'Host: esthetic.smarbiz.sbs' -H 'X-Forwarded-Proto: https' http://127.0.0.1:8766/health/ || true
+          echo
+          echo '=== PUBLIC HEALTH ==='
+          curl -k -sS --max-time 15 https://esthetic.smarbiz.sbs/health/ || true
+          echo
+          REMOTE
+          cat /tmp/server-report.txt
+
+      - name: Upload server report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-esthetic-server-report-${{ github.run_id }}
+          path: /tmp/server-report.txt
+          if-no-files-found: error

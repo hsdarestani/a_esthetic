@@ -1,0 +1,123 @@
+name: Visual QA A+ Esthetic web app
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  visual-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install browser and SSH helpers
+        run: |
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y sshpass >/dev/null
+          python -m pip install --upgrade pip >/dev/null
+          pip install playwright >/dev/null
+          playwright install --with-deps chromium >/dev/null
+
+      - name: Create temporary authenticated session
+        env:
+          HOST: ${{ secrets.HOST }}
+          PASS: ${{ secrets.PASS }}
+        run: |
+          SESSION_KEY=$(sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          set -a; . /etc/aesthetic-platform.env; set +a
+          cd /opt/aesthetic-platform/current
+          /opt/aesthetic-platform/venv/bin/python manage.py shell -c "from django.contrib.auth import get_user_model; from django.contrib.sessions.backends.db import SessionStore; u=get_user_model().objects.get(username='demo@a-esthetic.de'); s=SessionStore(); s['_auth_user_id']=str(u.pk); s['_auth_user_backend']='django.contrib.auth.backends.ModelBackend'; s['_auth_user_hash']=u.get_session_auth_hash(); s.save(); print(s.session_key)"
+          REMOTE
+          )
+          SESSION_KEY=$(printf '%s\n' "$SESSION_KEY" | tail -n 1 | tr -d '\r')
+          test -n "$SESSION_KEY"
+          echo "::add-mask::$SESSION_KEY"
+          echo "SMOKE_SESSION=$SESSION_KEY" >> "$GITHUB_ENV"
+
+      - name: Capture desktop and mobile views
+        env:
+          BASE_URL: https://esthetic.smarbiz.sbs
+        run: |
+          mkdir -p visual-qa
+          cat > /tmp/visual_qa.py <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+
+          base = os.environ["BASE_URL"].rstrip("/")
+          session = os.environ["SMOKE_SESSION"]
+          output = Path("visual-qa")
+          console_errors = []
+          pages = [
+              ("dashboard", "/", "Übersicht"),
+              ("member-card", "/mitgliedschaft/", "Apple Wallet"),
+              ("wallet", "/wallet/", "A+ COINS"),
+              ("booking", "/termine/", "Termin"),
+          ]
+
+          def attach_logging(page, label):
+              page.on("console", lambda msg: console_errors.append({"page": label, "type": msg.type, "text": msg.text}) if msg.type == "error" else None)
+              page.on("pageerror", lambda error: console_errors.append({"page": label, "type": "pageerror", "text": str(error)}))
+
+          with sync_playwright() as playwright:
+              browser = playwright.chromium.launch()
+              desktop = browser.new_context(viewport={"width": 1440, "height": 1050}, device_scale_factor=1)
+              desktop.add_cookies([{"name": "sessionid", "value": session, "domain": "esthetic.smarbiz.sbs", "path": "/", "secure": True, "httpOnly": True, "sameSite": "Lax"}])
+              for name, path, marker in pages:
+                  page = desktop.new_page()
+                  attach_logging(page, name)
+                  response = page.goto(base + path, wait_until="networkidle", timeout=45000)
+                  if not response or response.status >= 400:
+                      raise RuntimeError(f"{path} returned {response.status if response else 'no response'}")
+                  if "/accounts/login/" in page.url:
+                      raise RuntimeError(f"Authentication failed for {path}")
+                  page.get_by_text(marker, exact=False).first.wait_for(state="visible", timeout=15000)
+                  page.screenshot(path=output / f"desktop-{name}.png", full_page=True)
+                  page.close()
+              desktop.close()
+
+              mobile = browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=1)
+              mobile.add_cookies([{"name": "sessionid", "value": session, "domain": "esthetic.smarbiz.sbs", "path": "/", "secure": True, "httpOnly": True, "sameSite": "Lax"}])
+              for name, path, marker in [("dashboard", "/", "Übersicht"), ("member-card", "/mitgliedschaft/", "Apple Wallet"), ("wallet", "/wallet/", "A+ COINS")]:
+                  page = mobile.new_page()
+                  attach_logging(page, "mobile-" + name)
+                  response = page.goto(base + path, wait_until="networkidle", timeout=45000)
+                  if not response or response.status >= 400 or "/accounts/login/" in page.url:
+                      raise RuntimeError(f"Mobile {path} failed")
+                  page.get_by_text(marker, exact=False).first.wait_for(state="visible", timeout=15000)
+                  page.screenshot(path=output / f"mobile-{name}.png", full_page=True)
+                  page.close()
+              mobile.close()
+              browser.close()
+
+          (output / "console-errors.json").write_text(json.dumps(console_errors, ensure_ascii=False, indent=2))
+          if console_errors:
+              raise RuntimeError("Browser console errors detected: " + json.dumps(console_errors, ensure_ascii=False))
+          PY
+          python /tmp/visual_qa.py
+
+      - name: Upload visual report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-esthetic-visual-qa-${{ github.run_id }}
+          path: visual-qa
+          if-no-files-found: error
+
+      - name: Delete temporary session
+        if: always()
+        env:
+          HOST: ${{ secrets.HOST }}
+          PASS: ${{ secrets.PASS }}
+        run: |
+          if [ -z "${SMOKE_SESSION:-}" ]; then exit 0; fi
+          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$HOST" "SESSION_KEY='$SMOKE_SESSION' bash -s" <<'REMOTE'
+          set -a; . /etc/aesthetic-platform.env; set +a
+          cd /opt/aesthetic-platform/current
+          /opt/aesthetic-platform/venv/bin/python manage.py shell -c "import os; from django.contrib.sessions.models import Session; Session.objects.filter(session_key=os.environ.get('SESSION_KEY')).delete()"
+          REMOTE

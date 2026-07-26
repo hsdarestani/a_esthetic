@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block title %}Management – A+ Esthetic{% endblock %}
+{% block page_title %}Management{% endblock %}
+{% block page_subtitle %}Übersicht und Steuerung{% endblock %}
+{% block content %}
+<section class="management-hero">
+  <div>
+    <span class="eyebrow">A+ ESTHETIC</span>
+    <h1>Alles Wichtige auf einen Blick.</h1>
+    <p>Module, Termine und offene Vorgänge zentral verwalten.</p>
+  </div>
+  <a class="btn outline management-admin-link" href="/secure-admin/">Systemverwaltung öffnen</a>
+</section>
+
+<div class="stats management-stats">
+  <div class="stat"><span class="stat-icon">◎</span><b>{{ member_count }}</b><small>Mitglieder</small></div>
+  <div class="stat"><span class="stat-icon">◷</span><b>{{ appointment_count }}</b><small>Termine</small></div>
+  <div class="stat"><span class="stat-icon">✉</span><b>{{ open_threads }}</b><small>Offene Nachrichten</small></div>
+  <div class="stat"><span class="stat-icon">✓</span><b>{{ pending_followups }}</b><small>Offene Follow-ups</small></div>
+</div>
+
+<div class="management-grid">
+  <section class="panel management-panel">
+    <div class="panel-head management-panel-head">
+      <div><span class="eyebrow dark">FUNKTIONEN</span><h2>Module</h2></div>
+      <span class="count-pill">{{ modules|length }}</span>
+    </div>
+    <div class="management-list">
+      {% for module in modules %}
+      <article class="management-module-row">
+        <div class="management-module-copy">
+          <span class="module-state-dot {% if module.enabled %}is-on{% endif %}"></span>
+          <b>{{ module.name_de }}</b>
+        </div>
+        <form method="post" action="{% url 'toggle_module' module.id %}">
+          {% csrf_token %}
+          <button class="switch {% if module.enabled %}on{% endif %}" aria-label="{{ module.name_de }} umschalten"></button>
+        </form>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel management-panel">
+    <div class="panel-head management-panel-head">
+      <div><span class="eyebrow dark">VERBINDUNGEN</span><h2>Integrationen</h2></div>
+    </div>
+    <div class="integration-grid-clean">
+      {% for integration in integrations %}
+      <article class="integration-card-clean">
+        <div class="integration-symbol">{% if integration.provider == 'doctolib' %}D{% elif integration.provider == 'simplybook' %}S{% elif integration.provider == 'google' %}G{% else %}A{% endif %}</div>
+        <div>
+          <b>{% if integration.provider == 'doctolib' %}Doctolib{% elif integration.provider == 'simplybook' %}SimplyBook{% elif integration.provider == 'google' %}Google{% else %}Apple{% endif %}</b>
+          {% if integration.last_sync_at %}<small>Zuletzt aktualisiert: {{ integration.last_sync_at|date:'d.m.Y H:i' }}</small>{% endif %}
+        </div>
+        <span class="connection-pill {% if integration.enabled %}connected{% endif %}">{% if integration.enabled %}Aktiv{% else %}Nicht verbunden{% endif %}</span>
+      </article>
+      {% empty %}
+      <div class="empty-state"><span>◇</span><b>Keine Integrationen eingerichtet</b></div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<section class="panel gap-top management-panel">
+  <div class="panel-head management-panel-head">
+    <div><span class="eyebrow dark">AKTIVITÄT</span><h2>Letzte Terminanfragen</h2></div>
+  </div>
+  {% if recent_appointments %}
+  <div class="table-wrap polished-table-wrap">
+    <table class="polished-table">
+      <thead><tr><th>Erstellt</th><th>Kunde</th><th>Leistung</th><th>Termin</th><th>Quelle</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for item in recent_appointments %}
+        <tr>
+          <td>{{ item.created_at|date:'d.m. H:i' }}</td>
+          <td>{{ item.user.get_full_name|default:item.user.email|default:item.user.username }}</td>
+          <td>{{ item.service.name }}</td>
+          <td>{{ item.starts_at|date:'d.m.Y H:i' }}</td>
+          <td>{{ item.get_source_display }}</td>
+          <td><span class="table-status">{{ item.get_status_display }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><span>◷</span><b>Noch keine Terminanfragen</b><small>Neue Anfragen erscheinen automatisch in dieser Übersicht.</small></div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% block title %}Modulübersicht – A+ Esthetic{% endblock %}
+{% block page_title %}Modulübersicht{% endblock %}
+{% block page_subtitle %}Status und Aktivität{% endblock %}
+{% block content %}
+<section class="management-hero compact">
+  <div>
+    <span class="eyebrow">A+ ESTHETIC</span>
+    <h1>Module und Aktivität.</h1>
+    <p>Eine klare Übersicht über den aktuellen Betriebsstatus.</p>
+  </div>
+  <a class="btn outline management-admin-link" href="{% url 'management' %}">Module verwalten</a>
+</section>
+
+<div class="stats extended-stats management-stats">
+  {% for label,count in model_counts.items %}
+  <div class="stat"><span class="stat-icon">◇</span><b>{{ count }}</b><small>{{ label }}</small></div>
+  {% endfor %}
+</div>
+
+<div class="management-grid">
+  <section class="panel management-panel">
+    <div class="panel-head management-panel-head">
+      <div><span class="eyebrow dark">STATUS</span><h2>Module</h2></div>
+      <span class="count-pill">{{ modules|length }}</span>
+    </div>
+    <div class="management-list">
+      {% for module in modules %}
+      <article class="management-module-row">
+        <div class="management-module-copy">
+          <span class="module-state-dot {% if module.enabled %}is-on{% endif %}"></span>
+          <b>{{ module.name_de }}</b>
+        </div>
+        <span class="connection-pill {% if module.enabled %}connected{% endif %}">{% if module.enabled %}Aktiv{% else %}Inaktiv{% endif %}</span>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel management-panel">
+    <div class="panel-head management-panel-head">
+      <div><span class="eyebrow dark">VERBINDUNGEN</span><h2>Integrationen</h2></div>
+    </div>
+    <div class="integration-grid-clean">
+      {% for item in integrations %}
+      <article class="integration-card-clean">
+        <div class="integration-symbol">{% if item.provider == 'doctolib' %}D{% elif item.provider == 'simplybook' %}S{% elif item.provider == 'google' %}G{% else %}A{% endif %}</div>
+        <div>
+          <b>{% if item.provider == 'doctolib' %}Doctolib{% elif item.provider == 'simplybook' %}SimplyBook{% elif item.provider == 'google' %}Google{% else %}Apple{% endif %}</b>
+          {% if item.last_sync_at %}<small>Zuletzt aktualisiert: {{ item.last_sync_at|date:'d.m.Y H:i' }}</small>{% endif %}
+        </div>
+        <span class="connection-pill {% if item.enabled %}connected{% endif %}">{% if item.enabled %}Aktiv{% else %}Nicht verbunden{% endif %}</span>
+      </article>
+      {% empty %}
+      <div class="empty-state"><span>◇</span><b>Keine Integrationen eingerichtet</b></div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<div class="grid three gap-top management-activity-grid">
+  <section class="panel management-panel">
+    <div class="panel-head management-panel-head"><h2>Letzte Check-ins</h2></div>
+    {% for item in recent_checkins %}
+    <div class="list-row"><div><b>{{ item.appointment.user.get_full_name|default:item.appointment.user.email }}</b><small>{{ item.checked_in_at|date:'d.m.Y H:i' }}</small></div></div>
+    {% empty %}<div class="empty-state small"><span>✓</span><b>Keine Check-ins</b></div>{% endfor %}
+  </section>
+  <section class="panel management-panel">
+    <div class="panel-head management-panel-head"><h2>Bestellungen</h2></div>
+    {% for item in recent_orders %}
+    <div class="list-row"><div><b>{{ item.order_number }}</b><small>{{ item.user.get_full_name|default:item.user.email }} · {{ item.get_status_display }}</small></div><strong>{{ item.total_cents }} ct</strong></div>
+    {% empty %}<div class="empty-state small"><span>▱</span><b>Keine Bestellungen</b></div>{% endfor %}
+  </section>
+  <section class="panel management-panel">
+    <div class="panel-head management-panel-head"><h2>Anliegen</h2></div>
+    {% for item in recent_complaints %}
+    <div class="list-row"><div><b>{{ item.subject }}</b><small>{{ item.user.get_full_name|default:item.user.email }} · {{ item.get_status_display }}</small></div></div>
+    {% empty %}<div class="empty-state small"><span>✉</span><b>Keine offenen Anliegen</b></div>{% endfor %}
+  </section>
+</div>
+{% endblock %}
