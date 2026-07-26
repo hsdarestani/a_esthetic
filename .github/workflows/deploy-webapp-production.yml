@@ -1,0 +1,314 @@
+name: Deploy A+ Esthetic web app production
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-webapp-production
+  cancel-in-progress: true
+
+jobs:
+  validate-and-deploy:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SECRET_KEY: ci-only-secret-key-ci-only-secret-key
+      DJANGO_DEBUG: "1"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      PRIVATE_FILE_ENCRYPTION_KEYS: ${{ secrets.CI_PRIVATE_FILE_ENCRYPTION_KEY }}
+      EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -r requirements.txt
+          if [ -z "${PRIVATE_FILE_ENCRYPTION_KEYS}" ]; then
+            echo "PRIVATE_FILE_ENCRYPTION_KEYS=$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" >> "$GITHUB_ENV"
+          fi
+
+      - name: Validate web app
+        run: |
+          python manage.py makemigrations platform_app experience_app --check --dry-run
+          python manage.py check
+          python manage.py migrate --noinput
+          python manage.py seed_platform
+          python manage.py seed_complete_features
+          python manage.py test --verbosity 2
+          python manage.py collectstatic --noinput
+
+      - name: Build immutable release
+        run: |
+          rm -f webapp-release.tar.gz
+          git archive --format=tar.gz --output=webapp-release.tar.gz HEAD
+          test -s webapp-release.tar.gz
+          tar -tzf webapp-release.tar.gz >/dev/null
+
+      - name: Upload release
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          source: webapp-release.tar.gz
+          target: /tmp
+          overwrite: true
+
+      - name: Install and activate release
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
+            DOMAIN='esthetic.smarbiz.sbs'
+            APP='/opt/aesthetic-platform'
+            SHA='${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}'
+            RELEASE="$APP/releases/$SHA"
+            CURRENT="$APP/current"
+            ENVFILE='/etc/aesthetic-platform.env'
+
+            apt-get update -y >/dev/null
+            apt-get install -y python3 python3-venv python3-pip postgresql postgresql-contrib nginx certbot python3-certbot-nginx curl openssl >/dev/null
+            systemctl enable --now postgresql nginx >/dev/null
+            id -u aesthetic >/dev/null 2>&1 || useradd --system --home "$APP" --shell /usr/sbin/nologin aesthetic
+            mkdir -p "$APP/releases" "$APP/shared/private_media" "$APP/shared/backups"
+            chmod 700 "$APP/shared/private_media" "$APP/shared/backups"
+            rm -rf "$RELEASE"
+            mkdir -p "$RELEASE"
+            tar -xzf /tmp/webapp-release.tar.gz -C "$RELEASE"
+            rm -f /tmp/webapp-release.tar.gz
+            rm -rf "$RELEASE/private_media"
+            ln -s "$APP/shared/private_media" "$RELEASE/private_media"
+
+            DBF='/root/.aesthetic_db_password'
+            SKF='/root/.aesthetic_django_secret'
+            APF='/root/.aesthetic_admin_password'
+            EFK='/root/.aesthetic_file_encryption_key'
+            BKF='/root/.aesthetic_backup_key'
+            [ -s "$DBF" ] || (openssl rand -hex 24 > "$DBF" && chmod 600 "$DBF")
+            [ -s "$SKF" ] || (openssl rand -hex 48 > "$SKF" && chmod 600 "$SKF")
+            [ -s "$APF" ] || (openssl rand -base64 48 | tr -dc 'A-Za-z0-9!#%+=' | head -c 30 > "$APF" && chmod 600 "$APF")
+            [ -s "$BKF" ] || (openssl rand -base64 48 > "$BKF" && chmod 600 "$BKF")
+            if [ ! -s "$EFK" ]; then
+              python3 -m venv /tmp/fernet-venv
+              /tmp/fernet-venv/bin/pip install -q cryptography
+              /tmp/fernet-venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())' > "$EFK"
+              chmod 600 "$EFK"
+              rm -rf /tmp/fernet-venv
+            fi
+            DBPASS="$(cat "$DBF")"
+            DJANGO_SECRET="$(cat "$SKF")"
+            ADMIN_PASSWORD="$(cat "$APF")"
+            FILE_KEY="$(cat "$EFK")"
+
+            sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
+            DO \$\$ BEGIN
+              IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='aesthetic') THEN
+                CREATE ROLE aesthetic LOGIN PASSWORD '$DBPASS';
+              ELSE
+                ALTER ROLE aesthetic PASSWORD '$DBPASS';
+              END IF;
+            END \$\$;
+            SQL
+            sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='aesthetic'" | grep -q 1 || sudo -u postgres createdb -O aesthetic aesthetic
+
+            touch "$ENVFILE"
+            chmod 600 "$ENVFILE"
+            python3 - "$ENVFILE" "$DJANGO_SECRET" "$DBPASS" "$FILE_KEY" <<'PY'
+            import os, sys
+            path, secret, dbpass, file_key = sys.argv[1:]
+            current = {}
+            if os.path.exists(path):
+                for line in open(path):
+                    if '=' in line and not line.lstrip().startswith('#'):
+                        key, value = line.rstrip('\n').split('=', 1)
+                        current[key] = value
+            current.update({
+                'DJANGO_SECRET_KEY': secret,
+                'DJANGO_DEBUG': '0',
+                'DJANGO_ALLOWED_HOSTS': 'esthetic.smarbiz.sbs,127.0.0.1,localhost',
+                'CSRF_TRUSTED_ORIGINS': 'https://esthetic.smarbiz.sbs',
+                'DATABASE_URL': f'postgresql://aesthetic:{dbpass}@127.0.0.1:5432/aesthetic',
+                'PRIVATE_MEDIA_ROOT': '/opt/aesthetic-platform/shared/private_media',
+                'PRIVATE_FILE_ENCRYPTION_KEYS': file_key,
+                'EMAIL_BACKEND': current.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend'),
+            })
+            with open(path, 'w') as output:
+                for key in sorted(current):
+                    output.write(f'{key}={current[key]}\n')
+            PY
+
+            python3 -m venv "$APP/venv"
+            "$APP/venv/bin/pip" install --upgrade pip wheel >/dev/null
+            "$APP/venv/bin/pip" install -r "$RELEASE/requirements.txt" >/dev/null
+            set -a
+            . "$ENVFILE"
+            set +a
+            cd "$RELEASE"
+            "$APP/venv/bin/python" manage.py migrate --noinput
+            ADMIN_USERNAME=admin ADMIN_PASSWORD="$ADMIN_PASSWORD" DEMO_PASSWORD='Aplus-Demo-2026!' "$APP/venv/bin/python" manage.py seed_platform
+            "$APP/venv/bin/python" manage.py seed_complete_features
+            "$APP/venv/bin/python" manage.py shell -c "from django.contrib.sites.models import Site; Site.objects.update_or_create(id=1, defaults={'domain':'esthetic.smarbiz.sbs','name':'A+ Esthetic'})"
+            "$APP/venv/bin/python" manage.py collectstatic --noinput >/dev/null
+            "$APP/venv/bin/python" manage.py check --deploy --fail-level ERROR
+
+            chown -R aesthetic:aesthetic "$RELEASE" "$APP/shared/private_media"
+            chmod -R o-rwx "$APP/shared/private_media"
+            ln -sfn "$RELEASE" "$CURRENT"
+
+            cat > /etc/systemd/system/aesthetic-platform.service <<SERVICE
+            [Unit]
+            Description=A+ Esthetic Web App
+            After=network.target postgresql.service
+            Requires=postgresql.service
+            [Service]
+            User=aesthetic
+            Group=aesthetic
+            WorkingDirectory=$CURRENT
+            EnvironmentFile=$ENVFILE
+            ExecStart=$APP/venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8766 --workers 3 --threads 2 --timeout 90 --access-logfile - --error-logfile -
+            Restart=always
+            RestartSec=3
+            PrivateTmp=true
+            ProtectSystem=strict
+            ProtectHome=true
+            ReadWritePaths=$APP/shared/private_media $APP/shared/backups
+            NoNewPrivileges=true
+            [Install]
+            WantedBy=multi-user.target
+            SERVICE
+
+            cat > /etc/systemd/system/aesthetic-notifications.service <<SERVICE
+            [Unit]
+            Description=A+ Esthetic notification dispatcher
+            After=network.target postgresql.service
+            [Service]
+            Type=oneshot
+            User=aesthetic
+            Group=aesthetic
+            WorkingDirectory=$CURRENT
+            EnvironmentFile=$ENVFILE
+            ExecStart=$APP/venv/bin/python manage.py dispatch_notifications --limit 100
+            PrivateTmp=true
+            ProtectSystem=strict
+            ProtectHome=true
+            ReadWritePaths=$APP/shared/private_media
+            NoNewPrivileges=true
+            SERVICE
+            cat > /etc/systemd/system/aesthetic-notifications.timer <<TIMER
+            [Unit]
+            Description=Dispatch A+ Esthetic notifications every minute
+            [Timer]
+            OnBootSec=2min
+            OnUnitActiveSec=1min
+            Persistent=true
+            [Install]
+            WantedBy=timers.target
+            TIMER
+
+            cat > /usr/local/sbin/aesthetic-backup <<'BACKUP'
+            #!/usr/bin/env bash
+            set -euo pipefail
+            set -a; . /etc/aesthetic-platform.env; set +a
+            stamp=$(date -u +%Y%m%dT%H%M%SZ)
+            umask 077
+            pg_dump "$DATABASE_URL" | gzip | openssl enc -aes-256-cbc -salt -pbkdf2 -pass file:/root/.aesthetic_backup_key > "/opt/aesthetic-platform/shared/backups/db-$stamp.sql.gz.enc"
+            find /opt/aesthetic-platform/shared/backups -type f -mtime +14 -delete
+            BACKUP
+            chmod 700 /usr/local/sbin/aesthetic-backup
+            cat > /etc/systemd/system/aesthetic-backup.service <<SERVICE
+            [Unit]
+            Description=A+ Esthetic encrypted database backup
+            After=postgresql.service
+            [Service]
+            Type=oneshot
+            ExecStart=/usr/local/sbin/aesthetic-backup
+            SERVICE
+            cat > /etc/systemd/system/aesthetic-backup.timer <<TIMER
+            [Unit]
+            Description=Daily A+ Esthetic database backup
+            [Timer]
+            OnCalendar=*-*-* 03:15:00
+            Persistent=true
+            [Install]
+            WantedBy=timers.target
+            TIMER
+
+            systemctl daemon-reload
+            systemctl enable --now aesthetic-platform aesthetic-notifications.timer aesthetic-backup.timer
+            systemctl restart aesthetic-platform
+
+            if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+              cat > /etc/nginx/sites-available/a-esthetic-web.conf <<NGINX
+            limit_req_zone \$binary_remote_addr zone=aesthetic_login:10m rate=10r/m;
+            server { listen 80; listen [::]:80; server_name $DOMAIN; return 301 https://\$host\$request_uri; }
+            server {
+              listen 443 ssl http2; listen [::]:443 ssl http2; server_name $DOMAIN;
+              ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+              include /etc/letsencrypt/options-ssl-nginx.conf;
+              ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+              client_max_body_size 10m;
+              location ~ ^/(accounts/login|accounts/signup|accounts/password/reset) { limit_req zone=aesthetic_login burst=10 nodelay; proxy_pass http://127.0.0.1:8766; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto https; }
+              location / { proxy_pass http://127.0.0.1:8766; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto https; proxy_read_timeout 90; }
+              add_header X-Content-Type-Options nosniff always;
+              add_header X-Frame-Options DENY always;
+              add_header Referrer-Policy strict-origin-when-cross-origin always;
+              add_header Permissions-Policy "camera=(self), microphone=(), geolocation=()" always;
+              add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com https://appleid.apple.com" always;
+            }
+            NGINX
+            else
+              cat > /etc/nginx/sites-available/a-esthetic-web.conf <<NGINX
+            server {
+              listen 80; listen [::]:80; server_name $DOMAIN;
+              client_max_body_size 10m;
+              location / { proxy_pass http://127.0.0.1:8766; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto http; }
+            }
+            NGINX
+            fi
+            ln -sfn /etc/nginx/sites-available/a-esthetic-web.conf /etc/nginx/sites-enabled/a-esthetic-web.conf
+            rm -f /etc/nginx/sites-enabled/default
+            nginx -t
+            systemctl reload nginx
+
+            for attempt in $(seq 1 45); do
+              if curl -fsS http://127.0.0.1:8766/health/ >/tmp/aesthetic-health.json; then break; fi
+              sleep 2
+            done
+            grep -q '"ok": true' /tmp/aesthetic-health.json
+            systemctl is-active --quiet aesthetic-platform
+            systemctl is-active --quiet nginx
+            echo "Local health check passed for release $SHA"
+
+      - name: Verify public domain
+        run: |
+          for attempt in $(seq 1 12); do
+            if curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/health/ | tee /tmp/public-health.json | grep -q '"ok": true'; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Public HTTPS health check failed. Verify DNS A record and TLS certificate."
+          exit 1
