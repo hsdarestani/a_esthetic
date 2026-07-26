@@ -1,0 +1,60 @@
+name: Send branded A+ email test
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+    paths:
+      - '.github/workflows/send-branded-email-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  branded-email:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SECRET_KEY: email-test-only-secret
+      DJANGO_DEBUG: '1'
+      DJANGO_ALLOWED_HOSTS: localhost,testserver
+      EMAIL_SMTP_PASSWORD: ${{ secrets.EMAIL_SMTP_PASSWORD }}
+      DEFAULT_FROM_EMAIL: 'A+ Esthetic <app@a-esthetic.de>'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Django mail dependencies
+        run: pip install -r requirements.txt >/dev/null
+      - name: Render and send the actual branded template
+        run: |
+          test -n "$EMAIL_SMTP_PASSWORD"
+          python manage.py shell <<'PY'
+          from django.core.mail import EmailMultiAlternatives
+          from django.template.loader import render_to_string
+
+          context = {
+              'activate_url': 'https://esthetic.smarbiz.sbs/accounts/confirm-email/design-test/',
+          }
+          subject = render_to_string(
+              'account/email/email_confirmation_signup_subject.txt', context
+          ).strip()
+          text = render_to_string(
+              'account/email/email_confirmation_signup_message.txt', context
+          )
+          html = render_to_string(
+              'account/email/email_confirmation_signup_message.html', context
+          )
+          message = EmailMultiAlternatives(
+              subject=subject,
+              body=text,
+              from_email='A+ Esthetic <app@a-esthetic.de>',
+              to=['app@a-esthetic.de'],
+          )
+          message.attach_alternative(html, 'text/html')
+          sent = message.send(fail_silently=False)
+          assert sent == 1, f'Unexpected send result: {sent}'
+          print('Branded A+ Esthetic email accepted for delivery.')
+          PY
