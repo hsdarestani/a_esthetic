@@ -1,5 +1,7 @@
 from django.contrib.auth import get_user_model
+from django.contrib.sites.models import Site
 from django.core.management.base import BaseCommand, CommandError
+from django.template.loader import render_to_string
 from django.test import Client
 from django.urls import reverse
 
@@ -57,7 +59,48 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"OK {response.status_code}: {label} {url}"))
         return response
 
+    def _check_email_branding(self):
+        site = Site.objects.get_current()
+        if site.domain != "esthetic.smarbiz.sbs" or site.name != "A+ Esthetic":
+            raise CommandError(
+                f"Django Site identity is incorrect: {site.name!r} / {site.domain!r}."
+            )
+        context = {
+            "activate_url": "https://esthetic.smarbiz.sbs/accounts/confirm-email/test-token/",
+            "current_site": site,
+        }
+        subject = render_to_string(
+            "account/email/email_confirmation_signup_subject.txt", context
+        ).strip()
+        text = render_to_string(
+            "account/email/email_confirmation_signup_message.txt", context
+        )
+        html = render_to_string(
+            "account/email/email_confirmation_signup_message.html", context
+        )
+        combined = "\n".join((subject, text, html))
+        required = (
+            "A+ Esthetic",
+            "Bitte bestätigen Sie Ihre E-Mail-Adresse",
+            context["activate_url"],
+        )
+        missing = [marker for marker in required if marker not in combined]
+        if missing:
+            raise CommandError(
+                "Transactional email is missing branded markers: " + ", ".join(missing)
+            )
+        forbidden = ("example.com", "Hello from", "Thank you for using", "user hsdf7rb")
+        found = [marker for marker in forbidden if marker in combined]
+        if found:
+            raise CommandError(
+                "Transactional email still contains default allauth content: "
+                + ", ".join(found)
+            )
+        self.stdout.write(self.style.SUCCESS("OK: branded German transactional email templates"))
+
     def handle(self, *args, **options):
+        self._check_email_branding()
+
         public_client = Client()
         for route_name, label, markers in self.public_routes:
             response = self._check(public_client, route_name, label)
