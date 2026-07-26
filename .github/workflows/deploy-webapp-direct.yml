@@ -21,7 +21,7 @@ jobs:
     env:
       DJANGO_SECRET_KEY: ci-only-secret-key-ci-only-secret-key
       DJANGO_DEBUG: "1"
-      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver,esthetic.smarbiz.sbs
       PRIVATE_FILE_ENCRYPTION_KEYS: ${{ secrets.CI_PRIVATE_FILE_ENCRYPTION_KEY }}
       EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
     steps:
@@ -48,6 +48,7 @@ jobs:
           python manage.py seed_platform
           python manage.py seed_complete_features
           python manage.py test --verbosity 2
+          python manage.py smoke_webapp
           python manage.py collectstatic --noinput
 
       - name: Build release archive
@@ -97,20 +98,31 @@ jobs:
           "$APP/venv/bin/python" manage.py seed_complete_features
           "$APP/venv/bin/python" manage.py collectstatic --noinput >/dev/null
           "$APP/venv/bin/python" manage.py check --deploy --fail-level ERROR
+          "$APP/venv/bin/python" manage.py smoke_webapp
+          test -s "$RELEASE/static/wallet-polish.css"
+          grep -q 'apple-wallet-pass-preview' "$RELEASE/templates/experience/member.html"
 
           chown -R aesthetic:aesthetic "$RELEASE" "$APP/shared/private_media"
           chmod -R o-rwx "$APP/shared/private_media"
           ln -sfn "$RELEASE" "$CURRENT"
+          test "$(readlink -f "$CURRENT")" = "$RELEASE"
           systemctl restart aesthetic-platform
           systemctl reload nginx
 
+          local_health() {
+            curl -fsS --max-time 10 \
+              -H 'Host: esthetic.smarbiz.sbs' \
+              -H 'X-Forwarded-Proto: https' \
+              http://127.0.0.1:8766/health/
+          }
           for attempt in $(seq 1 30); do
-            if curl -fsS --max-time 10 http://127.0.0.1:8766/health/ | grep -q '"ok": true'; then break; fi
+            if local_health | grep -q '"ok": true'; then break; fi
             sleep 2
           done
-          curl -fsS --max-time 15 http://127.0.0.1:8766/health/ | grep -q '"database": "connected"'
+          local_health | grep -q '"database": "connected"'
           curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/health/ | grep -q '"ok": true'
           systemctl is-active --quiet aesthetic-platform
+          systemctl is-active --quiet nginx
           echo "Activated $RELEASE_SHA"
           REMOTE
 
@@ -119,3 +131,4 @@ jobs:
           curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/health/ | grep -q '"ok": true'
           curl -fsSI --max-time 20 https://esthetic.smarbiz.sbs/ | grep -Eq 'HTTP/.* (200|302)'
           curl -fsSI --max-time 20 https://esthetic.smarbiz.sbs/accounts/login/ | grep -Eq 'HTTP/.* 200'
+          curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/static/wallet-polish.css | grep -q 'wallet-overview'
