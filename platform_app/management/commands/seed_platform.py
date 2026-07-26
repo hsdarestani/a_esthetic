@@ -2,11 +2,19 @@ import os
 from datetime import timedelta, time
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
+from django.contrib.sites.models import Site
 from django.utils import timezone
 from platform_app.models import *
 class Command(BaseCommand):
     help='Initialisiert A+ Esthetic mit Modulen und sicheren Demo-Daten.'
     def handle(self,*args,**opts):
+        Site.objects.update_or_create(
+            id=1,
+            defaults={
+                'domain':'esthetic.smarbiz.sbs',
+                'name':'A+ Esthetic',
+            },
+        )
         modules=[('membership','Mitgliedskarte & Membership','Digitale Mitgliedskarte, Stufen und QR Check-in',10),('booking','Terminbuchung','Eigene Terminverwaltung, Warteliste und externe Quellen',20),('wallet','A+ Wallet & Coins','A+ Credit, Coins, Rewards und Transaktionshistorie',30),('packages','Pakete & Sitzungen','Sitzungsstände und Ablaufdaten',40),('passport','Beauty Passport','Verlauf, Dokumente und sichtbare Einträge',50),('before_after','Vorher/Nachher','Geschützte Fotoablage mit separater Freigabe',60),('reminders','Erinnerungen','Sichere, nicht-diagnostische Erinnerungen',70),('followup','Nachsorge & Follow-up','Rückfragen und Eskalation an A+ Personal',80),('chat','Sichere Nachrichten','Direkte Kommunikation mit A+ Esthetic',90),('ai','Beauty Wissensassistent','Nur allgemeine Informationen, keine Diagnose oder Behandlungsempfehlung',100),('giftcards','Gift Cards','Von A+ Esthetic ausgegebene Geschenkguthaben',110),('referrals','Freunde empfehlen','Empfehlungscodes mit Belohnung erst nach echtem Besuch',120),('campaigns','Angebote & Kampagnen','A+ Kampagnen ohne ärztliche Vergütung oder Provision',130),('integrations','Integrationen','Doctolib Partner API, SimplyBook Import, Apple und Google Login',140)]
         for key,name,desc,order in modules: FeatureModule.objects.update_or_create(key=key,defaults={'name_de':name,'description_de':desc,'sort_order':order,'enabled':True,'customer_visible':key not in {'campaigns','integrations'}})
         tiers=[]
