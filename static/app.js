@@ -1,7 +1,29 @@
+const sidebar = document.querySelector('#sidebar');
+
+function setMenu(open) {
+  sidebar?.classList.toggle('open', open);
+  document.body.classList.toggle('menu-open', open);
+  document.querySelector('[data-menu]')?.setAttribute('aria-expanded', String(open));
+}
+
 document.addEventListener('click', event => {
-  const menu = event.target.closest('[data-menu]');
-  if (menu) document.querySelector('#sidebar')?.classList.toggle('open');
-  if (event.target.matches('.sidebar.open a')) document.querySelector('#sidebar')?.classList.remove('open');
+  if (event.target.closest('[data-menu]')) {
+    setMenu(!sidebar?.classList.contains('open'));
+    return;
+  }
+  if (event.target.closest('[data-menu-close]')) {
+    setMenu(false);
+    return;
+  }
+  if (event.target.closest('.sidebar.open a')) setMenu(false);
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') setMenu(false);
+});
+
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 1120) setMenu(false);
 });
 
 if ('serviceWorker' in navigator) {
@@ -45,5 +67,9 @@ document.querySelector('[data-enable-push]')?.addEventListener('click', async ev
 document.querySelectorAll('[data-comparison]').forEach(wrapper => {
   const range = wrapper.querySelector('input[type="range"]');
   const top = wrapper.querySelector('.comparison-top');
-  if (range && top) range.addEventListener('input', () => { top.style.clipPath = `inset(0 ${100 - range.value}% 0 0)`; });
+  if (range && top) {
+    range.addEventListener('input', () => {
+      top.style.clipPath = `inset(0 ${100 - range.value}% 0 0)`;
+    });
+  }
 });
