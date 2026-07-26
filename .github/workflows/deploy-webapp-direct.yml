@@ -71,8 +71,10 @@ jobs:
           HOST: ${{ secrets.HOST }}
           PASS: ${{ secrets.PASS }}
           RELEASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          EMAIL_SMTP_PASSWORD: ${{ secrets.EMAIL_SMTP_PASSWORD }}
         run: |
-          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 root@"$HOST" "RELEASE_SHA='$RELEASE_SHA' bash -s" <<'REMOTE'
+          SMTP_PASSWORD_B64="$(printf '%s' "$EMAIL_SMTP_PASSWORD" | base64 -w0)"
+          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 root@"$HOST" "RELEASE_SHA='$RELEASE_SHA' SMTP_PASSWORD_B64='$SMTP_PASSWORD_B64' bash -s" <<'REMOTE'
           set -euo pipefail
           APP='/opt/aesthetic-platform'
           CURRENT="$APP/current"
@@ -80,6 +82,27 @@ jobs:
           ENVFILE='/etc/aesthetic-platform.env'
           test -s "$ENVFILE"
           test -x "$APP/venv/bin/python"
+
+          if [ -n "${SMTP_PASSWORD_B64:-}" ]; then
+            SMTP_PASSWORD="$(printf '%s' "$SMTP_PASSWORD_B64" | base64 -d)"
+            TMP_ENV="$(mktemp)"
+            grep -Ev '^(EMAIL_BACKEND|EMAIL_HOST|EMAIL_PORT|EMAIL_HOST_USER|EMAIL_HOST_PASSWORD|EMAIL_SMTP_PASSWORD|EMAIL_USE_TLS|EMAIL_USE_SSL|EMAIL_TIMEOUT|DEFAULT_FROM_EMAIL|SERVER_EMAIL)=' "$ENVFILE" > "$TMP_ENV" || true
+            {
+              printf 'EMAIL_BACKEND=%q\n' 'django.core.mail.backends.smtp.EmailBackend'
+              printf 'EMAIL_HOST=%q\n' 'smtp.strato.de'
+              printf 'EMAIL_PORT=%q\n' '465'
+              printf 'EMAIL_HOST_USER=%q\n' 'app@a-esthetic.de'
+              printf 'EMAIL_HOST_PASSWORD=%q\n' "$SMTP_PASSWORD"
+              printf 'EMAIL_USE_SSL=%q\n' '1'
+              printf 'EMAIL_USE_TLS=%q\n' '0'
+              printf 'EMAIL_TIMEOUT=%q\n' '20'
+              printf 'DEFAULT_FROM_EMAIL=%q\n' 'A+ Esthetic <app@a-esthetic.de>'
+              printf 'SERVER_EMAIL=%q\n' 'A+ Esthetic <app@a-esthetic.de>'
+            } >> "$TMP_ENV"
+            install -o root -g root -m 600 "$TMP_ENV" "$ENVFILE"
+            rm -f "$TMP_ENV"
+            unset SMTP_PASSWORD
+          fi
 
           rm -rf "$RELEASE"
           mkdir -p "$RELEASE"
@@ -101,6 +124,10 @@ jobs:
           "$APP/venv/bin/python" manage.py smoke_webapp
           test -s "$RELEASE/static/wallet-polish.css"
           grep -q 'apple-wallet-pass-preview' "$RELEASE/templates/experience/member.html"
+
+          if [ "${EMAIL_BACKEND:-}" = 'django.core.mail.backends.smtp.EmailBackend' ]; then
+            "$APP/venv/bin/python" manage.py shell -c "from django.core.mail import get_connection; c=get_connection(); opened=c.open(); assert opened is not False; c.close(); print('STRATO SMTP connection verified')"
+          fi
 
           chown -R aesthetic:aesthetic "$RELEASE" "$APP/shared/private_media"
           chmod -R o-rwx "$APP/shared/private_media"
