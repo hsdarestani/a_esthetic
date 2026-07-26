@@ -131,6 +131,7 @@ ACCOUNT_CHANGE_EMAIL = True
 ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_SESSION_REMEMBER = True
 ACCOUNT_LOGOUT_ON_GET = False
+ACCOUNT_EMAIL_SUBJECT_PREFIX = "[A+ Esthetic] "
 SOCIALACCOUNT_LOGIN_ON_GET = False
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = False
@@ -185,13 +186,25 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 X_FRAME_OPTIONS = "DENY"
 
-EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
-EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
-EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
-EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "1") == "1"
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "A+ Esthetic <no-reply@esthetic.smarbiz.sbs>")
+# Production mail uses the STRATO mailbox app@a-esthetic.de. In development or
+# before the SMTP secret is configured, messages are written to the server log.
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", os.environ.get("EMAIL_SMTP_PASSWORD", ""))
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.smtp.EmailBackend"
+    if EMAIL_HOST_PASSWORD
+    else "django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.strato.de" if EMAIL_HOST_PASSWORD else "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "465" if EMAIL_HOST_PASSWORD else "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "app@a-esthetic.de" if EMAIL_HOST_PASSWORD else "")
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "1" if EMAIL_HOST_PASSWORD else "0") == "1"
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "0") == "1"
+if EMAIL_USE_SSL and EMAIL_USE_TLS:
+    raise RuntimeError("EMAIL_USE_SSL and EMAIL_USE_TLS cannot both be enabled.")
+EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "20"))
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "A+ Esthetic <app@a-esthetic.de>")
+SERVER_EMAIL = os.environ.get("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
 WEBPUSH_VAPID_PUBLIC_KEY = os.environ.get("WEBPUSH_VAPID_PUBLIC_KEY", "")
 WEBPUSH_VAPID_PRIVATE_KEY = os.environ.get("WEBPUSH_VAPID_PRIVATE_KEY", "")
