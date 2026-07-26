@@ -1,0 +1,14 @@
+Guten Tag,
+
+bitte bestätigen Sie diese E-Mail-Adresse für Ihr A+ Esthetic Konto:
+
+{{ activate_url }}
+
+Falls Sie diese Änderung nicht angefordert haben, können Sie die Nachricht ignorieren.
+
+Viele Grüße
+Ihr A+ Esthetic Team
+
+A+ Esthetic
+https://a-esthetic.de
+App: https://esthetic.smarbiz.sbs
