@@ -1,0 +1,130 @@
+name: Refactor and verify A+ Esthetic customer-club app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/customer-club-native-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refactor-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Repair store-surface guard
+        run: |
+          cat > scripts/store_positioning_check.py <<'PY'
+          #!/usr/bin/env python3
+          from pathlib import Path
+          import json, sys
+
+          problems = []
+          cfg = json.loads(Path('capacitor.config.json').read_text(encoding='utf-8'))
+          if cfg.get('appId') != 'de.aplusesthetic.app':
+              problems.append('Unexpected appId')
+          if cfg.get('appName') != 'A+ Esthetic':
+              problems.append('Unexpected appName')
+          if cfg.get('server', {}).get('url') != 'https://esthetic.smarbiz.sbs':
+              problems.append('Unexpected production URL')
+
+          manifest = json.loads(Path('manifest.json').read_text(encoding='utf-8'))
+          surface = ' '.join([
+              str(manifest.get('name', '')),
+              str(manifest.get('short_name', '')),
+              str(manifest.get('description', '')),
+              Path('www/index.html').read_text(encoding='utf-8'),
+          ]).lower()
+
+          # These terms are not permitted as positive store-facing product labels.
+          forbidden_labels = [
+              'gesundheits-app', 'gesundheitsapp', 'medical app', 'medical-app',
+              'health app', 'health-app', 'diagnose-app', 'therapie-app',
+              'clinical decision', 'behandlungsempfehlungs-app'
+          ]
+          for term in forbidden_labels:
+              if term in surface:
+                  problems.append(f'Forbidden store-facing product label: {term}')
+
+          if problems:
+              print('Store surface check failed:')
+              for p in problems: print(' -', p)
+              sys.exit(1)
+          print('Store surface check passed: customer-club identity is intact.')
+          PY
+
+      - name: Apply customer-club refactor
+        run: python3 scripts/refactor_customer_club.py
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check Django app
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python manage.py check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install native dependencies and create lockfile
+        run: npm install
+
+      - name: Verify store surface
+        run: python3 scripts/store_positioning_check.py
+
+      - name: Generate Android native project
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+          chmod +x android/gradlew
+
+      - name: Build Android debug bundle
+        run: |
+          cd android
+          ./gradlew --no-daemon bundleDebug
+
+      - name: Record successful native verification
+        run: |
+          cat > docs/NATIVE_BUILD_VERIFIED.md <<EOF
+          # Native build verification
+
+          Android Capacitor generation and Gradle `bundleDebug` completed successfully in GitHub Actions.
+
+          - Package ID: `de.aplusesthetic.app`
+          - Production URL: `https://esthetic.smarbiz.sbs`
+          - Verified commit input: `${GITHUB_SHA}`
+          - Verification UTC: `$(date -u +'%Y-%m-%dT%H:%M:%SZ')`
+          EOF
+
+      - name: Commit source refactor and verification marker
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/store_positioning_check.py templates platform_app package-lock.json docs/NATIVE_BUILD_VERIFIED.md
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "Refocus app as customer club and verify Android wrapper"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload Android verification bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-esthetic-android-debug-aab
+          path: android/app/build/outputs/bundle/debug/*.aab
+          if-no-files-found: error
