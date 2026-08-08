@@ -33,6 +33,8 @@ ARCHIVE="$ROOT/build/ios/AEsthetic.xcarchive"
 EXPORT_DIR="$ROOT/build/ios/export"
 VERSION="${APP_VERSION_NAME:-${APP_VERSION:-1.0.0}}"
 BUILD="${APP_BUILD_NUMBER:-${BUILD_NUMBER:-1}}"
+TEAM_ID="${APPLE_TEAM_ID:-${IOS_TEAM_ID:-}}"
+AUTH_KEY_PATH="${APPLE_AUTH_KEY_PATH:-${APPLE_API_KEY_PATH:-}}"
 
 XCODE_ARGS=(
   -workspace ios/App/App.xcworkspace
@@ -45,17 +47,15 @@ XCODE_ARGS=(
   CODE_SIGN_STYLE=Automatic
 )
 
-if [ -n "${APPLE_TEAM_ID:-}" ]; then
-  XCODE_ARGS+=(DEVELOPMENT_TEAM="$APPLE_TEAM_ID")
+if [ -n "$TEAM_ID" ]; then
+  XCODE_ARGS+=(DEVELOPMENT_TEAM="$TEAM_ID")
 fi
 
-# A+ Publisher can materialize its App Store Connect API key on the macOS agent.
-# Passing these flags allows an ephemeral cloud Mac to create/update signing
-# resources without requiring a developer's personal Mac/keychain setup.
-if [ -n "${APPLE_AUTH_KEY_PATH:-}" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_ISSUER_ID:-}" ]; then
+# A+ Publisher materializes its App Store Connect API key only for this job.
+if [ -n "$AUTH_KEY_PATH" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_ISSUER_ID:-}" ]; then
   XCODE_ARGS+=(
     -allowProvisioningUpdates
-    -authenticationKeyPath "$APPLE_AUTH_KEY_PATH"
+    -authenticationKeyPath "$AUTH_KEY_PATH"
     -authenticationKeyID "$APPLE_KEY_ID"
     -authenticationKeyIssuerID "$APPLE_ISSUER_ID"
   )
@@ -70,8 +70,8 @@ if [ -n "${IOS_EXPORT_OPTIONS_PLIST_BASE64:-}" ]; then
   printf '%s' "$IOS_EXPORT_OPTIONS_PLIST_BASE64" | base64 --decode > "$EXPORT_PLIST"
 else
   TEAM_LINE=""
-  if [ -n "${APPLE_TEAM_ID:-}" ]; then
-    TEAM_LINE="<key>teamID</key><string>${APPLE_TEAM_ID}</string>"
+  if [ -n "$TEAM_ID" ]; then
+    TEAM_LINE="<key>teamID</key><string>${TEAM_ID}</string>"
   fi
   cat > "$EXPORT_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -93,10 +93,10 @@ EXPORT_ARGS=(
   -exportPath "$EXPORT_DIR"
   -exportOptionsPlist "$EXPORT_PLIST"
 )
-if [ -n "${APPLE_AUTH_KEY_PATH:-}" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_ISSUER_ID:-}" ]; then
+if [ -n "$AUTH_KEY_PATH" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_ISSUER_ID:-}" ]; then
   EXPORT_ARGS+=(
     -allowProvisioningUpdates
-    -authenticationKeyPath "$APPLE_AUTH_KEY_PATH"
+    -authenticationKeyPath "$AUTH_KEY_PATH"
     -authenticationKeyID "$APPLE_KEY_ID"
     -authenticationKeyIssuerID "$APPLE_ISSUER_ID"
   )
