@@ -1,0 +1,103 @@
+name: Fix A+ Esthetic mobile HTTPS routing
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-mobile-routing.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Patch active A+ Esthetic HTTPS server block
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          script: |
+            set -euo pipefail
+            ENABLED=/etc/nginx/sites-enabled/a-esthetic-web.conf
+            test -e "$ENABLED"
+            CONF="$(readlink -f "$ENABLED")"
+            cp "$CONF" "$CONF.bak-customer-club"
+
+            python3 - "$CONF" <<'PY'
+            import re, sys
+            from pathlib import Path
+
+            p = Path(sys.argv[1])
+            s = p.read_text()
+            begin = '  # BEGIN CUSTOMER_CLUB_DJANGO'
+            end = '  # END CUSTOMER_CLUB_DJANGO'
+
+            # Remove an earlier generated block, if any.
+            while begin in s and end in s:
+                a = s.index(begin)
+                b = s.index(end, a)
+                nl = s.find('\n', b)
+                s = s[:a] + s[(nl + 1 if nl >= 0 else len(s)):]
+
+            # Find balanced top-level server blocks and select the active TLS block.
+            starts = [m.start() for m in re.finditer(r'(?m)^server\s*\{', s)]
+            chosen = None
+            for start in starts:
+                brace = s.find('{', start)
+                depth = 0
+                endpos = None
+                for i in range(brace, len(s)):
+                    if s[i] == '{': depth += 1
+                    elif s[i] == '}':
+                        depth -= 1
+                        if depth == 0:
+                            endpos = i + 1
+                            break
+                if not endpos:
+                    continue
+                block = s[start:endpos]
+                if re.search(r'listen\s+443\s+ssl', block) and re.search(r'server_name\s+esthetic\.smarbiz\.sbs\s*;', block):
+                    chosen = (start, endpos, block)
+                    break
+            if not chosen:
+                raise SystemExit('Active TLS server block for esthetic.smarbiz.sbs not found')
+
+            start, endpos, block = chosen
+            generic = re.search(r'(?m)^\s*location\s+/\s*\{', block)
+            if not generic:
+                raise SystemExit('Generic HTTPS location / not found')
+
+            marker = '''  # BEGIN CUSTOMER_CLUB_DJANGO
+              location ^~ /api/mobile/ {
+                proxy_pass http://127.0.0.1:8770;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto https;
+              }
+              location = /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              location ^~ /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              location = /support/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              location = /konto-loeschen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              location = /nutzungsbedingungen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              location = /impressum/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              # END CUSTOMER_CLUB_DJANGO
+            '''
+            block = block[:generic.start()] + marker + block[generic.start():]
+            p.write_text(s[:start] + block + s[endpos:])
+            print(f'Patched active config: {p}')
+            PY
+
+            nginx -t
+            systemctl reload nginx
+            sleep 2
+            echo '--- API ---'
+            curl -fsS https://esthetic.smarbiz.sbs/api/mobile/status/
+            echo
+            echo '--- Privacy ---'
+            curl -fsS https://esthetic.smarbiz.sbs/datenschutz/ | grep -qi 'Kundenclub'
+            echo 'Customer Club HTTPS routing is live.'
