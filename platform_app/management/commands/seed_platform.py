@@ -1,43 +1,266 @@
 import os
-from datetime import timedelta, time
-from django.core.management.base import BaseCommand
+from datetime import time, timedelta
+
 from django.contrib.auth.models import User
+from django.core.management.base import BaseCommand
 from django.utils import timezone
-from platform_app.models import *
+
+from platform_app.models import (
+    Campaign,
+    FeatureModule,
+    GiftCard,
+    IntegrationConfig,
+    MemberAccount,
+    MemberPackage,
+    MembershipTier,
+    Message,
+    PackageDefinition,
+    Referral,
+    Reminder,
+    Reward,
+    Service,
+    StaffMember,
+    Thread,
+    UserProfile,
+    WalletAccount,
+    WalletTransaction,
+    WorkingHour,
+)
+
+
 class Command(BaseCommand):
-    help='Initialisiert A+ Esthetic mit Modulen und sicheren Demo-Daten.'
-    def handle(self,*args,**opts):
-        modules=[('membership','Mitgliedskarte & Membership','Digitale Mitgliedskarte, Stufen und QR Check-in',10),('booking','Terminbuchung','Eigene Terminverwaltung, Warteliste und externe Quellen',20),('wallet','A+ Wallet & Coins','A+ Credit, Coins, Rewards und Transaktionshistorie',30),('packages','Pakete & Sitzungen','Sitzungsstände und Ablaufdaten',40),('passport','Beauty Passport','Verlauf, Dokumente und sichtbare Einträge',50),('before_after','Vorher/Nachher','Geschützte Fotoablage mit separater Freigabe',60),('reminders','Erinnerungen','Sichere, nicht-diagnostische Erinnerungen',70),('followup','Nachsorge & Follow-up','Rückfragen und Eskalation an A+ Personal',80),('chat','Sichere Nachrichten','Direkte Kommunikation mit A+ Esthetic',90),('ai','Beauty Wissensassistent','Nur allgemeine Informationen, keine Diagnose oder Behandlungsempfehlung',100),('giftcards','Gift Cards','Von A+ Esthetic ausgegebene Geschenkguthaben',110),('referrals','Freunde empfehlen','Empfehlungscodes mit Belohnung erst nach echtem Besuch',120),('campaigns','Angebote & Kampagnen','A+ Kampagnen ohne ärztliche Vergütung oder Provision',130),('integrations','Integrationen','Doctolib Partner API, SimplyBook Import, Apple und Google Login',140)]
-        for key,name,desc,order in modules: FeatureModule.objects.update_or_create(key=key,defaults={'name_de':name,'description_de':desc,'sort_order':order,'enabled':True,'customer_visible':key not in {'campaigns','integrations'}})
-        tiers=[]
-        for name,slug,fee,mult,prio in [('A+ Member','member',0,1,10),('A+ Glow','glow',1900,1.2,20),('A+ Signature','signature',4900,1.5,30),('A+ Black','black',9900,2,40)]:
-            tier,_=MembershipTier.objects.update_or_create(slug=slug,defaults={'name':name,'monthly_fee_cents':fee,'coin_multiplier':mult,'priority':prio,'active':True}); tiers.append(tier)
-        admin_username=os.environ.get('ADMIN_USERNAME','admin'); admin_password=os.environ.get('ADMIN_PASSWORD')
-        admin,_=User.objects.get_or_create(username=admin_username,defaults={'email':'admin@a-esthetic.de','is_staff':True,'is_superuser':True}); admin.is_staff=True; admin.is_superuser=True
-        if admin_password: admin.set_password(admin_password)
-        admin.save(); UserProfile.objects.update_or_create(user=admin,defaults={'role':'admin','health_data_consent':True})
-        demo_email='demo@a-esthetic.de'; demo_password=os.environ.get('DEMO_PASSWORD','Aplus-Demo-2026!')
-        demo,_=User.objects.get_or_create(username=demo_email,defaults={'email':demo_email,'first_name':'Sophie','last_name':'Muster'}); demo.set_password(demo_password); demo.save(); UserProfile.objects.update_or_create(user=demo,defaults={'role':'customer','phone':'+49 170 0000000','marketing_consent':True,'health_data_consent':True})
-        MemberAccount.objects.get_or_create(user=demo,defaults={'tier':tiers[1],'valid_until':timezone.localdate()+timedelta(days=365)}); WalletAccount.objects.get_or_create(user=demo,defaults={'balance_cents':6500,'coin_balance':1840})
+    help = 'Initialisiert A+ Esthetic als Customer Club mit sicheren Demo-Daten.'
+
+    def handle(self, *args, **opts):
+        modules = [
+            ('membership', 'Mitgliedskarte & Membership', 'Digitale Mitgliedskarte, Stufen und QR Check-in', 10),
+            ('booking', 'Termine', 'Organisatorische Terminanfragen und Warteliste', 20),
+            ('wallet', 'A+ Wallet & Coins', 'A+ Credit, Coins, Rewards und Transaktionshistorie', 30),
+            ('packages', 'Pakete', 'Paketstände und Ablaufdaten', 40),
+            ('reminders', 'Erinnerungen', 'Club- und Termin-Erinnerungen', 50),
+            ('chat', 'Nachrichten', 'Organisatorische Kommunikation mit A+ Esthetic', 60),
+            ('giftcards', 'Gift Cards', 'Von A+ Esthetic ausgegebene Geschenkguthaben', 70),
+            ('referrals', 'Freunde empfehlen', 'Empfehlungscodes mit Club-Belohnung nach verifiziertem Besuch', 80),
+            ('campaigns', 'Angebote & Kampagnen', 'A+ Customer-Club Kampagnen', 90),
+            ('integrations', 'Login-Integrationen', 'Apple und Google Login, falls später aktiviert', 100),
+        ]
+        active_keys = {item[0] for item in modules}
+        for key, name, desc, order in modules:
+            FeatureModule.objects.update_or_create(
+                key=key,
+                defaults={
+                    'name_de': name,
+                    'description_de': desc,
+                    'sort_order': order,
+                    'enabled': True,
+                    'customer_visible': key not in {'campaigns', 'integrations'},
+                },
+            )
+
+        # Legacy product ideas remain disabled if they already exist in an older database.
+        for legacy_key in ['passport', 'before_after', 'followup', 'ai']:
+            FeatureModule.objects.filter(key=legacy_key).update(enabled=False, customer_visible=False)
+
+        tiers = []
+        for name, slug, fee, mult, prio in [
+            ('A+ Member', 'member', 0, 1, 10),
+            ('A+ Glow', 'glow', 1900, 1.2, 20),
+            ('A+ Signature', 'signature', 4900, 1.5, 30),
+            ('A+ Black', 'black', 9900, 2, 40),
+        ]:
+            tier, _ = MembershipTier.objects.update_or_create(
+                slug=slug,
+                defaults={
+                    'name': name,
+                    'monthly_fee_cents': fee,
+                    'coin_multiplier': mult,
+                    'priority': prio,
+                    'active': True,
+                },
+            )
+            tiers.append(tier)
+
+        admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
+        admin_password = os.environ.get('ADMIN_PASSWORD')
+        admin, _ = User.objects.get_or_create(
+            username=admin_username,
+            defaults={'email': 'admin@a-esthetic.de', 'is_staff': True, 'is_superuser': True},
+        )
+        admin.is_staff = True
+        admin.is_superuser = True
+        if admin_password:
+            admin.set_password(admin_password)
+        admin.save()
+        UserProfile.objects.update_or_create(
+            user=admin,
+            defaults={'role': 'admin', 'health_data_consent': False},
+        )
+
+        demo_email = 'demo@a-esthetic.de'
+        demo_password = os.environ.get('DEMO_PASSWORD', 'Aplus-Demo-2026!')
+        demo, _ = User.objects.get_or_create(
+            username=demo_email,
+            defaults={'email': demo_email, 'first_name': 'Sophie', 'last_name': 'Muster'},
+        )
+        demo.email = demo_email
+        demo.set_password(demo_password)
+        demo.save()
+        UserProfile.objects.update_or_create(
+            user=demo,
+            defaults={
+                'role': 'customer',
+                'phone': '+49 170 0000000',
+                'marketing_consent': True,
+                'health_data_consent': False,
+            },
+        )
+
+        MemberAccount.objects.update_or_create(
+            user=demo,
+            defaults={'tier': tiers[1], 'valid_until': timezone.localdate() + timedelta(days=365)},
+        )
+        wallet, _ = WalletAccount.objects.get_or_create(user=demo)
+        if wallet.coin_balance == 0 and wallet.balance_cents == 0:
+            wallet.coin_balance = 1840
+            wallet.balance_cents = 6500
+            wallet.save(update_fields=['coin_balance', 'balance_cents', 'updated_at'])
+
         if not WalletTransaction.objects.filter(user=demo).exists():
-            WalletTransaction.objects.create(user=demo,kind='credit',direction='in',amount_cents=6500,description='A+ Startguthaben'); WalletTransaction.objects.create(user=demo,kind='coin',direction='in',coin_amount=1840,description='A+ Beauty Club Aktivitäten')
-        for name,cost,inventory in [('Skin-Care Sample Set',500,12),('A+ Skin Analysis',1000,20),('Priority Booking Pass',1800,8),('A+ Event Einladung',2500,10)]: Reward.objects.update_or_create(name=name,defaults={'coin_cost':cost,'inventory':inventory,'active':True,'is_medical_service':False})
-        package,_=PackageDefinition.objects.update_or_create(name='Laser Pflegepaket',defaults={'sessions':6,'validity_days':365,'active':True,'medical_service':False}); MemberPackage.objects.get_or_create(user=demo,definition=package,defaults={'remaining_sessions':4,'expires_at':timezone.localdate()+timedelta(days=210)})
-        services=[]
-        for name,slug,category,duration,buffer,price,medical in [('Ästhetische Erstberatung','aesthetische-erstberatung','consultation',30,10,'Preis nach Beratung',True),('Botox Beratung','botox-beratung','medical',30,10,'Individuelle ärztliche Beratung',True),('Hyaluron Beratung','hyaluron-beratung','medical',30,10,'Individuelle ärztliche Beratung',True),('Laser Haarentfernung','laser-haarentfernung','nonmedical',45,10,'ab 69 €',False),('RF Microneedling','rf-microneedling','nonmedical',60,15,'Preis nach Region',False),('Hautpflege-Beratung','hautpflege-beratung','consultation',30,10,'49 €',False)]:
-            s,_=Service.objects.update_or_create(slug=slug,defaults={'name':name,'description':'Online buchbare Anfrage. Medizinische Leistungen werden erst nach persönlicher ärztlicher Aufklärung und Bestätigung durchgeführt.','category':category,'duration_minutes':duration,'buffer_minutes':buffer,'price_label':price,'active':True,'bookable_in_app':True,'requires_medical_confirmation':medical}); services.append(s)
-        staff,_=StaffMember.objects.get_or_create(display_name='A+ Esthetic Team',defaults={'role':'specialist','active':True}); staff.services.set(services)
-        for day in range(5): WorkingHour.objects.get_or_create(staff=staff,weekday=day,start_time=time(10,0),defaults={'end_time':time(18,0),'active':True})
-        if not Appointment.objects.filter(user=demo).exists():
-            start=timezone.now()+timedelta(days=8); Appointment.objects.create(user=demo,service=services[0],staff=staff,starts_at=start,ends_at=start+timedelta(minutes=40),status='confirmed',source='app',consent_acknowledged=True)
-        if not BeautyPassportEntry.objects.filter(user=demo).exists():
-            BeautyPassportEntry.objects.create(user=demo,entry_type='visit',title='Willkommen bei A+ Esthetic',occurred_on=timezone.localdate()-timedelta(days=30),notes='Erster Beratungstermin. Keine automatische medizinische Empfehlung.'); BeautyPassportEntry.objects.create(user=demo,entry_type='product',title='Pflegeprodukt dokumentiert',occurred_on=timezone.localdate()-timedelta(days=14),notes='Vom Kunden selbst hinterlegte Information.')
-        privacy,_=ConsentTemplate.objects.update_or_create(key='health-data',version='1.0',defaults={'title':'Einwilligung zur Verarbeitung von Gesundheitsdaten','text':'Ich willige freiwillig in die zweckgebundene Verarbeitung meiner Gesundheitsdaten durch A+ Esthetic ein. Ein Widerruf ist jederzeit möglich; gesetzliche Aufbewahrungspflichten bleiben bestehen.','health_data':True,'active':True})
-        ConsentTemplate.objects.update_or_create(key='marketing',version='1.0',defaults={'title':'Einwilligung für personalisierte A+ Informationen','text':'Ich möchte Informationen und Angebote von A+ Esthetic erhalten. Diese Einwilligung betrifft keine ärztliche Vergütung und kann jederzeit widerrufen werden.','marketing':True,'active':True})
-        if not ConsentRecord.objects.filter(user=demo).exists(): ConsentRecord.objects.create(user=demo,template=privacy,accepted=True,evidence={'seed':True})
-        Reminder.objects.get_or_create(user=demo,title='Termin-Erinnerung',defaults={'body':'Ihre bestätigte Beratung findet in acht Tagen statt.','scheduled_for':timezone.now()+timedelta(days=7),'channel':'inapp','status':'scheduled'})
-        FollowUp.objects.get_or_create(user=demo,title='Wie war Ihr letzter Besuch?',defaults={'due_at':timezone.now()+timedelta(days=2),'questions':['Wie zufrieden waren Sie mit der Organisation?','Benötigen Sie Kontakt mit A+ Esthetic?'],'status':'pending'})
-        thread,_=Thread.objects.get_or_create(user=demo,subject='Willkommen bei A+ Esthetic'); Message.objects.get_or_create(thread=thread,sender=admin,body='Willkommen im A+ Beauty Club. Für medizinische Fragen vereinbaren Sie bitte eine persönliche ärztliche Beratung.')
-        for provider in ['doctolib','simplybook','google','apple']: IntegrationConfig.objects.update_or_create(provider=provider,defaults={'enabled':False,'sync_enabled':False,'status':'Credentials erforderlich','credential_reference':f'{provider.upper()}_CREDENTIALS'})
-        Referral.objects.get_or_create(referrer=demo,code='APLUS-SOPHIE',defaults={'status':'invited','reward_coins':300}); Campaign.objects.get_or_create(name='A+ Beauty Club Willkommen',defaults={'audience':'all','message':'Willkommen im A+ Beauty Club.','starts_at':timezone.now()-timedelta(days=1),'ends_at':timezone.now()+timedelta(days=90),'active':True}); GiftCard.objects.get_or_create(code='APLUS-DEMO-100',defaults={'purchaser':demo,'recipient_email':demo.email,'initial_cents':10000,'balance_cents':10000,'status':'active','expires_at':timezone.localdate()+timedelta(days=365)})
-        self.stdout.write(self.style.SUCCESS('A+ Esthetic Plattform initialisiert.'))
+            WalletTransaction.objects.create(user=demo, kind='credit', direction='in', amount_cents=6500, description='A+ Startguthaben')
+            WalletTransaction.objects.create(user=demo, kind='coin', direction='in', coin_amount=1840, description='A+ Customer Club Aktivitäten')
+
+        rewards = [
+            ('A+ Welcome Drink', 'Ein Getränk bei Ihrem nächsten Besuch.', 300, 30),
+            ('Beauty Sample Set', 'Ausgewähltes A+ Sample Set.', 500, 20),
+            ('Priority Booking Pass', 'Bevorzugte Bearbeitung einer Terminanfrage.', 1800, 10),
+            ('A+ Event Einladung', 'Einladung zu einer ausgewählten A+ Veranstaltung.', 2500, 10),
+        ]
+        for name, description, cost, inventory in rewards:
+            Reward.objects.update_or_create(
+                name=name,
+                defaults={
+                    'description': description,
+                    'coin_cost': cost,
+                    'inventory': inventory,
+                    'active': True,
+                    'is_medical_service': False,
+                },
+            )
+
+        package, _ = PackageDefinition.objects.update_or_create(
+            name='A+ Club Paket',
+            defaults={
+                'description': 'Customer-Club Paket',
+                'sessions': 6,
+                'validity_days': 365,
+                'active': True,
+                'medical_service': False,
+            },
+        )
+        MemberPackage.objects.update_or_create(
+            user=demo,
+            definition=package,
+            defaults={'remaining_sessions': 4, 'expires_at': timezone.localdate() + timedelta(days=210), 'status': 'active'},
+        )
+
+        service_definitions = [
+            ('A+ Beratungstermin', 'beratung', 30, 10, 'Preis vor Ort'),
+            ('A+ Beauty Termin', 'beauty-termin', 45, 10, 'Preis vor Ort'),
+            ('A+ Club Termin', 'club-termin', 20, 10, 'Kostenlos'),
+            ('A+ Event Termin', 'event-termin', 30, 10, 'Nach Einladung'),
+        ]
+        services = []
+        for name, slug, duration, buffer, price in service_definitions:
+            service, _ = Service.objects.update_or_create(
+                slug=slug,
+                defaults={
+                    'name': name,
+                    'description': 'Organisatorische Terminanfrage über den A+ Customer Club.',
+                    'category': 'nonmedical',
+                    'duration_minutes': duration,
+                    'buffer_minutes': buffer,
+                    'price_label': price,
+                    'active': True,
+                    'bookable_in_app': True,
+                    'requires_medical_confirmation': False,
+                },
+            )
+            services.append(service)
+
+        # Older treatment-specific demo services must not appear in the Customer Club.
+        Service.objects.exclude(pk__in=[item.pk for item in services]).update(bookable_in_app=False)
+
+        staff, _ = StaffMember.objects.get_or_create(
+            display_name='A+ Esthetic Team',
+            defaults={'role': 'reception', 'active': True},
+        )
+        staff.role = 'reception'
+        staff.active = True
+        staff.save(update_fields=['role', 'active'])
+        staff.services.set(services)
+        for day in range(5):
+            WorkingHour.objects.update_or_create(
+                staff=staff,
+                weekday=day,
+                start_time=time(10, 0),
+                defaults={'end_time': time(18, 0), 'active': True},
+            )
+
+        Reminder.objects.update_or_create(
+            user=demo,
+            title='A+ Termin-Erinnerung',
+            defaults={
+                'body': 'Ihr nächster A+ Termin steht an.',
+                'scheduled_for': timezone.now() + timedelta(days=7),
+                'channel': 'inapp',
+                'status': 'scheduled',
+            },
+        )
+
+        thread, _ = Thread.objects.get_or_create(user=demo, subject='Willkommen bei A+ Esthetic')
+        Message.objects.get_or_create(
+            thread=thread,
+            sender=admin,
+            body='Willkommen im A+ Customer Club. Hier helfen wir bei Membership, Terminen, Rewards und organisatorischen Fragen.',
+        )
+
+        for provider in ['google', 'apple']:
+            IntegrationConfig.objects.update_or_create(
+                provider=provider,
+                defaults={
+                    'enabled': False,
+                    'sync_enabled': False,
+                    'status': 'Nicht konfiguriert',
+                    'credential_reference': f'{provider.upper()}_CREDENTIALS',
+                },
+            )
+        IntegrationConfig.objects.filter(provider__in=['doctolib', 'simplybook']).update(enabled=False, sync_enabled=False, status='Nicht Teil der Customer-Club-App')
+
+        Referral.objects.get_or_create(
+            referrer=demo,
+            code='APLUS-SOPHIE',
+            defaults={'status': 'invited', 'reward_coins': 300},
+        )
+        Campaign.objects.get_or_create(
+            name='A+ Customer Club Willkommen',
+            defaults={
+                'audience': 'all',
+                'message': 'Willkommen im A+ Customer Club.',
+                'starts_at': timezone.now() - timedelta(days=1),
+                'ends_at': timezone.now() + timedelta(days=90),
+                'active': True,
+            },
+        )
+        GiftCard.objects.get_or_create(
+            code='APLUS-DEMO-100',
+            defaults={
+                'purchaser': demo,
+                'recipient_email': demo.email,
+                'initial_cents': 10000,
+                'balance_cents': 10000,
+                'status': 'active',
+                'expires_at': timezone.localdate() + timedelta(days=365),
+            },
+        )
+
+        self.stdout.write(self.style.SUCCESS('A+ Esthetic Customer Club initialisiert.'))
