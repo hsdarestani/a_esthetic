@@ -1,0 +1,18 @@
+{
+  "appId": "de.aplusesthetic.club",
+  "appName": "A+ Esthetic",
+  "webDir": "www",
+  "loggingBehavior": "none",
+  "backgroundColor": "#f5f1eb",
+  "zoomEnabled": false,
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "preferredContentMode": "mobile",
+    "allowsLinkPreview": false,
+    "webContentsDebuggingEnabled": false,
+    "contentInset": "automatic"
+  }
+}
