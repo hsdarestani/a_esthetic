@@ -1,0 +1,73 @@
+name: Lock A+ Esthetic customer-club surface
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/customer-club-surface-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Apply public route and form hardening
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Public privacy route owned by the customer-club release.
+          p = Path('config/urls.py')
+          s = p.read_text(encoding='utf-8')
+          if 'from platform_app import customer_club_legal' not in s:
+              s = s.replace('from django.contrib.auth import views as auth_views', 'from django.contrib.auth import views as auth_views\nfrom platform_app import customer_club_legal')
+          prefix = "path('datenschutz/',customer_club_legal.privacy,name='customer_club_privacy'),path('medizinische-hinweise/',customer_club_legal.legacy_medical_notice,name='legacy_medical_notice'),"
+          if "customer_club_legal.privacy" not in s.split('urlpatterns=[',1)[-1]:
+              s = s.replace('urlpatterns=[', 'urlpatterns=[' + prefix, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # Appointment request: no free-text health/medical input field in the club app.
+          p = Path('platform_app/forms.py')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("fields=('service','staff','starts_at','notes_customer','consent_acknowledged')", "fields=('service','staff','starts_at')")
+          s = s.replace("fields=('service','staff','starts_at','notes_customer')", "fields=('service','staff','starts_at')")
+          s = s.replace(",'notes_customer':'Hinweis für A+ Esthetic'", '')
+          s = s.replace(",'consent_acknowledged':'Ich bestätige, dass die Buchung keine medizinische Beratung oder Behandlungszusage darstellt.'", '')
+          p.write_text(s, encoding='utf-8')
+
+          # Customer surface: don't expose internal service classifications/descriptions.
+          p = Path('templates/app.html')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('<span class="badge">{{ service.get_category_display }}</span>', '')
+          s = s.replace('<p>{{ service.description }}</p>', '')
+          s = s.replace('placeholder="Nachricht an A+ Esthetic"', 'placeholder="Frage zu Club, Rewards, Terminen oder Kundenservice"')
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Install and validate Django project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python manage.py check
+          python3 scripts/store_positioning_check.py
+
+      - name: Commit surface hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config/urls.py platform_app/forms.py templates/app.html
+          if git diff --cached --quiet; then
+            echo "No changes needed."
+          else
+            git commit -m "Lock A+ Esthetic to customer-club product surface"
+            git push origin HEAD:main
+          fi
