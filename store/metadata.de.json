@@ -1,0 +1,20 @@
+{
+  "app_name": "A+ Esthetic",
+  "locale": "de-DE",
+  "product_type": "Kundenclub / Loyalty",
+  "subtitle_ios": "Ihr digitaler Kundenclub",
+  "short_description_google": "A+ Esthetic Kundenclub für Mitgliedschaft, Vorteile, Rewards, Termine und Kontakt.",
+  "promotional_text_ios": "Mitgliedschaft, Club-Vorteile, Rewards, Terminanfragen und direkter Kontakt zu A+ Esthetic in einer App.",
+  "full_description": "A+ Esthetic bringt Ihren Kundenclub direkt auf Ihr Smartphone. Verwalten Sie Ihre Mitgliedschaft, sehen Sie Club-Vorteile und Rewards, behalten Sie Ihre A+ Coins im Blick und organisieren Sie Terminanfragen bequem an einem Ort.\n\nFunktionen:\n• Digitale A+ Esthetic Mitgliedschaft\n• Club-Vorteile und Rewards\n• Übersicht über A+ Coins und Einlösungen\n• Organisatorische Terminanfragen\n• Persönliche Erinnerungen\n• Direkter Kontakt zum A+ Esthetic Kundenservice\n• Profil-, Datenschutz- und Einwilligungseinstellungen\n\nDie App ist der digitale Kundenclub von A+ Esthetic und dient der Kundenbetreuung und Organisation.",
+  "keywords_ios": "esthetic,kundenclub,beauty,club,rewards,vorteile,termine,loyalty",
+  "privacy_policy_url": "https://esthetic.smarbiz.sbs/datenschutz/",
+  "support_url": "https://esthetic.smarbiz.sbs/support/",
+  "account_deletion_url": "https://esthetic.smarbiz.sbs/konto-loeschen/",
+  "marketing_url": "https://a-esthetic.de/",
+  "release_notes": "Erste Version des A+ Esthetic Kundenclubs mit Mitgliedschaft, Club-Vorteilen, Rewards, Terminanfragen, Erinnerungen und Kundenservice.",
+  "suggested_category_google": "Lifestyle",
+  "suggested_primary_category_ios": "Lifestyle",
+  "contains_ads": false,
+  "cross_app_tracking": false,
+  "medical_or_health_functionality": false
+}
