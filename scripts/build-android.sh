@@ -15,6 +15,9 @@ if [ ! -d android ]; then
 fi
 npx cap sync android
 
+# Apply the version supplied by A+ Publisher before Gradle packages the bundle.
+python3 scripts/configure_android_release.py
+
 # Generate launcher/adaptive icons and splash assets from the official A+ Esthetic logo.
 npx @capacitor/assets generate --android \
   --iconBackgroundColor '#000000' \
