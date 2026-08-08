@@ -1,6 +1,6 @@
 {
   "id": "/",
-  "name": "A+ Esthetic Beauty Club",
+  "name": "A+ Esthetic Customer Club",
   "short_name": "A+ Esthetic",
   "start_url": "/",
   "scope": "/",
@@ -8,7 +8,7 @@
   "background_color": "#f7f3ed",
   "theme_color": "#17212a",
   "lang": "de",
-  "description": "A+ Esthetic Beauty Club – Termine, Mitgliedschaft, Dokumente und sichere Kommunikation.",
-  "version": "3.0.1",
+  "description": "A+ Esthetic Customer Club – Membership, Wallet, Rewards, Termine und Kommunikation.",
+  "version": "4.0.0",
   "icons": []
 }
