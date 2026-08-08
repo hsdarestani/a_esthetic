@@ -34,10 +34,14 @@ VERSION="${APP_VERSION_NAME:-${APP_VERSION:-1.0.0}}"
 BUILD="${APP_BUILD_NUMBER:-${BUILD_NUMBER:-1}}"
 TEAM_ID="${APPLE_TEAM_ID:-${IOS_TEAM_ID:-}}"
 AUTH_KEY_PATH="${APPLE_AUTH_KEY_PATH:-${APPLE_API_KEY_PATH:-}}"
+SIGNING_STYLE="${IOS_SIGNING_STYLE:-Automatic}"
+PROFILE_SPECIFIER="${IOS_PROVISIONING_PROFILE_SPECIFIER:-}"
+CODE_SIGN_IDENTITY="${IOS_CODE_SIGN_IDENTITY:-Apple Distribution}"
+SIGNING_KEYCHAIN="${IOS_SIGNING_KEYCHAIN:-}"
+BUNDLE_ID="${IOS_BUNDLE_ID:-de.aplusesthetic.app}"
 
 # Capacitor 8 may generate a Swift Package Manager project without an
-# .xcworkspace. Support both SPM (.xcodeproj) and CocoaPods (.xcworkspace)
-# layouts so the Publisher build remains deterministic across Capacitor updates.
+# .xcworkspace. Support both SPM (.xcodeproj) and CocoaPods (.xcworkspace).
 if [ -d ios/App/App.xcworkspace ]; then
   XCODE_CONTAINER=(-workspace ios/App/App.xcworkspace)
 elif [ -d ios/App/App.xcodeproj ]; then
@@ -56,15 +60,26 @@ XCODE_ARGS=(
   -archivePath "$ARCHIVE"
   MARKETING_VERSION="$VERSION"
   CURRENT_PROJECT_VERSION="$BUILD"
-  CODE_SIGN_STYLE=Automatic
+  CODE_SIGN_STYLE="$SIGNING_STYLE"
   TARGETED_DEVICE_FAMILY=1
+  PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"
 )
 
 if [ -n "$TEAM_ID" ]; then
   XCODE_ARGS+=(DEVELOPMENT_TEAM="$TEAM_ID")
 fi
 
-if [ -n "$AUTH_KEY_PATH" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_ISSUER_ID:-}" ]; then
+if [ "$SIGNING_STYLE" = "Manual" ]; then
+  if [ -z "$PROFILE_SPECIFIER" ] || [ -z "$SIGNING_KEYCHAIN" ]; then
+    echo "Manual iOS signing requires IOS_PROVISIONING_PROFILE_SPECIFIER and IOS_SIGNING_KEYCHAIN." >&2
+    exit 5
+  fi
+  XCODE_ARGS+=(
+    CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY"
+    PROVISIONING_PROFILE_SPECIFIER="$PROFILE_SPECIFIER"
+    "OTHER_CODE_SIGN_FLAGS=--keychain $SIGNING_KEYCHAIN"
+  )
+elif [ -n "$AUTH_KEY_PATH" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_ISSUER_ID:-}" ]; then
   XCODE_ARGS+=(
     -allowProvisioningUpdates
     -authenticationKeyPath "$AUTH_KEY_PATH"
@@ -85,7 +100,24 @@ else
   if [ -n "$TEAM_ID" ]; then
     TEAM_LINE="<key>teamID</key><string>${TEAM_ID}</string>"
   fi
-  cat > "$EXPORT_PLIST" <<PLIST
+  if [ "$SIGNING_STYLE" = "Manual" ]; then
+    cat > "$EXPORT_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>method</key><string>app-store-connect</string>
+<key>signingStyle</key><string>manual</string>
+<key>signingCertificate</key><string>${CODE_SIGN_IDENTITY}</string>
+<key>provisioningProfiles</key><dict>
+  <key>${BUNDLE_ID}</key><string>${PROFILE_SPECIFIER}</string>
+</dict>
+<key>stripSwiftSymbols</key><true/>
+<key>uploadSymbols</key><true/>
+${TEAM_LINE}
+</dict></plist>
+PLIST
+  else
+    cat > "$EXPORT_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -96,6 +128,7 @@ else
 ${TEAM_LINE}
 </dict></plist>
 PLIST
+  fi
 fi
 
 rm -rf "$EXPORT_DIR"
