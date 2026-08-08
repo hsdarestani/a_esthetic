@@ -2,19 +2,19 @@
   "appId": "de.aplusesthetic.app",
   "appName": "A+ Esthetic",
   "webDir": "www",
-  "server": {
-    "url": "https://esthetic.smarbiz.sbs",
-    "cleartext": false,
-    "allowNavigation": [
-      "esthetic.smarbiz.sbs"
-    ]
-  },
+  "loggingBehavior": "none",
+  "backgroundColor": "#000000",
+  "zoomEnabled": false,
   "android": {
     "allowMixedContent": false,
-    "backgroundColor": "#17212a"
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#000000"
   },
   "ios": {
-    "backgroundColor": "#17212a",
-    "contentInset": "automatic"
+    "preferredContentMode": "mobile",
+    "allowsLinkPreview": false,
+    "webContentsDebuggingEnabled": false,
+    "contentInset": "automatic",
+    "backgroundColor": "#000000"
   }
 }
