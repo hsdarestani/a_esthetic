@@ -1,0 +1,57 @@
+name: Apply A+ Esthetic customer-club refactor
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/customer-club-refactor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Apply customer-club product refactor
+        run: python3 scripts/refactor_customer_club.py
+
+      - name: Install Django dependencies and check project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python manage.py check
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+        continue-on-error: true
+
+      - name: Generate deterministic npm lockfile
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Verify store positioning
+        run: python3 scripts/store_positioning_check.py
+
+      - name: Commit generated/refactored files
+        run: |
+          if git diff --quiet; then
+            echo "No refactor changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add templates platform_app package-lock.json
+          git commit -m "Refocus A+ Esthetic app as customer club"
+          git push origin HEAD:main
