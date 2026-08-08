@@ -18,7 +18,7 @@ def datenschutz(request):
         request,
         'datenschutz',
         'Datenschutzerklärung',
-        'Informationen zur Datenverarbeitung in der A+ Esthetic App',
+        'Informationen zur Datenverarbeitung im A+ Esthetic Customer Club',
     )
 
 
@@ -27,7 +27,7 @@ def privacy_choices(request):
         request,
         'privacy_choices',
         'Datenschutz-Einstellungen',
-        'Ihre Einwilligungen, Auskunfts- und Löschmöglichkeiten',
+        'Einwilligungen, Auskunfts- und Löschmöglichkeiten',
     )
 
 
@@ -39,21 +39,12 @@ def support(request):
     return _legal(request, 'support', 'Support', 'Hilfe und Kontakt zur A+ Esthetic App')
 
 
-def medical_notice(request):
-    return _legal(
-        request,
-        'medical_notice',
-        'Medizinische Hinweise',
-        'Wichtige Grenzen der App und Hinweise zu medizinischen Entscheidungen',
-    )
-
-
 def terms(request):
     return _legal(
         request,
         'terms',
         'Nutzungsbedingungen',
-        'Bedingungen für die Nutzung der A+ Esthetic App',
+        'Bedingungen für die Nutzung des A+ Esthetic Customer Clubs',
     )
 
 
@@ -97,7 +88,7 @@ def account_deletion(request):
     return render(request, 'legal.html', {
         'page': 'account_deletion',
         'legal_title': 'Konto & Daten löschen',
-        'legal_subtitle': 'Löschung Ihres App-Kontos und der zugehörigen Daten anfordern',
+        'legal_subtitle': 'Löschung Ihres Customer-Club-Kontos und der zugehörigen Daten anfordern',
         'deletion_error': error,
         'deletion_submitted': submitted,
         'requested_email': requested_email,
