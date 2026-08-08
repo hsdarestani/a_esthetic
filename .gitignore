@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+db.sqlite3
+private_media/
+staticfiles/
+node_modules/
+android/
+ios/
+dist/
+.DS_Store
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
