@@ -1,0 +1,36 @@
+name: Deploy A+ Esthetic customer-club surface
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "templates/**"
+      - "platform_app/**"
+      - "config/**"
+      - "manifest.json"
+      - ".github/workflows/deploy-customer-club-surface.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: a-esthetic-customer-club-deploy
+  cancel-in-progress: true
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start connected production deployment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy-connected-app.yml',
+              ref: 'main'
+            });
