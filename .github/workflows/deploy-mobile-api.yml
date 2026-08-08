@@ -1,0 +1,182 @@
+name: Deploy A+ Esthetic native Customer Club API
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "platform_app/**"
+      - "config/**"
+      - "templates/legal.html"
+      - "requirements.txt"
+      - ".github/workflows/deploy-mobile-api.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-mobile-api-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Django mobile API and Store legal pages
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          envs: GH_REPO,GH_SHA
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+            ROOT="/opt/a-esthetic-mobile"
+            SRC="/tmp/a-esthetic-mobile-src"
+            ENV_FILE="$ROOT/mobile.env"
+
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -y >/dev/null
+            apt-get install -y python3 python3-venv curl ca-certificates rsync >/dev/null
+
+            rm -rf "$SRC"
+            mkdir -p "$SRC" "$ROOT"
+            curl -fsSL "https://github.com/${GH_REPO}/archive/${GH_SHA}.tar.gz" \
+              | tar -xz --strip-components=1 -C "$SRC"
+
+            # Replace application code only; keep the SQLite database, media,
+            # environment file and virtualenv persistent between deploys.
+            rm -rf "$ROOT/config" "$ROOT/platform_app" "$ROOT/templates" "$ROOT/static"
+            cp -a "$SRC/config" "$SRC/platform_app" "$SRC/templates" "$SRC/static" "$ROOT/"
+            install -m 0644 "$SRC/manage.py" "$ROOT/manage.py"
+            install -m 0644 "$SRC/requirements.txt" "$ROOT/requirements.txt"
+
+            if [ ! -d "$ROOT/venv" ]; then
+              python3 -m venv "$ROOT/venv"
+            fi
+            "$ROOT/venv/bin/pip" install --quiet --upgrade pip
+            "$ROOT/venv/bin/pip" install --quiet -r "$ROOT/requirements.txt"
+
+            if [ ! -f "$ENV_FILE" ]; then
+              umask 077
+              SECRET="$(python3 - <<'PY'
+            import secrets
+            print(secrets.token_urlsafe(64))
+            PY
+              )"
+              cat > "$ENV_FILE" <<EOF
+            DJANGO_SECRET_KEY=$SECRET
+            DJANGO_DEBUG=0
+            DJANGO_ALLOWED_HOSTS=esthetic.smarbiz.sbs,127.0.0.1,localhost
+            EOF
+            fi
+            chmod 600 "$ENV_FILE"
+
+            set -a
+            . "$ENV_FILE"
+            set +a
+            cd "$ROOT"
+            "$ROOT/venv/bin/python" manage.py migrate --run-syncdb --noinput
+            "$ROOT/venv/bin/python" manage.py seed_platform
+            "$ROOT/venv/bin/python" manage.py collectstatic --noinput
+            "$ROOT/venv/bin/python" manage.py check
+
+            cat > /etc/systemd/system/a-esthetic-mobile.service <<SERVICE
+            [Unit]
+            Description=A+ Esthetic Customer Club mobile API
+            After=network.target
+
+            [Service]
+            Type=simple
+            WorkingDirectory=$ROOT
+            EnvironmentFile=$ENV_FILE
+            ExecStart=$ROOT/venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8770 --workers 2 --timeout 60 --access-logfile - --error-logfile -
+            Restart=on-failure
+            RestartSec=3
+            UMask=0077
+            NoNewPrivileges=true
+            PrivateTmp=true
+
+            [Install]
+            WantedBy=multi-user.target
+            SERVICE
+
+            systemctl daemon-reload
+            systemctl enable --now a-esthetic-mobile.service
+            systemctl restart a-esthetic-mobile.service
+
+            # Keep the existing web/API service intact. Insert the new mobile API
+            # and Store legal routes before the legacy /api/* route.
+            if systemctl is-active --quiet caddy && [ -f /etc/caddy/Caddyfile ]; then
+              python3 - <<'PY'
+            from pathlib import Path
+            p = Path('/etc/caddy/Caddyfile')
+            s = p.read_text()
+            begin = '# BEGIN A_ESTHETIC_WEB'
+            end = '# END A_ESTHETIC_WEB'
+            a = s.find(begin)
+            b = s.find(end, a)
+            if a < 0 or b < 0:
+                raise SystemExit('A_ESTHETIC_WEB block not found in Caddyfile')
+            block = s[a:b]
+            marker = '  @customerClubDjango path /api/mobile/* /datenschutz/ /datenschutz/* /support/ /konto-loeschen/ /nutzungsbedingungen/ /impressum/\n  handle @customerClubDjango {\n    reverse_proxy 127.0.0.1:8770\n  }\n'
+            # Remove an earlier sidecar route before re-inserting idempotently.
+            start = block.find('  @customerClubDjango path ')
+            if start >= 0:
+                finish = block.find('  handle /api/*', start)
+                if finish < 0:
+                    raise SystemExit('Could not locate legacy /api handler after sidecar route')
+                block = block[:start] + block[finish:]
+            legacy = '  handle /api/* {'
+            pos = block.find(legacy)
+            if pos < 0:
+                raise SystemExit('Legacy /api handler not found')
+            block = block[:pos] + marker + block[pos:]
+            p.write_text(s[:a] + block + s[b:])
+            PY
+              caddy validate --config /etc/caddy/Caddyfile
+              systemctl reload caddy
+            else
+              CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
+              if [ ! -f "$CONF" ]; then
+                echo "Neither managed Caddy nor Nginx A+ Esthetic config was found." >&2
+                exit 4
+              fi
+              python3 - <<'PY'
+            from pathlib import Path
+            p = Path('/etc/nginx/sites-available/a-esthetic-connected.conf')
+            s = p.read_text()
+            # Idempotently remove an earlier generated sidecar section.
+            a = s.find('    # BEGIN CUSTOMER_CLUB_DJANGO')
+            b = s.find('    # END CUSTOMER_CLUB_DJANGO')
+            if a >= 0 and b >= 0:
+                b += len('    # END CUSTOMER_CLUB_DJANGO\n')
+                s = s[:a] + s[b:]
+            marker = '''    # BEGIN CUSTOMER_CLUB_DJANGO
+                location ^~ /api/mobile/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /support/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /konto-loeschen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /nutzungsbedingungen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /impressum/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                # END CUSTOMER_CLUB_DJANGO
+            '''
+            needle = '    location /api/ {'
+            pos = s.find(needle)
+            if pos < 0:
+                raise SystemExit('Legacy Nginx /api handler not found')
+            p.write_text(s[:pos] + marker + s[pos:])
+            PY
+              nginx -t
+              systemctl reload nginx
+            fi
+
+            sleep 3
+            curl -fsS http://127.0.0.1:8770/api/mobile/status/ | grep -q 'customer-club'
+            curl -fsS https://esthetic.smarbiz.sbs/api/mobile/status/ | grep -q 'customer-club'
+            curl -fsS https://esthetic.smarbiz.sbs/datenschutz/ | grep -qi 'Kundenclub'
+            echo 'A+ Esthetic native Customer Club API is live.'
