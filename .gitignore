@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+db.sqlite3
+private_media/
+staticfiles/
+
+# Node / Capacitor
+node_modules/
+android/
+ios/
+artifacts/
+build/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
