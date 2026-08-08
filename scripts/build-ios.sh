@@ -20,7 +20,6 @@ if [ ! -d ios ]; then
 fi
 npx cap sync ios
 
-# Generate AppIcon and launch/splash assets from the official A+ Esthetic logo.
 npx @capacitor/assets generate --ios \
   --iconBackgroundColor '#000000' \
   --iconBackgroundColorDark '#000000' \
@@ -45,13 +44,13 @@ XCODE_ARGS=(
   MARKETING_VERSION="$VERSION"
   CURRENT_PROJECT_VERSION="$BUILD"
   CODE_SIGN_STYLE=Automatic
+  TARGETED_DEVICE_FAMILY=1
 )
 
 if [ -n "$TEAM_ID" ]; then
   XCODE_ARGS+=(DEVELOPMENT_TEAM="$TEAM_ID")
 fi
 
-# A+ Publisher materializes its App Store Connect API key only for this job.
 if [ -n "$AUTH_KEY_PATH" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_ISSUER_ID:-}" ]; then
   XCODE_ARGS+=(
     -allowProvisioningUpdates
