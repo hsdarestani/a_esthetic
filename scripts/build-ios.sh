@@ -20,12 +20,36 @@ if [ ! -d ios ]; then
 fi
 npx cap sync ios
 
+# Keep the existing logo-driven launch screen, but always use the dedicated
+# finished artwork in assets/appicon.png for the actual iOS AppIcon set.
+# @capacitor/assets gives assets/ios/icon.* precedence for the iOS icon.
+APP_ICON_SOURCE="$ROOT/assets/appicon.png"
+IOS_ICON_DIR="$ROOT/assets/ios"
+IOS_ICON_OVERRIDE="$IOS_ICON_DIR/icon.png"
+if [ ! -f "$APP_ICON_SOURCE" ]; then
+  echo "Missing iOS app icon source: $APP_ICON_SOURCE" >&2
+  exit 6
+fi
+mkdir -p "$IOS_ICON_DIR"
+cp "$APP_ICON_SOURCE" "$IOS_ICON_OVERRIDE"
+trap 'rm -f "$IOS_ICON_OVERRIDE"; rmdir "$IOS_ICON_DIR" 2>/dev/null || true' EXIT
+
+echo "Using dedicated iOS app icon: assets/appicon.png"
 npx @capacitor/assets generate --ios \
   --iconBackgroundColor '#000000' \
   --iconBackgroundColorDark '#000000' \
   --splashBackgroundColor '#000000' \
   --splashBackgroundColorDark '#000000' \
   --logoSplashScale 0.34
+
+# Fail early if the generator did not actually create an iOS AppIcon catalog.
+APPICON_SET="$ROOT/ios/App/App/Assets.xcassets/AppIcon.appiconset"
+if [ ! -d "$APPICON_SET" ] || [ ! -f "$APPICON_SET/Contents.json" ]; then
+  echo "iOS AppIcon asset catalog was not generated." >&2
+  exit 7
+fi
+
+echo "Generated iOS AppIcon set from assets/appicon.png"
 
 mkdir -p artifacts build/ios
 ARCHIVE="$ROOT/build/ios/AEsthetic.xcarchive"
