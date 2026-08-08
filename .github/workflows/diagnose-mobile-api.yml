@@ -1,0 +1,36 @@
+name: Diagnose A+ Esthetic mobile API
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-mobile-api.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check service and routes
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          script: |
+            set +e
+            echo "service=$(systemctl is-active a-esthetic-mobile.service 2>/dev/null)"
+            echo "--- local mobile status ---"
+            curl -sS -D - http://127.0.0.1:8770/api/mobile/status/ -o /tmp/local-mobile.out
+            head -c 800 /tmp/local-mobile.out; echo
+            echo "--- public mobile status ---"
+            curl -sS -D - https://esthetic.smarbiz.sbs/api/mobile/status/ -o /tmp/public-mobile.out
+            head -c 800 /tmp/public-mobile.out; echo
+            echo "--- public privacy ---"
+            curl -sS -D - https://esthetic.smarbiz.sbs/datenschutz/ -o /tmp/privacy.out
+            grep -oi -m1 -E 'Kundenclub|Customer Club|Datenschutzerklärung' /tmp/privacy.out || true
+            echo "--- nginx sidecar marker ---"
+            grep -n -A10 -B2 'CUSTOMER_CLUB_DJANGO' /etc/nginx/sites-available/a-esthetic-connected.conf || true
