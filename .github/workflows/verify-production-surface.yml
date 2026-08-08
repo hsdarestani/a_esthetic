@@ -1,0 +1,67 @@
+name: Verify A+ Esthetic production surface
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/verify-production-surface.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for current main deployment and verify public URLs
+        run: |
+          set -euo pipefail
+          urls=(
+            "https://esthetic.smarbiz.sbs/"
+            "https://esthetic.smarbiz.sbs/datenschutz/"
+            "https://esthetic.smarbiz.sbs/support/"
+            "https://esthetic.smarbiz.sbs/konto-loeschen/"
+          )
+          success=0
+          for attempt in $(seq 1 24); do
+            all_ok=1
+            for url in "${urls[@]}"; do
+              code=$(curl -L -sS -o /tmp/page.html -w '%{http_code}' "$url" || true)
+              if [ "$code" != "200" ]; then
+                echo "Attempt $attempt: $url -> $code"
+                all_ok=0
+              fi
+            done
+            if [ "$all_ok" = "1" ]; then success=1; break; fi
+            sleep 10
+          done
+          if [ "$success" != "1" ]; then
+            echo "Production URLs did not all become healthy." >&2
+            exit 1
+          fi
+
+          curl -L -sS https://esthetic.smarbiz.sbs/datenschutz/ > /tmp/privacy.html
+          grep -qi "Kundenclub" /tmp/privacy.html
+          grep -qi "Mitglied" /tmp/privacy.html
+
+      - name: Record verification
+        run: |
+          cat > docs/PRODUCTION_SURFACE_VERIFIED.md <<EOF
+          # Production surface verification
+
+          Verified from GitHub Actions at $(date -u +'%Y-%m-%dT%H:%M:%SZ'):
+
+          - https://esthetic.smarbiz.sbs/
+          - https://esthetic.smarbiz.sbs/datenschutz/
+          - https://esthetic.smarbiz.sbs/support/
+          - https://esthetic.smarbiz.sbs/konto-loeschen/
+          - privacy page contains the customer-club positioning
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/PRODUCTION_SURFACE_VERIFIED.md
+          git commit -m "Verify A+ Esthetic production store surface"
+          git push origin HEAD:main
