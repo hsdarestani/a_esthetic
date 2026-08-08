@@ -1,0 +1,20 @@
+{
+  "name": "a-esthetic-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native mobile wrapper for the A+ Esthetic customer club.",
+  "scripts": {
+    "native:sync": "npx cap sync",
+    "native:android": "bash scripts/build-android.sh",
+    "native:ios": "bash scripts/build-ios.sh",
+    "store:check": "python3 scripts/store_positioning_check.py"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0"
+  }
+}
