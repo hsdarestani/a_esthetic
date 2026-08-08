@@ -1,0 +1,20 @@
+{
+  "appId": "de.aplusesthetic.app",
+  "appName": "A+ Esthetic",
+  "webDir": "www",
+  "server": {
+    "url": "https://esthetic.smarbiz.sbs",
+    "cleartext": false,
+    "allowNavigation": [
+      "esthetic.smarbiz.sbs"
+    ]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#17212a"
+  },
+  "ios": {
+    "backgroundColor": "#17212a",
+    "contentInset": "automatic"
+  }
+}
