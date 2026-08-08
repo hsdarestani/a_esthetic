@@ -1,0 +1,24 @@
+{
+  "name": "a-esthetic-customer-club-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native Android/iOS shell for the A+ Esthetic Customer Club",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "mobile:prepare:android": "node scripts/prepare-mobile.mjs android",
+    "mobile:prepare:ios": "node scripts/prepare-mobile.mjs ios",
+    "mobile:build:android": "node scripts/build-android.mjs",
+    "mobile:build:ios": "node scripts/build-ios.mjs",
+    "mobile:validate": "node scripts/validate-mobile.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.0"
+  }
+}
