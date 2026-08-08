@@ -31,8 +31,8 @@ npx @capacitor/assets generate --ios \
 mkdir -p artifacts build/ios
 ARCHIVE="$ROOT/build/ios/AEsthetic.xcarchive"
 EXPORT_DIR="$ROOT/build/ios/export"
-VERSION="${APP_VERSION:-1.0.0}"
-BUILD="${BUILD_NUMBER:-1}"
+VERSION="${APP_VERSION_NAME:-${APP_VERSION:-1.0.0}}"
+BUILD="${APP_BUILD_NUMBER:-${BUILD_NUMBER:-1}}"
 
 XCODE_ARGS=(
   -workspace ios/App/App.xcworkspace
@@ -42,13 +42,24 @@ XCODE_ARGS=(
   -archivePath "$ARCHIVE"
   MARKETING_VERSION="$VERSION"
   CURRENT_PROJECT_VERSION="$BUILD"
+  CODE_SIGN_STYLE=Automatic
 )
 
 if [ -n "${APPLE_TEAM_ID:-}" ]; then
   XCODE_ARGS+=(DEVELOPMENT_TEAM="$APPLE_TEAM_ID")
 fi
 
-if [ "${IOS_ALLOW_PROVISIONING_UPDATES:-0}" = "1" ]; then
+# A+ Publisher can materialize its App Store Connect API key on the macOS agent.
+# Passing these flags allows an ephemeral cloud Mac to create/update signing
+# resources without requiring a developer's personal Mac/keychain setup.
+if [ -n "${APPLE_AUTH_KEY_PATH:-}" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_ISSUER_ID:-}" ]; then
+  XCODE_ARGS+=(
+    -allowProvisioningUpdates
+    -authenticationKeyPath "$APPLE_AUTH_KEY_PATH"
+    -authenticationKeyID "$APPLE_KEY_ID"
+    -authenticationKeyIssuerID "$APPLE_ISSUER_ID"
+  )
+elif [ "${IOS_ALLOW_PROVISIONING_UPDATES:-0}" = "1" ]; then
   XCODE_ARGS+=(-allowProvisioningUpdates)
 fi
 
@@ -76,10 +87,21 @@ PLIST
 fi
 
 rm -rf "$EXPORT_DIR"
-xcodebuild -exportArchive \
-  -archivePath "$ARCHIVE" \
-  -exportPath "$EXPORT_DIR" \
+EXPORT_ARGS=(
+  -exportArchive
+  -archivePath "$ARCHIVE"
+  -exportPath "$EXPORT_DIR"
   -exportOptionsPlist "$EXPORT_PLIST"
+)
+if [ -n "${APPLE_AUTH_KEY_PATH:-}" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_ISSUER_ID:-}" ]; then
+  EXPORT_ARGS+=(
+    -allowProvisioningUpdates
+    -authenticationKeyPath "$APPLE_AUTH_KEY_PATH"
+    -authenticationKeyID "$APPLE_KEY_ID"
+    -authenticationKeyIssuerID "$APPLE_ISSUER_ID"
+  )
+fi
+xcodebuild "${EXPORT_ARGS[@]}"
 
 IPA="$(find "$EXPORT_DIR" -name '*.ipa' -type f | head -n 1)"
 if [ -z "$IPA" ]; then
