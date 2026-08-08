@@ -23,7 +23,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -69,8 +68,6 @@ jobs:
             rm -rf "$RELEASE"
             mkdir -p "$RELEASE" "$ROOT"
             tar -xzf "$PACKAGE" -C "$RELEASE"
-
-            # Replace code/vendor only. Keep SQLite DB and environment persistent.
             rm -rf "$ROOT/config" "$ROOT/platform_app" "$ROOT/templates" "$ROOT/static" "$ROOT/vendor"
             cp -a "$RELEASE/config" "$RELEASE/platform_app" "$RELEASE/templates" "$RELEASE/static" "$RELEASE/vendor" "$ROOT/"
             install -m 0644 "$RELEASE/manage.py" "$ROOT/manage.py"
@@ -104,7 +101,6 @@ jobs:
             [Unit]
             Description=A+ Esthetic Customer Club mobile API
             After=network.target
-
             [Service]
             Type=simple
             WorkingDirectory=$ROOT
@@ -116,80 +112,63 @@ jobs:
             UMask=0077
             NoNewPrivileges=true
             PrivateTmp=true
-
             [Install]
             WantedBy=multi-user.target
             SERVICE
-
             systemctl daemon-reload
             systemctl enable --now a-esthetic-mobile.service
             systemctl restart a-esthetic-mobile.service
 
-            # Preserve the existing public web and legacy API; route only the
-            # native Customer Club API and Store legal URLs to Django.
             if systemctl is-active --quiet caddy && [ -f /etc/caddy/Caddyfile ]; then
               python3 - <<'PY'
             from pathlib import Path
-            p = Path('/etc/caddy/Caddyfile')
-            s = p.read_text()
-            begin = '# BEGIN A_ESTHETIC_WEB'
-            end = '# END A_ESTHETIC_WEB'
-            a = s.find(begin)
-            b = s.find(end, a)
-            if a < 0 or b < 0:
-                raise SystemExit('A_ESTHETIC_WEB block not found in Caddyfile')
-            block = s[a:b]
-            start = block.find('  @customerClubDjango path ')
+            p=Path('/etc/caddy/Caddyfile'); s=p.read_text()
+            begin='# BEGIN A_ESTHETIC_WEB'; end='# END A_ESTHETIC_WEB'
+            a=s.find(begin); b=s.find(end,a)
+            if a < 0 or b < 0: raise SystemExit('A_ESTHETIC_WEB block not found')
+            block=s[a:b]
+            start=block.find('  @customerClubDjango path ')
             if start >= 0:
-                finish = block.find('  handle /api/*', start)
-                if finish < 0:
-                    raise SystemExit('Could not locate legacy /api handler after sidecar route')
-                block = block[:start] + block[finish:]
-            marker = (
-                '  @customerClubDjango path /api/mobile/* /datenschutz/ /datenschutz/* /support/ '
-                '/konto-loeschen/ /nutzungsbedingungen/ /impressum/\n'
-                '  handle @customerClubDjango {\n'
-                '    reverse_proxy 127.0.0.1:8770\n'
-                '  }\n'
+                h=block.find('  handle @customerClubDjango {',start)
+                close=block.find('  }\n',h)
+                if h >= 0 and close >= 0: block=block[:start]+block[close+4:]
+            marker=(
+              '  @customerClubDjango path /api/mobile/* /datenschutz/ /datenschutz/* /support/ /konto-loeschen/ /nutzungsbedingungen/ /impressum/\n'
+              '  handle @customerClubDjango {\n    reverse_proxy 127.0.0.1:8770\n  }\n'
             )
-            legacy = '  handle /api/* {'
-            pos = block.find(legacy)
-            if pos < 0:
-                raise SystemExit('Legacy /api handler not found')
-            block = block[:pos] + marker + block[pos:]
-            p.write_text(s[:a] + block + s[b:])
+            # Place the specific matcher immediately after the site opening brace.
+            brace=block.find('{')
+            if brace < 0: raise SystemExit('A+ Esthetic Caddy site opening brace not found')
+            block=block[:brace+1]+'\n'+marker+block[brace+1:].lstrip('\n')
+            p.write_text(s[:a]+block+s[b:])
             PY
               caddy validate --config /etc/caddy/Caddyfile
               systemctl reload caddy
             else
               CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
-              if [ ! -f "$CONF" ]; then
-                echo "Neither managed Caddy nor Nginx A+ Esthetic config was found." >&2
-                exit 4
-              fi
+              test -f "$CONF"
               python3 - <<'PY'
             from pathlib import Path
-            p = Path('/etc/nginx/sites-available/a-esthetic-connected.conf')
-            s = p.read_text()
-            a = s.find('    # BEGIN CUSTOMER_CLUB_DJANGO')
-            b = s.find('    # END CUSTOMER_CLUB_DJANGO')
+            p=Path('/etc/nginx/sites-available/a-esthetic-connected.conf'); s=p.read_text()
+            begin='    # BEGIN CUSTOMER_CLUB_DJANGO'; end='    # END CUSTOMER_CLUB_DJANGO'
+            a=s.find(begin); b=s.find(end,a)
             if a >= 0 and b >= 0:
-                b += len('    # END CUSTOMER_CLUB_DJANGO\n')
-                s = s[:a] + s[b:]
-            marker = '''    # BEGIN CUSTOMER_CLUB_DJANGO
+                nl=s.find('\n',b)
+                s=s[:a]+s[(nl+1 if nl>=0 else len(s)):]
+            marker='''    # BEGIN CUSTOMER_CLUB_DJANGO
                 location ^~ /api/mobile/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location = /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location ^~ /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location = /support/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location = /konto-loeschen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location = /nutzungsbedingungen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location = /impressum/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 # END CUSTOMER_CLUB_DJANGO
             '''
-            needle = '    location /api/ {'
-            pos = s.find(needle)
-            if pos < 0:
-                raise SystemExit('Legacy Nginx /api handler not found')
-            p.write_text(s[:pos] + marker + s[pos:])
+            # Location order is irrelevant for the ^~ longest-prefix mobile route.
+            pos=s.find('{')
+            if pos < 0: raise SystemExit('Nginx server opening brace not found')
+            p.write_text(s[:pos+1]+'\n'+marker+s[pos+1:])
             PY
               nginx -t
               systemctl reload nginx
