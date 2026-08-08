@@ -20,6 +20,14 @@ if [ ! -d ios ]; then
 fi
 npx cap sync ios
 
+# Generate AppIcon and launch/splash assets from the official A+ Esthetic logo.
+npx @capacitor/assets generate --ios \
+  --iconBackgroundColor '#000000' \
+  --iconBackgroundColorDark '#000000' \
+  --splashBackgroundColor '#000000' \
+  --splashBackgroundColorDark '#000000' \
+  --logoSplashScale 0.34
+
 mkdir -p artifacts build/ios
 ARCHIVE="$ROOT/build/ios/AEsthetic.xcarchive"
 EXPORT_DIR="$ROOT/build/ios/export"
