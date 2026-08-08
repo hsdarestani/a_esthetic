@@ -1,0 +1,98 @@
+name: Capture A+ Esthetic Store screenshots
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/store-screenshots.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Serve native web bundle at Capacitor-compatible origin
+        run: |
+          sudo nohup python3 -m http.server 80 --directory www >/tmp/aesthetic-www.log 2>&1 &
+          for i in {1..20}; do curl -fsS http://localhost/ >/dev/null && exit 0; sleep 1; done
+          cat /tmp/aesthetic-www.log
+          exit 1
+
+      - name: Capture real authenticated Customer Club screens
+        env:
+          REVIEW_USER: demo@a-esthetic.de
+          REVIEW_PASS: Aplus-Demo-2026!
+        run: |
+          cat > /tmp/capture.mjs <<'JS'
+          import { chromium } from 'playwright';
+          import fs from 'node:fs';
+
+          const browser = await chromium.launch({headless: true});
+          const sets = [
+            {name: 'android', width: 1080, height: 1920},
+            {name: 'ios', width: 1320, height: 2868},
+          ];
+          const routes = [
+            ['01-home', 'home'],
+            ['02-club', 'club'],
+            ['03-termine', 'booking'],
+            ['04-wallet', 'wallet'],
+          ];
+
+          for (const set of sets) {
+            const dir = `store/screenshots/${set.name}`;
+            fs.mkdirSync(dir, {recursive: true});
+            const context = await browser.newContext({
+              viewport: {width: set.width, height: set.height},
+              locale: 'de-DE',
+              deviceScaleFactor: 1,
+            });
+            const page = await context.newPage();
+            await page.goto('http://localhost/', {waitUntil: 'domcontentloaded'});
+            await page.locator('input[name="username"]').fill(process.env.REVIEW_USER);
+            await page.locator('input[name="password"]').fill(process.env.REVIEW_PASS);
+            await page.locator('#login-form button[type="submit"]').click();
+            await page.waitForSelector('[data-route="club"]', {timeout: 20000});
+            await page.waitForFunction(() => !document.body.textContent.includes('Wird geladen…'));
+
+            for (const [file, route] of routes) {
+              if (route !== 'home') {
+                await page.locator(`[data-route="${route}"]`).first().click();
+                await page.waitForFunction(() => !document.body.textContent.includes('Wird geladen…'));
+              }
+              await page.evaluate(() => window.scrollTo(0, 0));
+              await page.waitForTimeout(400);
+              await page.screenshot({path: `${dir}/${file}.png`, fullPage: false});
+            }
+            await context.close();
+          }
+          await browser.close();
+          JS
+          node /tmp/capture.mjs
+          file store/screenshots/android/*.png store/screenshots/ios/*.png
+
+      - name: Commit Store screenshots
+        run: |
+          git config user.name 'A+ Publisher Bot'
+          git config user.email '45485005+hsdarestani@users.noreply.github.com'
+          git add store/screenshots/android store/screenshots/ios
+          if git diff --cached --quiet; then
+            echo 'Screenshots unchanged.'
+          else
+            git commit -m 'Add real A+ Esthetic Store screenshots'
+            git push
+          fi
