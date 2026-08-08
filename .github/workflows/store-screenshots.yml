@@ -37,7 +37,7 @@ jobs:
           REVIEW_USER: demo@a-esthetic.de
           REVIEW_PASS: Aplus-Demo-2026!
         run: |
-          cat > /tmp/capture.mjs <<'JS'
+          cat > .capture-store.mjs <<'JS'
           import { chromium } from 'playwright';
           import fs from 'node:fs';
 
@@ -82,7 +82,8 @@ jobs:
           }
           await browser.close();
           JS
-          node /tmp/capture.mjs
+          node .capture-store.mjs
+          rm -f .capture-store.mjs
           file store/screenshots/android/*.png store/screenshots/ios/*.png
 
       - name: Commit Store screenshots
