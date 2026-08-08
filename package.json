@@ -5,6 +5,7 @@
   "description": "Native mobile wrapper for the A+ Esthetic customer club.",
   "scripts": {
     "native:sync": "npx cap sync",
+    "native:assets": "npx @capacitor/assets generate --iconBackgroundColor '#000000' --iconBackgroundColorDark '#000000' --splashBackgroundColor '#000000' --splashBackgroundColorDark '#000000' --logoSplashScale 0.34",
     "native:android": "bash scripts/build-android.sh",
     "native:ios": "bash scripts/build-ios.sh",
     "store:check": "python3 scripts/store_positioning_check.py"
@@ -15,6 +16,7 @@
     "@capacitor/ios": "^8.0.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.0.0"
   }
 }
