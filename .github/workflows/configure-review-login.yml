@@ -1,4 +1,4 @@
-name: Configure A+ Esthetic Store review login
+name: Verify A+ Esthetic Store review login
 
 on:
   workflow_dispatch:
@@ -11,10 +11,10 @@ permissions:
   contents: read
 
 jobs:
-  configure:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify demo account and store it encrypted in Publisher
+      - name: Verify review-only demo account on production
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
@@ -23,26 +23,14 @@ jobs:
           script: |
             set -euo pipefail
             MOBILE=/opt/a-esthetic-mobile
-            PUBLISHER=/opt/aplus-publisher
             test -d "$MOBILE"
-            test -d "$PUBLISHER"
-
             set -a
             . "$MOBILE/mobile.env"
             set +a
             export PYTHONPATH="$MOBILE/vendor"
             REVIEW_USER='demo@a-esthetic.de'
-            # The seed command's review-only fallback is intentionally a demo
-            # credential, contains no real customer data, and can be rotated later.
             REVIEW_PASS="${DEMO_PASSWORD:-Aplus-Demo-2026!}"
-
             cd "$MOBILE"
             REVIEW_USER="$REVIEW_USER" REVIEW_PASS="$REVIEW_PASS" python3 manage.py shell -c \
               "import os; from django.contrib.auth import authenticate; u=authenticate(username=os.environ['REVIEW_USER'],password=os.environ['REVIEW_PASS']); assert u is not None and u.is_active; print('review_demo_auth=yes')"
-
-            cd "$PUBLISHER"
-            docker compose exec -T \
-              -e AESTHETIC_REVIEW_USER="$REVIEW_USER" \
-              -e AESTHETIC_REVIEW_PASS="$REVIEW_PASS" \
-              web python manage.py shell -c \
-              "import os; from apps.publisher.models import MobileApp; a=MobileApp.objects.get(slug='a-esthetic'); a.review_username=os.environ['AESTHETIC_REVIEW_USER']; a.set_review_password(os.environ['AESTHETIC_REVIEW_PASS']); a.review_notes='Review-only demo account for the A+ Esthetic Customer Club. No real customer data is used.'; a.save(update_fields=['review_username','review_password_blob','review_notes','updated_at']); print('publisher_review_login=yes')"
+            echo 'Review demo account is ready.'
