@@ -1,0 +1,48 @@
+name: Validate A+ Esthetic mobile release
+
+on:
+  push:
+    branches: ["agent/esthetic-club-mobile"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+
+      - name: Validate Django
+        env:
+          DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+          DJANGO_DEBUG: "1"
+        run: |
+          python -m compileall -q config platform_app
+          python manage.py check
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package.json
+
+      - name: Install Capacitor dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate mobile shell
+        run: |
+          node --check www/app.js
+          npm run mobile:validate
