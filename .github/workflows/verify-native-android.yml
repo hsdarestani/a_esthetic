@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
     paths:
+      - "assets/**"
+      - "www/**"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.json"
+      - "scripts/build-android.sh"
+      - "scripts/configure_android_signing.py"
+      - "scripts/store_positioning_check.py"
       - ".github/workflows/verify-native-android.yml"
   workflow_dispatch:
 
@@ -20,32 +28,17 @@ jobs:
         with:
           node-version: "22"
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
-      - name: Install native dependencies
-        run: npm install
-
-      - name: Verify product positioning
-        run: npm run store:check
-
-      - name: Generate Android project
-        run: |
-          rm -rf android
-          npx cap add android
-          npx cap sync android
-          chmod +x android/gradlew
-
-      - name: Build debug app bundle
-        run: |
-          cd android
-          ./gradlew --no-daemon bundleDebug
+      - name: Build branded Android release bundle
+        run: bash scripts/build-android.sh
 
       - name: Upload verification bundle
         uses: actions/upload-artifact@v4
         with:
-          name: a-esthetic-android-debug-aab
-          path: android/app/build/outputs/bundle/debug/*.aab
+          name: a-esthetic-android-release-aab
+          path: artifacts/a-esthetic-release.aab
           if-no-files-found: error
