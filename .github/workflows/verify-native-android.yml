@@ -10,6 +10,7 @@ on:
       - "package-lock.json"
       - "capacitor.config.json"
       - "scripts/build-android.sh"
+      - "scripts/configure_android_release.py"
       - "scripts/configure_android_signing.py"
       - "scripts/store_positioning_check.py"
       - ".github/workflows/verify-native-android.yml"
@@ -33,8 +34,41 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Build branded Android release bundle
-        run: bash scripts/build-android.sh
+      - name: Create ephemeral Publisher-style upload key
+        env:
+          STORE_PASSWORD: verification-only-password
+          KEY_PASSWORD: verification-only-password
+          KEY_ALIAS: upload
+        run: |
+          mkdir -p android
+          keytool -genkeypair -noprompt \
+            -keystore android/upload-keystore.jks \
+            -storetype PKCS12 \
+            -keyalg RSA -keysize 2048 -validity 100 \
+            -alias "$KEY_ALIAS" \
+            -storepass "$STORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
+            -dname "CN=A Esthetic Verification, OU=CI, O=A Esthetic GmbH, C=DE"
+          cat > android/key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=../upload-keystore.jks
+          EOF
+
+      - name: Build signed branded Android release bundle
+        env:
+          APP_VERSION_NAME: "1.0.0"
+          APP_BUILD_NUMBER: "1"
+          REQUIRE_ANDROID_SIGNING: "1"
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/android/upload-keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: verification-only-password
+          ANDROID_KEY_ALIAS: upload
+          ANDROID_KEY_PASSWORD: verification-only-password
+        run: |
+          bash scripts/build-android.sh
+          jarsigner -verify -verbose -certs artifacts/a-esthetic-release.aab >/tmp/jarsigner.txt
+          tail -n 20 /tmp/jarsigner.txt
 
       - name: Upload verification bundle
         uses: actions/upload-artifact@v4
