@@ -15,6 +15,14 @@ if [ ! -d android ]; then
 fi
 npx cap sync android
 
+# Generate launcher/adaptive icons and splash assets from the official A+ Esthetic logo.
+npx @capacitor/assets generate --android \
+  --iconBackgroundColor '#000000' \
+  --iconBackgroundColorDark '#000000' \
+  --splashBackgroundColor '#000000' \
+  --splashBackgroundColorDark '#000000' \
+  --logoSplashScale 0.34
+
 mkdir -p artifacts
 
 # Optional signing contract for Publisher/CI.
