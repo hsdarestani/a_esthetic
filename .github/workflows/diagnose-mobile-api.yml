@@ -14,7 +14,7 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Check service and routes
+      - name: Check active proxy configuration
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
@@ -23,14 +23,19 @@ jobs:
           script: |
             set +e
             echo "service=$(systemctl is-active a-esthetic-mobile.service 2>/dev/null)"
-            echo "--- local mobile status ---"
-            curl -sS -D - http://127.0.0.1:8770/api/mobile/status/ -o /tmp/local-mobile.out
-            head -c 800 /tmp/local-mobile.out; echo
-            echo "--- public mobile status ---"
-            curl -sS -D - https://esthetic.smarbiz.sbs/api/mobile/status/ -o /tmp/public-mobile.out
-            head -c 800 /tmp/public-mobile.out; echo
-            echo "--- public privacy ---"
-            curl -sS -D - https://esthetic.smarbiz.sbs/datenschutz/ -o /tmp/privacy.out
-            grep -oi -m1 -E 'Kundenclub|Customer Club|Datenschutzerklärung' /tmp/privacy.out || true
-            echo "--- nginx sidecar marker ---"
-            grep -n -A10 -B2 'CUSTOMER_CLUB_DJANGO' /etc/nginx/sites-available/a-esthetic-connected.conf || true
+            echo "--- enabled sites ---"
+            ls -la /etc/nginx/sites-enabled/ 2>/dev/null || true
+            echo "--- active nginx blocks mentioning esthetic.smarbiz.sbs ---"
+            nginx -T 2>&1 | awk '
+              /^# configuration file / {src=$0}
+              /server_name[[:space:]]+esthetic\.smarbiz\.sbs/ {print src; show=1; before=12}
+              show {print; n++; if(n>45){show=0;n=0}}
+            ' | head -n 180
+            echo "--- active mobile route occurrences ---"
+            nginx -T 2>&1 | grep -n -A8 -B5 '/api/mobile/' || true
+            echo "--- origin Host test ---"
+            curl -sS -D - -H 'Host: esthetic.smarbiz.sbs' http://127.0.0.1/api/mobile/status/ -o /tmp/origin.out
+            head -c 500 /tmp/origin.out; echo
+            echo "--- public test ---"
+            curl -sS -D - https://esthetic.smarbiz.sbs/api/mobile/status/ -o /tmp/public.out
+            head -c 500 /tmp/public.out; echo
