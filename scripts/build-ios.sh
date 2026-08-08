@@ -35,8 +35,21 @@ BUILD="${APP_BUILD_NUMBER:-${BUILD_NUMBER:-1}}"
 TEAM_ID="${APPLE_TEAM_ID:-${IOS_TEAM_ID:-}}"
 AUTH_KEY_PATH="${APPLE_AUTH_KEY_PATH:-${APPLE_API_KEY_PATH:-}}"
 
+# Capacitor 8 may generate a Swift Package Manager project without an
+# .xcworkspace. Support both SPM (.xcodeproj) and CocoaPods (.xcworkspace)
+# layouts so the Publisher build remains deterministic across Capacitor updates.
+if [ -d ios/App/App.xcworkspace ]; then
+  XCODE_CONTAINER=(-workspace ios/App/App.xcworkspace)
+elif [ -d ios/App/App.xcodeproj ]; then
+  XCODE_CONTAINER=(-project ios/App/App.xcodeproj)
+else
+  echo "Neither ios/App/App.xcworkspace nor ios/App/App.xcodeproj exists after cap sync." >&2
+  find ios -maxdepth 3 -print >&2 || true
+  exit 4
+fi
+
 XCODE_ARGS=(
-  -workspace ios/App/App.xcworkspace
+  "${XCODE_CONTAINER[@]}"
   -scheme App
   -configuration Release
   -destination generic/platform=iOS
