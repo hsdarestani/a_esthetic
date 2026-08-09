@@ -41,29 +41,75 @@ npx cap sync android
 # Apply the version supplied by A+ Publisher before Gradle packages the bundle.
 python3 scripts/configure_android_release.py
 
-# The old assets/appicon.png is a stale blue launcher artwork. Build Android
-# launcher/adaptive resources from the actual gold A+ Esthetic lotus instead.
-# A white icon background matches the public store identity; the splash remains
-# black with the same gold mark.
-ICON_LOGO_SOURCE="$ROOT/assets/logo.svg"
-if [ ! -f "$ICON_LOGO_SOURCE" ]; then
-  echo "Missing A+ Esthetic logo source: $ICON_LOGO_SOURCE" >&2
+# Do not rely on Capacitor's generated default launcher assets. The public Play
+# Store artwork is the source of truth and is copied into the native project on
+# every clean Publisher/CI build. Both normal and round launcher references point
+# to it, so OEM launchers cannot fall back to Capacitor's blue default icon.
+LAUNCHER_SOURCE="$ROOT/assets/appicon.png"
+LAUNCHER_DIR="$ROOT/android/app/src/main/res/drawable-nodpi"
+MANIFEST="$ROOT/android/app/src/main/AndroidManifest.xml"
+
+if [ ! -f "$LAUNCHER_SOURCE" ]; then
+  echo "Missing A+ Esthetic launcher artwork: $LAUNCHER_SOURCE" >&2
+  exit 6
+fi
+if [ ! -f "$MANIFEST" ]; then
+  echo "Missing generated AndroidManifest.xml: $MANIFEST" >&2
   exit 6
 fi
 
-ANDROID_ASSET_DIR="$(mktemp -d)"
-cp "$ICON_LOGO_SOURCE" "$ANDROID_ASSET_DIR/logo.svg"
-trap 'rm -rf "$ANDROID_ASSET_DIR"' EXIT
+mkdir -p "$LAUNCHER_DIR"
+cp "$LAUNCHER_SOURCE" "$LAUNCHER_DIR/launcher_icon.png"
 
-npx @capacitor/assets generate --android \
-  --assetPath "$ANDROID_ASSET_DIR" \
-  --iconBackgroundColor '#FFFFFF' \
-  --iconBackgroundColorDark '#FFFFFF' \
-  --splashBackgroundColor '#000000' \
-  --splashBackgroundColorDark '#000000' \
-  --logoSplashScale 0.34
+python3 - <<'PY'
+from pathlib import Path
+import re
 
-echo "Generated A+ Esthetic Android launcher/adaptive icons from the gold lotus logo."
+manifest = Path('android/app/src/main/AndroidManifest.xml')
+text = manifest.read_text(encoding='utf-8')
+
+if '<application' not in text:
+    raise SystemExit('AndroidManifest.xml has no <application> element')
+
+if re.search(r'android:icon="[^"]+"', text):
+    text = re.sub(
+        r'android:icon="[^"]+"',
+        'android:icon="@drawable/launcher_icon"',
+        text,
+        count=1,
+    )
+else:
+    text = text.replace(
+        '<application',
+        '<application android:icon="@drawable/launcher_icon"',
+        1,
+    )
+
+if re.search(r'android:roundIcon="[^"]+"', text):
+    text = re.sub(
+        r'android:roundIcon="[^"]+"',
+        'android:roundIcon="@drawable/launcher_icon"',
+        text,
+        count=1,
+    )
+else:
+    text = text.replace(
+        '<application',
+        '<application android:roundIcon="@drawable/launcher_icon"',
+        1,
+    )
+
+manifest.write_text(text, encoding='utf-8')
+
+if 'android:icon="@drawable/launcher_icon"' not in text:
+    raise SystemExit('Failed to set android:icon')
+if 'android:roundIcon="@drawable/launcher_icon"' not in text:
+    raise SystemExit('Failed to set android:roundIcon')
+
+print('Android manifest launcher references verified.')
+PY
+
+echo "Installed exact A+ Esthetic Play Store artwork as Android launcher icon."
 
 mkdir -p artifacts
 
