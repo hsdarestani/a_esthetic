@@ -56,7 +56,7 @@ cp "$ICON_LOGO_SOURCE" "$ANDROID_ASSET_DIR/logo.svg"
 trap 'rm -rf "$ANDROID_ASSET_DIR"' EXIT
 
 npx @capacitor/assets generate --android \
-  --assetPath "$ANDROID_ASSET_DIR" \
+  --asset-path "$ANDROID_ASSET_DIR" \
   --iconBackgroundColor '#FFFFFF' \
   --iconBackgroundColorDark '#FFFFFF' \
   --splashBackgroundColor '#000000' \
@@ -76,8 +76,7 @@ if [ -n "${ANDROID_KEYSTORE_PATH:-}" ] && [ -f "${ANDROID_KEYSTORE_PATH}" ] && \
   export AESTHETIC_KEYSTORE_FILE="$ANDROID_KEYSTORE_PATH"
   SIGNING_READY=1
 elif [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && \
-     [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] && \
-     [ -n "${ANDROID_KEY_ALIAS:-}" ] && \
+     [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] && [ -n "${ANDROID_KEY_ALIAS:-}" ] && \
      [ -n "${ANDROID_KEY_PASSWORD:-}" ]; then
   printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/aesthetic-release.jks
   export AESTHETIC_KEYSTORE_FILE="$ROOT/android/app/aesthetic-release.jks"
