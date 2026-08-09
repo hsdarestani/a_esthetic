@@ -56,7 +56,7 @@ cp "$ICON_LOGO_SOURCE" "$ANDROID_ASSET_DIR/logo.svg"
 trap 'rm -rf "$ANDROID_ASSET_DIR"' EXIT
 
 npx @capacitor/assets generate --android \
-  --asset-path "$ANDROID_ASSET_DIR" \
+  --assetPath "$ANDROID_ASSET_DIR" \
   --iconBackgroundColor '#FFFFFF' \
   --iconBackgroundColorDark '#FFFFFF' \
   --splashBackgroundColor '#000000' \
