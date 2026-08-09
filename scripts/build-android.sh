@@ -41,11 +41,11 @@ npx cap sync android
 # Apply the version supplied by A+ Publisher before Gradle packages the bundle.
 python3 scripts/configure_android_release.py
 
-# Do not rely on Capacitor's generated default launcher assets. The public Play
-# Store artwork is the source of truth and is copied into the native project on
-# every clean Publisher/CI build. Both normal and round launcher references point
-# to it, so OEM launchers cannot fall back to Capacitor's blue default icon.
-LAUNCHER_SOURCE="$ROOT/assets/appicon.png"
+# Use the exact current Play Store artwork, re-encoded as a standard WebP that
+# AAPT2 can compile reliably. This avoids the malformed/stale PNG that caused the
+# previous Publisher build to fail and also prevents Capacitor's default icon
+# from appearing on OEM launchers.
+LAUNCHER_SOURCE="$ROOT/assets/appicon.webp"
 LAUNCHER_DIR="$ROOT/android/app/src/main/res/drawable-nodpi"
 MANIFEST="$ROOT/android/app/src/main/AndroidManifest.xml"
 
@@ -59,7 +59,8 @@ if [ ! -f "$MANIFEST" ]; then
 fi
 
 mkdir -p "$LAUNCHER_DIR"
-cp "$LAUNCHER_SOURCE" "$LAUNCHER_DIR/launcher_icon.png"
+rm -f "$LAUNCHER_DIR/launcher_icon.png" "$LAUNCHER_DIR/launcher_icon.webp"
+cp "$LAUNCHER_SOURCE" "$LAUNCHER_DIR/launcher_icon.webp"
 
 python3 - <<'PY'
 from pathlib import Path
@@ -109,7 +110,7 @@ if 'android:roundIcon="@drawable/launcher_icon"' not in text:
 print('Android manifest launcher references verified.')
 PY
 
-echo "Installed exact A+ Esthetic Play Store artwork as Android launcher icon."
+echo "Installed AAPT-safe A+ Esthetic Play Store artwork as Android launcher icon."
 
 mkdir -p artifacts
 
