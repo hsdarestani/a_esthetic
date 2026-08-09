@@ -41,24 +41,18 @@ npx cap sync android
 # Apply the version supplied by A+ Publisher before Gradle packages the bundle.
 python3 scripts/configure_android_release.py
 
-# Generate launcher/adaptive icons from the exact finished artwork used for the
-# store listing, while keeping the existing logo-driven black launch screen.
-# Using an isolated asset directory prevents assets/logo.svg from being picked as
-# the launcher icon and gives Android/HyperOS a proper adaptive-icon safe zone.
-APP_ICON_SOURCE="$ROOT/assets/appicon.png"
-SPLASH_LOGO_SOURCE="$ROOT/assets/logo.svg"
-if [ ! -f "$APP_ICON_SOURCE" ]; then
-  echo "Missing Android app icon source: $APP_ICON_SOURCE" >&2
-  exit 6
-fi
-if [ ! -f "$SPLASH_LOGO_SOURCE" ]; then
-  echo "Missing splash logo source: $SPLASH_LOGO_SOURCE" >&2
+# The old assets/appicon.png is a stale blue launcher artwork. Build Android
+# launcher/adaptive resources from the actual gold A+ Esthetic lotus instead.
+# A white icon background matches the public store identity; the splash remains
+# black with the same gold mark.
+ICON_LOGO_SOURCE="$ROOT/assets/logo.svg"
+if [ ! -f "$ICON_LOGO_SOURCE" ]; then
+  echo "Missing A+ Esthetic logo source: $ICON_LOGO_SOURCE" >&2
   exit 6
 fi
 
 ANDROID_ASSET_DIR="$(mktemp -d)"
-cp "$APP_ICON_SOURCE" "$ANDROID_ASSET_DIR/icon-only.png"
-cp "$SPLASH_LOGO_SOURCE" "$ANDROID_ASSET_DIR/logo.svg"
+cp "$ICON_LOGO_SOURCE" "$ANDROID_ASSET_DIR/logo.svg"
 trap 'rm -rf "$ANDROID_ASSET_DIR"' EXIT
 
 npx @capacitor/assets generate --android \
@@ -69,7 +63,7 @@ npx @capacitor/assets generate --android \
   --splashBackgroundColorDark '#000000' \
   --logoSplashScale 0.34
 
-echo "Generated Android launcher/adaptive icons from assets/appicon.png"
+echo "Generated A+ Esthetic Android launcher/adaptive icons from the gold lotus logo."
 
 mkdir -p artifacts
 
