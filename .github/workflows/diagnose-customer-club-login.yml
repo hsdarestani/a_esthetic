@@ -14,7 +14,7 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect production Customer Club account safely
+      - name: Inspect current and legacy account sources safely
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
@@ -37,10 +37,28 @@ jobs:
             from allauth.account.models import EmailAddress
             email='hsdf7rb@gmail.com'
             users=list(User.objects.filter(email__iexact=email).values('id','username','email','is_active','is_staff','is_superuser','last_login','date_joined'))
-            print('MATCH_COUNT=', len(users))
-            for u in users:
-                obj=User.objects.get(pk=u['id'])
-                print('USER=', {**u, 'has_usable_password': obj.has_usable_password()})
-                print('EMAILADDRESS=', list(EmailAddress.objects.filter(user=obj).values('email','verified','primary')))
-            print('TOTAL_USERS=', User.objects.count())
+            print('NEW_DB_MATCH_COUNT=', len(users))
+            print('NEW_DB_TOTAL_USERS=', User.objects.count())
             "
+
+            echo '=== LISTENERS ==='
+            ss -ltnp 2>/dev/null | grep -E ':(8765|8766|8770)\b' || true
+
+            echo '=== PROCESS CWD/CMD ==='
+            for PORT in 8765 8766 8770; do
+              PIDS="$(ss -ltnp 2>/dev/null | awk -v p=":$PORT" '$4 ~ p {print $NF}' | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)"
+              for PID in $PIDS; do
+                echo "PORT=$PORT PID=$PID CWD=$(readlink -f /proc/$PID/cwd 2>/dev/null || true)"
+                tr '\0' ' ' < "/proc/$PID/cmdline" 2>/dev/null | sed 's/[[:space:]]\+/ /g' || true
+                echo
+              done
+            done
+
+            echo '=== SQLITE CANDIDATES ==='
+            find /opt /root -maxdepth 5 -type f \( -name 'db.sqlite3' -o -name '*.sqlite' -o -name '*.sqlite3' \) -printf '%p %s bytes\n' 2>/dev/null | sort || true
+
+            echo '=== RELEVANT SERVICE METADATA ==='
+            systemctl list-units --type=service --all --no-legend 2>/dev/null | grep -Ei 'esthetic|customer|club|connected' | awk '{print $1}' | while read -r UNIT; do
+              echo "UNIT=$UNIT"
+              systemctl show "$UNIT" -p FragmentPath -p WorkingDirectory -p ExecStart --no-pager 2>/dev/null || true
+            done
