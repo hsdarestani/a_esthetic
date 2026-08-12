@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "allauth.usersessions",
     "platform_app",
     "p0_app",
+    "p1_app",
 ]
 
 MIDDLEWARE = [
