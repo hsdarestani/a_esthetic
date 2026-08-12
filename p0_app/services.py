@@ -6,7 +6,7 @@ from django.utils import timezone
 from platform_app.models import Appointment, BlockedPeriod, Reminder, StaffMember, WorkingHour
 
 
-def available_slots(service, staff, day, *, step_minutes=15):
+def available_slots(service, staff, day, *, step_minutes=15, exclude_appointment_id=None):
     if not service.active or not service.bookable_in_app or not staff.active:
         return []
     if not staff.services.filter(pk=service.pk).exists():
@@ -37,8 +37,10 @@ def available_slots(service, staff, day, *, step_minutes=15):
                     status__in=["requested", "confirmed"],
                     starts_at__lt=slot_end,
                     ends_at__gt=cursor,
-                ).exists()
-                if not blocked and not conflict:
+                )
+                if exclude_appointment_id:
+                    conflict = conflict.exclude(pk=exclude_appointment_id)
+                if not blocked and not conflict.exists():
                     slots.append(cursor)
             cursor += timedelta(minutes=step_minutes)
     return slots
