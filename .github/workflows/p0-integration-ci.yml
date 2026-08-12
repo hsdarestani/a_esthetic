@@ -39,6 +39,7 @@ jobs:
           python manage.py check
           python manage.py makemigrations --check --dry-run
           node --check www/p0.js
+          node --check www/p0-booking-change.js
 
       - name: Apply migrations on clean SQLite
         env:
