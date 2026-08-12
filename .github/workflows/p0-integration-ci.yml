@@ -58,3 +58,41 @@ jobs:
 
       - name: Verify Store positioning
         run: python scripts/store_positioning_check.py
+
+  native-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install native dependencies
+        run: npm ci
+
+      - name: Build Android release verification bundle
+        env:
+          REQUIRE_ANDROID_SIGNING: "0"
+        run: bash scripts/build-android.sh
+
+      - name: Verify P0 web assets are packaged in Android
+        run: |
+          test -f android/app/src/main/assets/public/p0.js
+          test -f android/app/src/main/assets/public/p0-booking-change.js
+          test -s artifacts/a-esthetic-release.aab
+
+      - name: Upload verification AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-esthetic-p0-android-release-aab
+          path: artifacts/a-esthetic-release.aab
+          if-no-files-found: error
