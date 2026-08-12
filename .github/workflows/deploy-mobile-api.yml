@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "platform_app/**"
+      - "p0_app/**"
       - "config/**"
       - "templates/legal.html"
       - "requirements.txt"
@@ -27,14 +28,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Build self-contained pure-Python deployment bundle
+      - name: Build self-contained deployment bundle
         run: |
           set -euo pipefail
           rm -rf /tmp/aesthetic-mobile-package
           mkdir -p /tmp/aesthetic-mobile-package/vendor
-          python -m pip install --quiet --target /tmp/aesthetic-mobile-package/vendor \
-            'Django==5.2.4' 'gunicorn==23.0.0' 'whitenoise==6.9.0' 'qrcode==8.2'
-          cp -a config platform_app templates static /tmp/aesthetic-mobile-package/
+          python -m pip install --quiet --target /tmp/aesthetic-mobile-package/vendor -r requirements.txt
+          cp -a config platform_app p0_app templates static /tmp/aesthetic-mobile-package/
           cp manage.py /tmp/aesthetic-mobile-package/
           tar -C /tmp/aesthetic-mobile-package -czf a-esthetic-mobile-package.tar.gz .
 
@@ -68,8 +68,8 @@ jobs:
             rm -rf "$RELEASE"
             mkdir -p "$RELEASE" "$ROOT"
             tar -xzf "$PACKAGE" -C "$RELEASE"
-            rm -rf "$ROOT/config" "$ROOT/platform_app" "$ROOT/templates" "$ROOT/static" "$ROOT/vendor"
-            cp -a "$RELEASE/config" "$RELEASE/platform_app" "$RELEASE/templates" "$RELEASE/static" "$RELEASE/vendor" "$ROOT/"
+            rm -rf "$ROOT/config" "$ROOT/platform_app" "$ROOT/p0_app" "$ROOT/templates" "$ROOT/static" "$ROOT/vendor"
+            cp -a "$RELEASE/config" "$RELEASE/platform_app" "$RELEASE/p0_app" "$RELEASE/templates" "$RELEASE/static" "$RELEASE/vendor" "$ROOT/"
             install -m 0644 "$RELEASE/manage.py" "$ROOT/manage.py"
 
             if [ ! -f "$ENV_FILE" ]; then
@@ -83,6 +83,7 @@ jobs:
             DJANGO_SECRET_KEY=$SECRET
             DJANGO_DEBUG=0
             DJANGO_ALLOWED_HOSTS=esthetic.smarbiz.sbs,127.0.0.1,localhost
+            CSRF_TRUSTED_ORIGINS=https://esthetic.smarbiz.sbs
             EOF
             fi
             chmod 600 "$ENV_FILE"
@@ -92,7 +93,11 @@ jobs:
             set +a
             export PYTHONPATH="$ROOT/vendor"
             cd "$ROOT"
-            python3 manage.py migrate --run-syncdb --noinput
+
+            # Existing production tables were originally created with --run-syncdb.
+            # --fake-initial adopts those tables into migration history safely.
+            python3 manage.py migrate platform_app --fake-initial --noinput
+            python3 manage.py migrate --noinput
             python3 manage.py seed_platform
             python3 manage.py collectstatic --noinput
             python3 manage.py check
@@ -133,10 +138,9 @@ jobs:
                 close=block.find('  }\n',h)
                 if h >= 0 and close >= 0: block=block[:start]+block[close+4:]
             marker=(
-              '  @customerClubDjango path /api/mobile/* /datenschutz/ /datenschutz/* /support/ /konto-loeschen/ /nutzungsbedingungen/ /impressum/\n'
+              '  @customerClubDjango path /api/mobile/* /accounts/* /login/ /datenschutz/ /datenschutz/* /support/ /konto-loeschen/ /nutzungsbedingungen/ /impressum/\n'
               '  handle @customerClubDjango {\n    reverse_proxy 127.0.0.1:8770\n  }\n'
             )
-            # Place the specific matcher immediately after the site opening brace.
             brace=block.find('{')
             if brace < 0: raise SystemExit('A+ Esthetic Caddy site opening brace not found')
             block=block[:brace+1]+'\n'+marker+block[brace+1:].lstrip('\n')
@@ -157,6 +161,8 @@ jobs:
                 s=s[:a]+s[(nl+1 if nl>=0 else len(s)):]
             marker='''    # BEGIN CUSTOMER_CLUB_DJANGO
                 location ^~ /api/mobile/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location ^~ /accounts/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /login/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location = /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location ^~ /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location = /support/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
@@ -165,7 +171,6 @@ jobs:
                 location = /impressum/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 # END CUSTOMER_CLUB_DJANGO
             '''
-            # Location order is irrelevant for the ^~ longest-prefix mobile route.
             pos=s.find('{')
             if pos < 0: raise SystemExit('Nginx server opening brace not found')
             p.write_text(s[:pos+1]+'\n'+marker+s[pos+1:])
@@ -175,7 +180,8 @@ jobs:
             fi
 
             sleep 3
-            curl -fsS http://127.0.0.1:8770/api/mobile/status/ | grep -q 'customer-club'
-            curl -fsS https://esthetic.smarbiz.sbs/api/mobile/status/ | grep -q 'customer-club'
+            curl -fsS http://127.0.0.1:8770/api/mobile/status/ | grep -qi 'customer club'
+            curl -fsS https://esthetic.smarbiz.sbs/api/mobile/status/ | grep -qi 'customer club'
             curl -fsS https://esthetic.smarbiz.sbs/datenschutz/ | grep -qi 'Kundenclub'
-            echo 'A+ Esthetic native Customer Club API is live.'
+            curl -fsSI https://esthetic.smarbiz.sbs/accounts/login/ | grep -Eq 'HTTP/[0-9.]+ (200|302)'
+            echo 'A+ Esthetic production-safe Customer Club API is live.'
