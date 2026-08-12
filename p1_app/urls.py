@@ -1,9 +1,11 @@
 from django.urls import path
 
-from . import views
+from . import consent_views, export_views, views
 
 urlpatterns = [
+    path("api/mobile/export/", export_views.mobile_full_export, name="p1_mobile_full_export"),
     path("api/mobile/progress/", views.mobile_progress, name="p1_mobile_progress"),
+    path("api/mobile/progress/consent/", consent_views.mobile_progress_consent, name="p1_mobile_progress_consent"),
     path("api/mobile/progress/<int:album_id>/upload/", views.mobile_progress_upload, name="p1_mobile_progress_upload"),
     path("api/mobile/progress/<int:album_id>/delete/", views.mobile_progress_album_delete, name="p1_mobile_progress_album_delete"),
     path("api/mobile/progress/photo/<int:photo_id>/", views.mobile_progress_photo, name="p1_mobile_progress_photo"),
