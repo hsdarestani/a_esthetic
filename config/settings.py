@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     "p0_app",
     "p1_app",
     "p2_app",
+    "p3_app",
 ]
 
 MIDDLEWARE = [
