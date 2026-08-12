@@ -1,3 +1,6 @@
+from pathlib import Path
+import re
+
 from django.core.management.base import BaseCommand
 
 from platform_app.models import FeatureModule, Service
@@ -53,5 +56,21 @@ class Command(BaseCommand):
                         "warning_sign": warning,
                     },
                 )
+
+        # The connected-app Nginx baseline historically capped requests at 1 MB.
+        # P1 progress photos allow up to 8 MB; raise only this existing site-level
+        # upload ceiling when the production Nginx file is present. The deployment
+        # workflow validates and reloads Nginx after this command.
+        nginx_conf = Path("/etc/nginx/sites-available/a-esthetic-connected.conf")
+        if nginx_conf.exists():
+            text = nginx_conf.read_text(encoding="utf-8")
+            if "client_max_body_size" in text:
+                updated = re.sub(r"client_max_body_size\s+\S+;", "client_max_body_size 10m;", text, count=1)
+            else:
+                brace = text.find("{")
+                updated = text if brace < 0 else text[: brace + 1] + "\n  client_max_body_size 10m;" + text[brace + 1 :]
+            if updated != text:
+                nginx_conf.write_text(updated, encoding="utf-8")
+                self.stdout.write("Nginx upload ceiling set to 10 MB for P1 protected photos.")
 
         self.stdout.write(self.style.SUCCESS("A+ Esthetic P1 Experience initialisiert."))
