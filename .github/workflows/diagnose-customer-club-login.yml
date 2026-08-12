@@ -14,7 +14,7 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect current and legacy account sources safely
+      - name: Compare current and legacy production accounts safely
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
@@ -23,42 +23,65 @@ jobs:
           command_timeout: 5m
           script: |
             set -euo pipefail
-            ROOT="/opt/a-esthetic-mobile"
-            ENV_FILE="$ROOT/mobile.env"
-            test -f "$ROOT/manage.py"
-            test -f "$ENV_FILE"
-            set -a
-            . "$ENV_FILE"
-            set +a
-            export PYTHONPATH="$ROOT/vendor"
-            cd "$ROOT"
-            python3 manage.py shell -c "
+            python3 - <<'PY'
+            import os, pathlib, subprocess
+
+            email = 'hsdf7rb@gmail.com'
+
+            # New Customer Club DB.
+            new_root = pathlib.Path('/opt/a-esthetic-mobile')
+            env = os.environ.copy()
+            env_file = new_root / 'mobile.env'
+            for raw in env_file.read_text().splitlines():
+                raw = raw.strip()
+                if raw and not raw.startswith('#') and '=' in raw:
+                    k, v = raw.split('=', 1)
+                    env[k] = v
+            env['PYTHONPATH'] = str(new_root / 'vendor')
+            new_code = """
             from django.contrib.auth.models import User
-            from allauth.account.models import EmailAddress
             email='hsdf7rb@gmail.com'
-            users=list(User.objects.filter(email__iexact=email).values('id','username','email','is_active','is_staff','is_superuser','last_login','date_joined'))
-            print('NEW_DB_MATCH_COUNT=', len(users))
-            print('NEW_DB_TOTAL_USERS=', User.objects.count())
-            "
+            qs=User.objects.filter(email__iexact=email)
+            print('NEW_MATCH=', qs.count())
+            print('NEW_TOTAL=', User.objects.count())
+            """
+            out = subprocess.check_output(['/usr/bin/python3','manage.py','shell','-c',new_code], cwd=new_root, env=env, text=True)
+            print(out.strip())
 
-            echo '=== LISTENERS ==='
-            ss -ltnp 2>/dev/null | grep -E ':(8765|8766|8770)\b' || true
-
-            echo '=== PROCESS CWD/CMD ==='
-            for PORT in 8765 8766 8770; do
-              PIDS="$(ss -ltnp 2>/dev/null | awk -v p=":$PORT" '$4 ~ p {print $NF}' | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)"
-              for PID in $PIDS; do
-                echo "PORT=$PORT PID=$PID CWD=$(readlink -f /proc/$PID/cwd 2>/dev/null || true)"
-                tr '\0' ' ' < "/proc/$PID/cmdline" 2>/dev/null | sed 's/[[:space:]]\+/ /g' || true
-                echo
-              done
-            done
-
-            echo '=== SQLITE CANDIDATES ==='
-            find /opt /root -maxdepth 5 -type f \( -name 'db.sqlite3' -o -name '*.sqlite' -o -name '*.sqlite3' \) -printf '%p %s bytes\n' 2>/dev/null | sort || true
-
-            echo '=== RELEVANT SERVICE METADATA ==='
-            systemctl list-units --type=service --all --no-legend 2>/dev/null | grep -Ei 'esthetic|customer|club|connected' | awk '{print $1}' | while read -r UNIT; do
-              echo "UNIT=$UNIT"
-              systemctl show "$UNIT" -p FragmentPath -p WorkingDirectory -p ExecStart --no-pager 2>/dev/null || true
-            done
+            # Legacy Django service: reuse its live process environment without printing secrets.
+            pids=[]
+            for p in pathlib.Path('/proc').iterdir():
+                if not p.name.isdigit():
+                    continue
+                try:
+                    cmd=(p/'cmdline').read_bytes().replace(b'\0', b' ').decode(errors='ignore')
+                    cwd=(p/'cwd').resolve()
+                except Exception:
+                    continue
+                if 'gunicorn' in cmd and '127.0.0.1:8766' in cmd:
+                    pids.append((int(p.name), cwd, cmd))
+            if not pids:
+                raise SystemExit('Legacy :8766 gunicorn process not found')
+            pid, legacy_root, _ = sorted(pids)[0]
+            raw_env=(pathlib.Path('/proc')/str(pid)/'environ').read_bytes().split(b'\0')
+            legacy_env=os.environ.copy()
+            for item in raw_env:
+                if b'=' not in item:
+                    continue
+                k,v=item.split(b'=',1)
+                legacy_env[k.decode(errors='ignore')]=v.decode(errors='ignore')
+            legacy_python='/opt/aesthetic-platform/venv/bin/python3'
+            legacy_code = """
+            from django.contrib.auth import get_user_model
+            U=get_user_model()
+            email='hsdf7rb@gmail.com'
+            qs=U.objects.filter(email__iexact=email)
+            print('LEGACY_MATCH=', qs.count())
+            print('LEGACY_TOTAL=', U.objects.count())
+            for u in qs:
+                print('LEGACY_USER=', {'id':u.pk,'username':getattr(u,'username',''),'email':u.email,'is_active':u.is_active,'is_staff':u.is_staff,'is_superuser':u.is_superuser,'has_usable_password':u.has_usable_password()})
+            """
+            out = subprocess.check_output([legacy_python,'manage.py','shell','-c',legacy_code], cwd=legacy_root, env=legacy_env, text=True, stderr=subprocess.STDOUT)
+            print(out.strip())
+            print('LEGACY_ROOT=', legacy_root)
+            PY
