@@ -1,0 +1,124 @@
+name: Verify A+ Esthetic P2 wallet cabinet shop
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "p2_app/**"
+      - "p1_app/**"
+      - "p0_app/**"
+      - "platform_app/**"
+      - "config/**"
+      - "www/**"
+      - "requirements.txt"
+      - "scripts/build-android.sh"
+      - "scripts/store_positioning_check.py"
+      - ".github/workflows/verify-p2.yml"
+      - ".github/workflows/deploy-mobile-api.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Compile and Django system check
+        run: |
+          python -m compileall -q config platform_app p0_app p1_app p2_app
+          python manage.py check
+          node --check www/app.js
+          node --check www/p0.js
+          node --check www/p0-booking-change.js
+          node --check www/p1.js
+          node --check www/p2.js
+
+      - name: Verify migration drift
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Apply migrations on clean SQLite
+        run: python manage.py migrate --noinput
+
+      - name: Verify P0 P1 and P2 seeds
+        run: |
+          python manage.py seed_platform
+          python manage.py seed_p1
+          python manage.py seed_p2
+
+      - name: Run P0 P1 and P2 regression tests
+        run: python manage.py test p0_app p1_app p2_app
+
+      - name: Verify Store positioning
+        run: python scripts/store_positioning_check.py
+
+  native-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Create ephemeral Publisher-style upload key
+        env:
+          STORE_PASSWORD: verification-only-password
+          KEY_PASSWORD: verification-only-password
+          KEY_ALIAS: upload
+        run: |
+          mkdir -p android
+          keytool -genkeypair -noprompt \
+            -keystore android/upload-keystore.jks \
+            -storetype PKCS12 \
+            -keyalg RSA -keysize 2048 -validity 100 \
+            -alias "$KEY_ALIAS" \
+            -storepass "$STORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
+            -dname "CN=A Esthetic P2 Verification, OU=CI, O=A Esthetic GmbH, C=DE"
+          cat > android/key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=../upload-keystore.jks
+          EOF
+
+      - name: Build Android release verification bundle
+        env:
+          APP_VERSION_NAME: "1.0.0"
+          APP_BUILD_NUMBER: "1"
+          REQUIRE_ANDROID_SIGNING: "1"
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/android/upload-keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: verification-only-password
+          ANDROID_KEY_ALIAS: upload
+          ANDROID_KEY_PASSWORD: verification-only-password
+        run: bash scripts/build-android.sh
+
+      - name: Verify P2 web assets are packaged in Android
+        run: |
+          test -f android/app/src/main/assets/public/p2.js
+          grep -q 'p2.js' android/app/src/main/assets/public/index.html
+          node --check android/app/src/main/assets/public/p2.js
+          jarsigner -verify -verbose -certs artifacts/a-esthetic-release.aab >/tmp/jarsigner.txt
+          tail -n 20 /tmp/jarsigner.txt
+
+      - name: Upload P2 verification AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-esthetic-p2-android-release-aab
+          path: artifacts/a-esthetic-release.aab
+          if-no-files-found: error
