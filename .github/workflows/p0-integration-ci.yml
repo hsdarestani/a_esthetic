@@ -38,6 +38,7 @@ jobs:
           python -m compileall -q config platform_app p0_app
           python manage.py check
           python manage.py makemigrations --check --dry-run
+          node --check www/p0.js
 
       - name: Apply migrations on clean SQLite
         env:
