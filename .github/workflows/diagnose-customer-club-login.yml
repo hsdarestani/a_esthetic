@@ -1,0 +1,46 @@
+name: Diagnose A+ Esthetic Customer Club login
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/diagnose-customer-club-login.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect production Customer Club account safely
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            ROOT="/opt/a-esthetic-mobile"
+            ENV_FILE="$ROOT/mobile.env"
+            test -f "$ROOT/manage.py"
+            test -f "$ENV_FILE"
+            set -a
+            . "$ENV_FILE"
+            set +a
+            export PYTHONPATH="$ROOT/vendor"
+            cd "$ROOT"
+            python3 manage.py shell -c "
+            from django.contrib.auth.models import User
+            from allauth.account.models import EmailAddress
+            email='hsdf7rb@gmail.com'
+            users=list(User.objects.filter(email__iexact=email).values('id','username','email','is_active','is_staff','is_superuser','last_login','date_joined'))
+            print('MATCH_COUNT=', len(users))
+            for u in users:
+                obj=User.objects.get(pk=u['id'])
+                print('USER=', {**u, 'has_usable_password': obj.has_usable_password()})
+                print('EMAILADDRESS=', list(EmailAddress.objects.filter(user=obj).values('email','verified','primary')))
+            print('TOTAL_USERS=', User.objects.count())
+            "
