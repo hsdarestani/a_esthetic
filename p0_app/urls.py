@@ -1,10 +1,11 @@
 from django.urls import path
 
-from . import appointment_views, views
+from . import appointment_list_views, appointment_views, views
 
 urlpatterns = [
     path("konto-loeschen/", views.account_deletion_page, name="p0_account_deletion"),
     path("api/mobile/booking/", views.mobile_booking, name="p0_mobile_booking"),
+    path("api/mobile/booking/manageable/", appointment_list_views.mobile_manageable_appointments, name="p0_mobile_manageable_appointments"),
     path("api/mobile/booking/<int:appointment_id>/change/", appointment_views.mobile_appointment_change, name="p0_mobile_appointment_change"),
     path("api/mobile/slots/", views.mobile_slots, name="p0_mobile_slots"),
     path("api/mobile/wallet/", views.mobile_wallet, name="p0_mobile_wallet"),
