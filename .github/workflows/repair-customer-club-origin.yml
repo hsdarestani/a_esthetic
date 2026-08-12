@@ -1,24 +1,16 @@
-name: Repair A+ Esthetic Customer Club origin
+name: Verify A+ Esthetic Customer Club origin
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/repair-customer-club-origin.yml"
 
 permissions:
   contents: read
 
-concurrency:
-  group: a-esthetic-customer-club-origin-repair
-  cancel-in-progress: true
-
 jobs:
-  repair:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Restore HTTPS origin and inspect active A+ Esthetic vhost
+      - name: Verify production HTTPS origin serves current P0-P3 release
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
@@ -27,45 +19,46 @@ jobs:
           command_timeout: 10m
           script: |
             set -euo pipefail
-            OLD="/etc/nginx/sites-available/a-esthetic-web.conf"
-            NEW="/etc/nginx/sites-available/a-esthetic-connected.conf"
+            VHOST="/etc/nginx/sites-available/a-esthetic-web.conf"
+            RELEASE="20260812-p3-web"
 
-            command -v nginx >/dev/null
-            command -v python3 >/dev/null
-            test -f "$OLD"
-
-            # The old vhost owns the TLS/443 origin expected by Cloudflare. Restore it first
-            # so the public site is reachable while its web root is migrated safely.
-            rm -f /etc/nginx/sites-enabled/a-esthetic-connected.conf
-            ln -sfn "$OLD" /etc/nginx/sites-enabled/a-esthetic-web.conf
+            test -f "$VHOST"
+            grep -q 'listen 443 ssl' "$VHOST"
+            grep -q 'root /opt/a-esthetic-web/site' "$VHOST"
+            if grep -q 'proxy_pass http://127.0.0.1:8766' "$VHOST"; then
+              echo 'The retired legacy web proxy :8766 is active again.' >&2
+              exit 1
+            fi
+            grep -q "p3.js?v=$RELEASE" /opt/a-esthetic-web/site/index.html
             nginx -t
-            systemctl reload nginx
-
-            echo '===== A_ESTHETIC_OLD_VHOST_BEGIN ====='
-            sed -n '1,260p' "$OLD"
-            echo '===== A_ESTHETIC_OLD_VHOST_END ====='
 
             python3 - <<'PY'
             from urllib.error import HTTPError, URLError
             from urllib.request import Request, urlopen
 
-            def status(url):
-                req = Request(url, headers={'User-Agent':'A-Esthetic-Origin-Restore/1.0','Cache-Control':'no-cache'})
+            release = '20260812-p3-web'
+            marker = f'p3.js?v={release}'
+            domain = 'esthetic.smarbiz.sbs'
+
+            def fetch(url):
+                req = Request(url, headers={'User-Agent':'A-Esthetic-Origin-Verify/1.0','Cache-Control':'no-cache, no-store'})
                 try:
                     with urlopen(req, timeout=20) as response:
-                        return response.status
+                        return response.status, response.read().decode('utf-8','replace'), dict(response.headers)
                 except HTTPError as exc:
-                    return exc.code
+                    return exc.code, exc.read().decode('utf-8','replace'), dict(exc.headers)
                 except URLError as exc:
-                    raise SystemExit(f'Origin restore request failed for {url}: {exc}')
+                    raise SystemExit(f'Origin verification failed for {url}: {exc}')
 
-            public = status('https://esthetic.smarbiz.sbs/?origin-restore=1')
-            print('Public root status after HTTPS restore:', public)
-            if public != 200:
-                raise SystemExit(f'Cloudflare HTTPS origin not restored: {public}')
-
-            api = status('https://esthetic.smarbiz.sbs/api/mobile/status/')
-            print('Mobile API status after HTTPS restore:', api)
-            if api != 200:
-                raise SystemExit(f'Mobile API not reachable after HTTPS restore: {api}')
+            status, body, headers = fetch(f'https://{domain}/?release={release}')
+            if status != 200 or marker not in body or headers.get('X-A-Esthetic-Release') != release:
+                raise SystemExit(f'Public P0-P3 release verification failed: {status}')
+            for asset in ('p0.js','p1.js','p2.js','p3.js'):
+                status, body, _ = fetch(f'https://{domain}/{asset}?release={release}')
+                if status != 200 or not body.strip():
+                    raise SystemExit(f'{asset} verification failed: {status}')
+            api_status, api_body, _ = fetch(f'https://{domain}/api/mobile/status/')
+            if api_status != 200 or 'customer club' not in api_body.lower():
+                raise SystemExit(f'Mobile API verification failed: {api_status}')
+            print('A+ Esthetic P0-P3 web origin is verified live.')
             PY
