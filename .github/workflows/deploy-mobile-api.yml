@@ -186,21 +186,40 @@ jobs:
             sleep 3
             systemctl is-active --quiet a-esthetic-mobile.service
 
-            INTERNAL_STATUS="$(curl -fsS http://127.0.0.1:8770/api/mobile/status/)"
-            grep -qi 'customer club' <<<"$INTERNAL_STATUS"
+            python3 - <<'PY'
+            from urllib.error import HTTPError, URLError
+            from urllib.request import Request, urlopen
 
-            EXTERNAL_STATUS="$(curl -fsS https://esthetic.smarbiz.sbs/api/mobile/status/)"
-            grep -qi 'customer club' <<<"$EXTERNAL_STATUS"
+            def fetch(url, method='GET'):
+                request = Request(url, method=method, headers={'User-Agent': 'A-Esthetic-Deploy-Smoke/1.0'})
+                try:
+                    with urlopen(request, timeout=15) as response:
+                        return response.status, response.read().decode('utf-8', 'replace')
+                except HTTPError as exc:
+                    return exc.code, exc.read().decode('utf-8', 'replace')
+                except URLError as exc:
+                    raise SystemExit(f'Smoke request failed for {url}: {exc}')
 
-            PRIVACY_PAGE="$(curl -fsS https://esthetic.smarbiz.sbs/datenschutz/)"
-            grep -qi 'Kundenclub' <<<"$PRIVACY_PAGE"
+            checks = [
+                ('http://127.0.0.1:8770/api/mobile/status/', 200, 'customer club'),
+                ('https://esthetic.smarbiz.sbs/api/mobile/status/', 200, 'customer club'),
+                ('https://esthetic.smarbiz.sbs/datenschutz/', 200, 'Kundenclub'),
+            ]
+            for url, expected, needle in checks:
+                status, body = fetch(url)
+                if status != expected or needle.lower() not in body.lower():
+                    raise SystemExit(f'Smoke check failed: {url} returned {status}')
 
-            ACCOUNT_HEADERS="$(curl -fsSI https://esthetic.smarbiz.sbs/accounts/login/)"
-            grep -Eq 'HTTP/[0-9.]+ (200|302)' <<<"$ACCOUNT_HEADERS"
+            account_status, _ = fetch('https://esthetic.smarbiz.sbs/accounts/login/', method='HEAD')
+            if account_status not in {200, 302}:
+                raise SystemExit(f'Account login smoke failed: {account_status}')
 
-            for PATH in progress wallet-pass cabinet shop gamification events concierge conversations; do
-              HTTP="$(curl -sS -o /dev/null -w '%{http_code}' "https://esthetic.smarbiz.sbs/api/mobile/$PATH/")"
-              test "$HTTP" = "401"
-            done
+            for path in ('progress', 'wallet-pass', 'cabinet', 'shop', 'gamification', 'events', 'concierge', 'conversations'):
+                status, _ = fetch(f'https://esthetic.smarbiz.sbs/api/mobile/{path}/')
+                if status != 401:
+                    raise SystemExit(f'Auth smoke failed for {path}: expected 401, got {status}')
+
+            print('All A+ Esthetic mobile API smoke checks passed.')
+            PY
 
             echo 'A+ Esthetic production-safe Customer Club API with P3 community, events and concierge is live.'
