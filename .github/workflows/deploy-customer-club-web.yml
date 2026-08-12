@@ -1,0 +1,133 @@
+name: Deploy A+ Esthetic Customer Club web
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "www/**"
+      - ".github/workflows/deploy-customer-club-web.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-customer-club-web-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate and package current Customer Club web
+        run: |
+          set -euo pipefail
+          test -f www/index.html
+          test -f www/app.css
+          test -f www/app.js
+          test -f www/p0.js
+          test -f www/p0-booking-change.js
+          test -f www/p1.js
+          test -f www/p2.js
+          test -f www/p3.js
+          test -f www/sw.js
+          grep -q 'p3.js?v=20260812-p3-web' www/index.html
+          node --check www/app.js
+          node --check www/p0.js
+          node --check www/p0-booking-change.js
+          node --check www/p1.js
+          node --check www/p2.js
+          node --check www/p3.js
+          tar -C www -czf customer-club-web.tar.gz .
+
+      - name: Upload Customer Club web bundle
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          source: "customer-club-web.tar.gz"
+          target: "/tmp"
+
+      - name: Publish current Customer Club web on esthetic.smarbiz.sbs
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            WEBROOT="/opt/a-esthetic-web/site"
+            RELEASE="/tmp/a-esthetic-customer-club-web"
+            PACKAGE="/tmp/customer-club-web.tar.gz"
+
+            command -v python3 >/dev/null
+            command -v tar >/dev/null
+            test -f "$PACKAGE"
+
+            rm -rf "$RELEASE"
+            mkdir -p "$RELEASE" "$WEBROOT"
+            tar -xzf "$PACKAGE" -C "$RELEASE"
+
+            test -f "$RELEASE/index.html"
+            test -f "$RELEASE/app.css"
+            test -f "$RELEASE/app.js"
+            test -f "$RELEASE/p0.js"
+            test -f "$RELEASE/p0-booking-change.js"
+            test -f "$RELEASE/p1.js"
+            test -f "$RELEASE/p2.js"
+            test -f "$RELEASE/p3.js"
+            test -f "$RELEASE/sw.js"
+
+            rm -rf "$WEBROOT"/*
+            cp -a "$RELEASE"/. "$WEBROOT"/
+            chown -R root:root "$WEBROOT"
+            find "$WEBROOT" -type d -exec chmod 0755 {} +
+            find "$WEBROOT" -type f -exec chmod 0644 {} +
+
+            if command -v nginx >/dev/null 2>&1; then
+              nginx -t
+              systemctl reload nginx || true
+            fi
+            if command -v caddy >/dev/null 2>&1 && systemctl is-active --quiet caddy; then
+              caddy validate --config /etc/caddy/Caddyfile
+              systemctl reload caddy
+            fi
+
+            python3 - <<'PY'
+            from urllib.error import HTTPError, URLError
+            from urllib.request import Request, urlopen
+
+            def fetch(url):
+                req = Request(url, headers={
+                    'User-Agent': 'A-Esthetic-Web-Deploy-Smoke/1.0',
+                    'Cache-Control': 'no-cache',
+                })
+                try:
+                    with urlopen(req, timeout=20) as response:
+                        return response.status, response.read().decode('utf-8', 'replace')
+                except HTTPError as exc:
+                    return exc.code, exc.read().decode('utf-8', 'replace')
+                except URLError as exc:
+                    raise SystemExit(f'Web smoke request failed for {url}: {exc}')
+
+            status, home = fetch('https://esthetic.smarbiz.sbs/?release=20260812-p3-web')
+            if status != 200 or 'p3.js?v=20260812-p3-web' not in home:
+                raise SystemExit(f'Customer Club index smoke failed: {status}')
+
+            for asset in ('app.css', 'app.js', 'p0.js', 'p0-booking-change.js', 'p1.js', 'p2.js', 'p3.js', 'sw.js'):
+                status, body = fetch(f'https://esthetic.smarbiz.sbs/{asset}?release=20260812-p3-web')
+                if status != 200 or not body.strip():
+                    raise SystemExit(f'Customer Club asset smoke failed for {asset}: {status}')
+
+            status, _ = fetch('https://esthetic.smarbiz.sbs/api/mobile/status/')
+            if status != 200:
+                raise SystemExit(f'Mobile API smoke failed after web publish: {status}')
+
+            print('A+ Esthetic Customer Club web P0-P3 is live on esthetic.smarbiz.sbs.')
+            PY
+
+            rm -rf "$RELEASE" "$PACKAGE"
