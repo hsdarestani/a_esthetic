@@ -61,10 +61,26 @@ class P0MobileSafetyTests(TestCase):
         self.token = _token_for(self.user)
         self.auth = {"HTTP_AUTHORIZATION": f"Bearer {self.token}", "HTTP_USER_AGENT": "A+ Test iPhone"}
 
+    def _aware(self, day, clock):
+        return timezone.make_aware(datetime.combine(day, clock), timezone.get_current_timezone())
+
     def _slot_iso(self):
-        tz = timezone.get_current_timezone()
-        start = timezone.make_aware(datetime.combine(self.day, time(10, 0)), tz)
-        return start.isoformat()
+        return self._aware(self.day, time(10, 0)).isoformat()
+
+    def _change_day(self):
+        return self.day + timedelta(days=7)
+
+    def _create_changeable_appointment(self, clock=time(11, 0)):
+        start = self._aware(self._change_day(), clock)
+        return Appointment.objects.create(
+            user=self.user,
+            service=self.service,
+            staff=self.staff,
+            starts_at=start,
+            ends_at=start + timedelta(minutes=40),
+            status="confirmed",
+            source="app",
+        )
 
     def test_booking_accepts_real_available_slot(self):
         response = self.client.post(
@@ -83,8 +99,7 @@ class P0MobileSafetyTests(TestCase):
         self.assertEqual(appointment.status, "confirmed")
 
     def test_booking_rejects_time_outside_working_hours(self):
-        tz = timezone.get_current_timezone()
-        start = timezone.make_aware(datetime.combine(self.day, time(8, 0)), tz)
+        start = self._aware(self.day, time(8, 0))
         response = self.client.post(
             "/api/mobile/booking/",
             data=json.dumps({
@@ -97,6 +112,58 @@ class P0MobileSafetyTests(TestCase):
         )
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["error"], "time_not_available")
+
+    def test_changeable_appointment_can_be_cancelled(self):
+        appointment = self._create_changeable_appointment()
+        response = self.client.post(
+            f"/api/mobile/booking/{appointment.pk}/change/",
+            data=json.dumps({"action": "cancel"}),
+            content_type="application/json",
+            **self.auth,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, "cancelled")
+
+    def test_changeable_appointment_can_be_rescheduled_to_real_slot(self):
+        appointment = self._create_changeable_appointment(time(11, 0))
+        new_start = self._aware(self._change_day(), time(12, 0))
+        response = self.client.post(
+            f"/api/mobile/booking/{appointment.pk}/change/",
+            data=json.dumps({
+                "action": "reschedule",
+                "staff_id": self.staff.pk,
+                "starts_at": new_start.isoformat(),
+            }),
+            content_type="application/json",
+            **self.auth,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.starts_at, new_start)
+        self.assertEqual(appointment.status, "confirmed")
+
+    def test_change_deadline_blocks_last_minute_cancellation(self):
+        start = timezone.now() + timedelta(hours=12)
+        appointment = Appointment.objects.create(
+            user=self.user,
+            service=self.service,
+            staff=self.staff,
+            starts_at=start,
+            ends_at=start + timedelta(minutes=40),
+            status="confirmed",
+            source="app",
+        )
+        response = self.client.post(
+            f"/api/mobile/booking/{appointment.pk}/change/",
+            data=json.dumps({"action": "cancel"}),
+            content_type="application/json",
+            **self.auth,
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"], "change_deadline_passed")
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, "confirmed")
 
     def test_account_deletion_creates_trackable_request(self):
         response = self.client.post(
