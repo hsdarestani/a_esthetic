@@ -1,0 +1,255 @@
+name: Migrate legacy A+ Esthetic Customer Club users
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/migrate-legacy-customer-users.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Migrate legacy Django users into current Customer Club DB
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            python3 - <<'PY'
+            import json, os, pathlib, subprocess, tempfile
+
+            new_root = pathlib.Path('/opt/a-esthetic-mobile')
+            legacy_python = '/opt/aesthetic-platform/venv/bin/python3'
+
+            # Locate the live legacy gunicorn process and reuse its environment so
+            # the export reads the exact production database without exposing secrets.
+            candidates=[]
+            for p in pathlib.Path('/proc').iterdir():
+                if not p.name.isdigit():
+                    continue
+                try:
+                    cmd=(p/'cmdline').read_bytes().replace(b'\0', b' ').decode(errors='ignore')
+                    cwd=(p/'cwd').resolve()
+                except Exception:
+                    continue
+                if 'gunicorn' in cmd and '127.0.0.1:8766' in cmd:
+                    candidates.append((int(p.name), cwd))
+            if not candidates:
+                raise SystemExit('Legacy A+ Esthetic Django process on :8766 not found')
+            pid, legacy_root = sorted(candidates)[0]
+            legacy_env=os.environ.copy()
+            for item in (pathlib.Path('/proc')/str(pid)/'environ').read_bytes().split(b'\0'):
+                if b'=' not in item:
+                    continue
+                k,v=item.split(b'=',1)
+                legacy_env[k.decode(errors='ignore')]=v.decode(errors='ignore')
+
+            export_code = r'''
+            import json
+            from django.contrib.auth import get_user_model
+            U=get_user_model()
+            try:
+                from allauth.account.models import EmailAddress
+            except Exception:
+                EmailAddress=None
+            try:
+                from platform_app.models import UserProfile, MemberAccount, WalletAccount
+            except Exception:
+                UserProfile=MemberAccount=WalletAccount=None
+
+            rows=[]
+            for u in U.objects.all().order_by('pk'):
+                row={
+                    'legacy_id': u.pk,
+                    'username': getattr(u,'username','') or '',
+                    'email': getattr(u,'email','') or '',
+                    'password': u.password,
+                    'first_name': getattr(u,'first_name','') or '',
+                    'last_name': getattr(u,'last_name','') or '',
+                    'is_active': bool(u.is_active),
+                    'is_staff': bool(u.is_staff),
+                    'is_superuser': bool(u.is_superuser),
+                    'last_login': u.last_login.isoformat() if u.last_login else None,
+                    'date_joined': u.date_joined.isoformat() if getattr(u,'date_joined',None) else None,
+                    'email_addresses': [],
+                    'profile': None,
+                    'member': None,
+                    'wallet': None,
+                }
+                if EmailAddress is not None:
+                    row['email_addresses']=[
+                        {'email':e.email,'verified':bool(e.verified),'primary':bool(e.primary)}
+                        for e in EmailAddress.objects.filter(user=u)
+                    ]
+                if UserProfile is not None:
+                    try:
+                        p=UserProfile.objects.get(user=u)
+                        row['profile']={
+                            'role': getattr(p,'role','customer'),
+                            'phone': getattr(p,'phone','') or '',
+                            'preferred_language': getattr(p,'preferred_language','de') or 'de',
+                            'marketing_consent': bool(getattr(p,'marketing_consent',False)),
+                            'health_data_consent': bool(getattr(p,'health_data_consent',False)),
+                        }
+                    except UserProfile.DoesNotExist:
+                        pass
+                if MemberAccount is not None:
+                    try:
+                        m=MemberAccount.objects.select_related('tier').get(user=u)
+                        row['member']={
+                            'member_number': getattr(m,'member_number','') or '',
+                            'status': getattr(m,'status','active') or 'active',
+                            'valid_until': m.valid_until.isoformat() if getattr(m,'valid_until',None) else None,
+                            'qr_token': getattr(m,'qr_token','') or '',
+                            'tier_slug': getattr(getattr(m,'tier',None),'slug',None),
+                        }
+                    except MemberAccount.DoesNotExist:
+                        pass
+                if WalletAccount is not None:
+                    try:
+                        w=WalletAccount.objects.get(user=u)
+                        row['wallet']={
+                            'balance_cents': int(getattr(w,'balance_cents',0) or 0),
+                            'coin_balance': int(getattr(w,'coin_balance',0) or 0),
+                        }
+                    except WalletAccount.DoesNotExist:
+                        pass
+                rows.append(row)
+            print(json.dumps(rows, separators=(',',':')))
+            '''
+            exported=subprocess.check_output(
+                [legacy_python,'manage.py','shell','-c',export_code],
+                cwd=legacy_root, env=legacy_env, text=True, stderr=subprocess.PIPE,
+            )
+            # Django shell may print an import banner before the JSON. Take the last JSON line.
+            payload=None
+            for line in reversed(exported.splitlines()):
+                line=line.strip()
+                if line.startswith('[') and line.endswith(']'):
+                    payload=line
+                    break
+            if not payload:
+                raise SystemExit('Could not capture legacy user export')
+            rows=json.loads(payload)
+            tmp=pathlib.Path('/tmp/aesthetic-legacy-users.json')
+            tmp.write_text(json.dumps(rows))
+            os.chmod(tmp,0o600)
+
+            new_env=os.environ.copy()
+            env_file=new_root/'mobile.env'
+            for raw in env_file.read_text().splitlines():
+                raw=raw.strip()
+                if raw and not raw.startswith('#') and '=' in raw:
+                    k,v=raw.split('=',1)
+                    new_env[k]=v
+            new_env['PYTHONPATH']=str(new_root/'vendor')
+
+            import_code = r'''
+            import json
+            from pathlib import Path
+            from django.contrib.auth.models import User
+            from django.db import transaction
+            from django.utils.dateparse import parse_datetime, parse_date
+            from allauth.account.models import EmailAddress
+            from platform_app.models import UserProfile, MemberAccount, WalletAccount, MembershipTier
+
+            rows=json.loads(Path('/tmp/aesthetic-legacy-users.json').read_text())
+            created=updated=0
+            with transaction.atomic():
+                for row in rows:
+                    email=(row.get('email') or '').strip()
+                    username=(row.get('username') or '').strip() or (email.split('@')[0] if email else f"legacy-{row['legacy_id']}")
+                    user=None
+                    if email:
+                        user=User.objects.filter(email__iexact=email).first()
+                    if user is None:
+                        candidate=User.objects.filter(username=username).first()
+                        if candidate and (not email or candidate.email.lower()!=email.lower()):
+                            username=f"{username}-legacy-{row['legacy_id']}"
+                        user=User(username=username)
+                        created+=1
+                    else:
+                        updated+=1
+                    user.email=email
+                    user.first_name=row.get('first_name') or ''
+                    user.last_name=row.get('last_name') or ''
+                    user.is_active=bool(row.get('is_active',True))
+                    user.is_staff=bool(row.get('is_staff',False))
+                    user.is_superuser=bool(row.get('is_superuser',False))
+                    # Preserve the exact Django password hash: existing passwords continue to work.
+                    user.password=row['password']
+                    if row.get('last_login'):
+                        user.last_login=parse_datetime(row['last_login'])
+                    if row.get('date_joined'):
+                        user.date_joined=parse_datetime(row['date_joined'])
+                    user.save()
+
+                    addresses=row.get('email_addresses') or []
+                    if email and not addresses:
+                        addresses=[{'email':email,'verified':False,'primary':True}]
+                    for addr in addresses:
+                        if not addr.get('email'):
+                            continue
+                        EmailAddress.objects.update_or_create(
+                            user=user, email=addr['email'],
+                            defaults={'verified':bool(addr.get('verified',False)),'primary':bool(addr.get('primary',False))},
+                        )
+
+                    profile,_=UserProfile.objects.get_or_create(user=user)
+                    pdata=row.get('profile') or {}
+                    for field in ('role','phone','preferred_language','marketing_consent','health_data_consent'):
+                        if field in pdata:
+                            setattr(profile,field,pdata[field])
+                    profile.save()
+
+                    member,_=MemberAccount.objects.get_or_create(user=user)
+                    mdata=row.get('member') or {}
+                    if mdata.get('member_number') and not MemberAccount.objects.exclude(pk=member.pk).filter(member_number=mdata['member_number']).exists():
+                        member.member_number=mdata['member_number']
+                    if mdata.get('qr_token') and not MemberAccount.objects.exclude(pk=member.pk).filter(qr_token=mdata['qr_token']).exists():
+                        member.qr_token=mdata['qr_token']
+                    if mdata.get('status') in {'active','paused','expired'}:
+                        member.status=mdata['status']
+                    member.valid_until=parse_date(mdata['valid_until']) if mdata.get('valid_until') else member.valid_until
+                    if mdata.get('tier_slug'):
+                        member.tier=MembershipTier.objects.filter(slug=mdata['tier_slug']).first()
+                    member.save()
+
+                    wallet,_=WalletAccount.objects.get_or_create(user=user)
+                    wdata=row.get('wallet') or {}
+                    if 'balance_cents' in wdata:
+                        wallet.balance_cents=int(wdata['balance_cents'])
+                    if 'coin_balance' in wdata:
+                        wallet.coin_balance=int(wdata['coin_balance'])
+                    wallet.save()
+
+            target=User.objects.filter(email__iexact='hsdf7rb@gmail.com').first()
+            print('MIGRATION_CREATED=',created)
+            print('MIGRATION_UPDATED=',updated)
+            print('NEW_TOTAL_USERS=',User.objects.count())
+            print('TARGET_PRESENT=',bool(target))
+            print('TARGET_ACTIVE=',bool(target and target.is_active))
+            print('TARGET_USABLE_PASSWORD=',bool(target and target.has_usable_password()))
+            '''
+            result=subprocess.check_output(
+                ['/usr/bin/python3','manage.py','shell','-c',import_code],
+                cwd=new_root, env=new_env, text=True, stderr=subprocess.STDOUT,
+            )
+            print(result.strip())
+
+            # Verify the target hash is byte-for-byte identical without printing it.
+            verify_old = "from django.contrib.auth import get_user_model; u=get_user_model().objects.get(email__iexact='hsdf7rb@gmail.com'); print(u.password)"
+            old_hash=subprocess.check_output([legacy_python,'manage.py','shell','-c',verify_old],cwd=legacy_root,env=legacy_env,text=True,stderr=subprocess.DEVNULL).splitlines()[-1].strip()
+            verify_new = "from django.contrib.auth.models import User; u=User.objects.get(email__iexact='hsdf7rb@gmail.com'); print(u.password)"
+            new_hash=subprocess.check_output(['/usr/bin/python3','manage.py','shell','-c',verify_new],cwd=new_root,env=new_env,text=True,stderr=subprocess.DEVNULL).splitlines()[-1].strip()
+            print('TARGET_PASSWORD_HASH_PRESERVED=', old_hash == new_hash)
+            tmp.unlink(missing_ok=True)
+            PY
