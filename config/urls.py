@@ -11,5 +11,6 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     path("login/", RedirectView.as_view(url=reverse_lazy("account_login"), permanent=False), name="login"),
     path("", include("p0_app.urls")),
+    path("", include("p1_app.urls")),
     path("", include("platform_app.urls")),
 ]
