@@ -1,0 +1,52 @@
+name: Verify A+ Esthetic WOW redesign
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "www/**"
+      - ".github/workflows/verify-wow-redesign.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-wow-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Customer Club WOW assets
+        run: |
+          set -euo pipefail
+          for FILE in index.html app.css app.js p0.js p0-booking-change.js p1.js p2.js p3.js wow.js sw.js; do
+            test -s "www/$FILE"
+          done
+          grep -q 'app.css?v=20260812-wow-v1' www/index.html
+          grep -q 'wow.js?v=20260812-wow-v1' www/index.html
+          grep -q 'p3.js?v=20260812-p3-web' www/index.html
+          grep -q 'auth-showcase' www/app.css
+          grep -q 'dashboard-home' www/app.css
+          grep -q 'feature-tile' www/app.css
+          grep -q 'min-width:980px' www/app.css
+          node --check www/app.js
+          node --check www/p0.js
+          node --check www/p0-booking-change.js
+          node --check www/p1.js
+          node --check www/p2.js
+          node --check www/p3.js
+          node --check www/wow.js
+          python3 - <<'PY'
+          from pathlib import Path
+          index = Path('www/index.html').read_text()
+          wow = Path('www/wow.js').read_text()
+          css = Path('www/app.css').read_text()
+          required = ['auth-showcase','experience-banner','featureMeta','enhanceHome','enhanceMore']
+          combined = wow + css
+          missing = [item for item in required if item not in combined]
+          if missing:
+              raise SystemExit(f'Missing WOW redesign markers: {missing}')
+          if index.index('p3.js') > index.index('wow.js'):
+              raise SystemExit('wow.js must load after P3 so it can enhance all feature routes.')
+          print('A+ Esthetic WOW redesign static gate passed.')
+          PY
