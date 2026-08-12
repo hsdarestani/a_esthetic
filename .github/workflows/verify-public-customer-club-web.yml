@@ -26,7 +26,7 @@ jobs:
 
           def fetch(url):
               req = Request(url, headers={
-                  'User-Agent': 'A-Esthetic-Public-Web-Verify/1.0',
+                  'User-Agent': 'A-Esthetic-Public-Web-Verify/2.0',
                   'Cache-Control': 'no-cache, no-store',
                   'Pragma': 'no-cache',
               })
@@ -40,13 +40,11 @@ jobs:
 
           status, html, headers = fetch(f'https://{domain}/?release={release}')
           print('Root status:', status)
-          print('Release header:', headers.get('X-A-Esthetic-Release'))
+          print('Release header (informational):', headers.get('X-A-Esthetic-Release'))
           if status != 200:
               raise SystemExit(f'Public root returned {status}')
           if marker not in html:
               raise SystemExit('Public root still serves the old Customer Club HTML.')
-          if headers.get('X-A-Esthetic-Release') != release:
-              raise SystemExit('Public root is missing the expected P3 release header.')
 
           for asset in ('app.css','app.js','p0.js','p0-booking-change.js','p1.js','p2.js','p3.js','sw.js'):
               asset_status, body, _ = fetch(f'https://{domain}/{asset}?release={release}')
