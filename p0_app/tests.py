@@ -8,6 +8,7 @@ from django.utils import timezone
 from platform_app.mobile_api import _token_for
 from platform_app.models import (
     Appointment,
+    MemberAccount,
     MembershipTier,
     Reward,
     Service,
@@ -30,7 +31,7 @@ class P0MobileSafetyTests(TestCase):
         )
         UserProfile.objects.create(user=self.user, marketing_consent=True)
         tier = MembershipTier.objects.create(name="A+ Member", slug="member")
-        self.user.member_account.create(tier=tier)
+        MemberAccount.objects.create(user=self.user, tier=tier)
         WalletAccount.objects.create(user=self.user, coin_balance=2000, balance_cents=5000)
 
         self.service = Service.objects.create(
