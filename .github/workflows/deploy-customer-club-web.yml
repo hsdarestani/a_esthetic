@@ -24,15 +24,9 @@ jobs:
       - name: Validate and package current Customer Club web
         run: |
           set -euo pipefail
-          test -f www/index.html
-          test -f www/app.css
-          test -f www/app.js
-          test -f www/p0.js
-          test -f www/p0-booking-change.js
-          test -f www/p1.js
-          test -f www/p2.js
-          test -f www/p3.js
-          test -f www/sw.js
+          for FILE in index.html app.css app.js p0.js p0-booking-change.js p1.js p2.js p3.js sw.js; do
+            test -f "www/$FILE"
+          done
           grep -q 'p3.js?v=20260812-p3-web' www/index.html
           node --check www/app.js
           node --check www/p0.js
@@ -51,7 +45,7 @@ jobs:
           source: "customer-club-web.tar.gz"
           target: "/tmp"
 
-      - name: Publish current Customer Club web on esthetic.smarbiz.sbs
+      - name: Publish P0-P3 on the production HTTPS vhost
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
@@ -61,38 +55,60 @@ jobs:
           script: |
             set -euo pipefail
             WEBROOT="/opt/a-esthetic-web/site"
-            RELEASE="/tmp/a-esthetic-customer-club-web"
+            RELEASE_DIR="/tmp/a-esthetic-customer-club-web"
             PACKAGE="/tmp/customer-club-web.tar.gz"
+            VHOST="/etc/nginx/sites-available/a-esthetic-web.conf"
             DOMAIN="esthetic.smarbiz.sbs"
             RELEASE_ID="20260812-p3-web"
 
             command -v python3 >/dev/null
             command -v tar >/dev/null
+            command -v nginx >/dev/null
             test -f "$PACKAGE"
+            test -f /etc/letsencrypt/live/esthetic.smarbiz.sbs/fullchain.pem
+            test -f /etc/letsencrypt/live/esthetic.smarbiz.sbs/privkey.pem
 
-            rm -rf "$RELEASE"
-            mkdir -p "$RELEASE" "$WEBROOT"
-            tar -xzf "$PACKAGE" -C "$RELEASE"
+            rm -rf "$RELEASE_DIR"
+            mkdir -p "$RELEASE_DIR" "$WEBROOT"
+            tar -xzf "$PACKAGE" -C "$RELEASE_DIR"
 
             for FILE in index.html app.css app.js p0.js p0-booking-change.js p1.js p2.js p3.js sw.js; do
-              test -f "$RELEASE/$FILE"
+              test -f "$RELEASE_DIR/$FILE"
             done
-            grep -q "p3.js?v=$RELEASE_ID" "$RELEASE/index.html"
+            grep -q "p3.js?v=$RELEASE_ID" "$RELEASE_DIR/index.html"
 
             rm -rf "$WEBROOT"/*
-            cp -a "$RELEASE"/. "$WEBROOT"/
+            cp -a "$RELEASE_DIR"/. "$WEBROOT"/
             chown -R root:root "$WEBROOT"
             find "$WEBROOT" -type d -exec chmod 0755 {} +
             find "$WEBROOT" -type f -exec chmod 0644 {} +
             grep -q "p3.js?v=$RELEASE_ID" "$WEBROOT/index.html"
 
-            if command -v nginx >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
-              CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
-              cat > "$CONF" <<'NGINX'
+            # Preserve the Cloudflare-facing TLS origin and certificates, but stop proxying
+            # the browser UI to the retired :8766 web process. The root now serves the same
+            # current www/ assets that are packaged in the native Customer Club app.
+            if [ -f "$VHOST" ]; then
+              cp -a "$VHOST" "$VHOST.pre-p3-static"
+            fi
+
+            cat > "$VHOST" <<'NGINX'
             server {
               listen 80;
               listen [::]:80;
               server_name esthetic.smarbiz.sbs;
+              return 301 https://$host$request_uri;
+            }
+
+            server {
+              listen 443 ssl http2;
+              listen [::]:443 ssl http2;
+              server_name esthetic.smarbiz.sbs;
+
+              ssl_certificate /etc/letsencrypt/live/esthetic.smarbiz.sbs/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/esthetic.smarbiz.sbs/privkey.pem;
+              include /etc/letsencrypt/options-ssl-nginx.conf;
+              ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
               root /opt/a-esthetic-web/site;
               index index.html;
               client_max_body_size 10m;
@@ -103,25 +119,32 @@ jobs:
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Proto https;
               }
-              location ^~ /accounts/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
-              location = /login/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
-              location = /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
-              location ^~ /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
-              location = /support/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
-              location = /konto-loeschen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
-              location = /nutzungsbedingungen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
-              location = /impressum/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+              location ^~ /accounts/ {
+                proxy_pass http://127.0.0.1:8770;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto https;
+              }
+              location = /login/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              location = /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              location ^~ /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              location = /support/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              location = /konto-loeschen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              location = /nutzungsbedingungen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+              location = /impressum/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
 
-              # Keep the legacy connected API reachable for any remaining admin/compatibility routes.
+              # Keep the connected legacy API reachable for compatibility, but the public
+              # Customer Club page itself no longer depends on the legacy :8766 web process.
               location /api/ {
                 proxy_pass http://127.0.0.1:8765;
                 proxy_http_version 1.1;
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Proto https;
               }
 
               location = /index.html {
@@ -144,102 +167,83 @@ jobs:
               add_header X-Content-Type-Options nosniff always;
               add_header X-Frame-Options DENY always;
               add_header Referrer-Policy strict-origin-when-cross-origin always;
-              add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-              add_header Content-Security-Policy "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self' https://esthetic.smarbiz.sbs; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
             }
             NGINX
-              rm -f /etc/nginx/sites-enabled/default
-              ln -sfn "$CONF" /etc/nginx/sites-enabled/a-esthetic-connected.conf
-              nginx -t
-              systemctl reload nginx
-            fi
 
-            if command -v caddy >/dev/null 2>&1 && systemctl is-active --quiet caddy; then
-              CADDYFILE="/etc/caddy/Caddyfile"
-              python3 - <<'PY'
-            from pathlib import Path
-            p = Path('/etc/caddy/Caddyfile')
-            s = p.read_text() if p.exists() else ''
-            begin = '# BEGIN A_ESTHETIC_WEB'
-            end = '# END A_ESTHETIC_WEB'
-            a = s.find(begin)
-            b = s.find(end, a)
-            if a >= 0 and b >= 0:
-                b += len(end)
-                s = s[:a] + s[b:]
-            block = r'''# BEGIN A_ESTHETIC_WEB
-            esthetic.smarbiz.sbs {
-              encode zstd gzip
-              @mobile path /api/mobile/* /accounts/* /login/ /datenschutz/ /datenschutz/* /support/ /konto-loeschen/ /nutzungsbedingungen/ /impressum/
-              handle @mobile { reverse_proxy 127.0.0.1:8770 }
-              handle /api/* { reverse_proxy 127.0.0.1:8765 }
-              root * /opt/a-esthetic-web/site
-              try_files {path} /index.html
-              file_server
-              header {
-                Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
-                X-A-Esthetic-Release "20260812-p3-web"
-                X-Content-Type-Options nosniff
-                X-Frame-Options DENY
-                Referrer-Policy strict-origin-when-cross-origin
-              }
-            }
-            # END A_ESTHETIC_WEB
-            '''
-            p.write_text(s.rstrip() + '\n' + block)
-            PY
-              caddy validate --config "$CADDYFILE"
-              systemctl reload caddy
-            fi
+            rm -f /etc/nginx/sites-enabled/a-esthetic-connected.conf
+            rm -f /etc/nginx/sites-enabled/default
+            ln -sfn "$VHOST" /etc/nginx/sites-enabled/a-esthetic-web.conf
+
+            # There must be one HTTP and one HTTPS declaration for this domain, both in this
+            # single canonical file; no second enabled vhost may shadow it.
+            CONFLICTS="$(find /etc/nginx/sites-enabled /etc/nginx/conf.d -maxdepth 1 -type f -o -type l 2>/dev/null | while read -r f; do [ "$(readlink -f "$f" 2>/dev/null || echo "$f")" = "$(readlink -f "$VHOST")" ] && continue; grep -l 'server_name esthetic.smarbiz.sbs' "$f" 2>/dev/null || true; done)"
+            test -z "$CONFLICTS" || { echo "Conflicting A+ Esthetic nginx configs: $CONFLICTS"; exit 1; }
+
+            nginx -t
+            systemctl reload nginx
 
             python3 - <<'PY'
-            import socket
+            import ssl
             from pathlib import Path
             from urllib.error import HTTPError, URLError
-            from urllib.request import Request, urlopen
+            from urllib.request import HTTPSHandler, Request, build_opener, urlopen
 
             release = '20260812-p3-web'
             marker = f'p3.js?v={release}'
-            webroot = Path('/opt/a-esthetic-web/site/index.html').read_text(encoding='utf-8')
-            if marker not in webroot:
-                raise SystemExit('Published webroot does not contain the P3 release marker.')
+            domain = 'esthetic.smarbiz.sbs'
 
-            def fetch(url, host=None):
+            if marker not in Path('/opt/a-esthetic-web/site/index.html').read_text(encoding='utf-8'):
+                raise SystemExit('Published webroot is missing the P3 release marker.')
+
+            def fetch(url, host=None, insecure=False):
                 headers = {
-                    'User-Agent': 'A-Esthetic-Web-Deploy-Smoke/2.0',
+                    'User-Agent': 'A-Esthetic-P3-Web-Smoke/3.0',
                     'Cache-Control': 'no-cache, no-store',
                 }
                 if host:
                     headers['Host'] = host
                 req = Request(url, headers=headers)
                 try:
-                    with urlopen(req, timeout=20) as response:
+                    if insecure:
+                        context = ssl._create_unverified_context()
+                        opener = build_opener(HTTPSHandler(context=context))
+                        response = opener.open(req, timeout=20)
+                    else:
+                        response = urlopen(req, timeout=20)
+                    with response:
                         return response.status, response.read().decode('utf-8', 'replace'), dict(response.headers)
                 except HTTPError as exc:
                     return exc.code, exc.read().decode('utf-8', 'replace'), dict(exc.headers)
                 except URLError as exc:
                     raise SystemExit(f'Web smoke request failed for {url}: {exc}')
 
-            # First prove that the local origin itself serves the new root for the production Host header.
-            local_status, local_home, local_headers = fetch('http://127.0.0.1/?release=' + release, host='esthetic.smarbiz.sbs')
-            if local_status != 200 or marker not in local_home:
-                raise SystemExit(f'Origin routing smoke failed: {local_status}')
+            # Direct TLS origin check bypasses Cloudflare while keeping the production Host.
+            origin_status, origin_html, origin_headers = fetch(
+                f'https://127.0.0.1/?release={release}', host=domain, insecure=True
+            )
+            if origin_status != 200 or marker not in origin_html:
+                raise SystemExit(f'HTTPS origin is not serving P3: {origin_status}')
+            if origin_headers.get('X-A-Esthetic-Release') != release:
+                raise SystemExit('HTTPS origin release header missing or stale.')
 
-            public_status, public_home, public_headers = fetch('https://esthetic.smarbiz.sbs/?release=' + release)
-            if public_status != 200 or marker not in public_home:
-                resolved = socket.gethostbyname_ex('esthetic.smarbiz.sbs')
-                raise SystemExit(f'Public index still differs from origin: status={public_status}, dns={resolved}')
+            public_status, public_html, public_headers = fetch(
+                f'https://{domain}/?release={release}'
+            )
+            if public_status != 200 or marker not in public_html:
+                raise SystemExit(f'Public Customer Club is not serving P3: {public_status}')
+            if public_headers.get('X-A-Esthetic-Release') != release:
+                raise SystemExit('Public release header missing or stale.')
 
-            for asset in ('app.css', 'app.js', 'p0.js', 'p0-booking-change.js', 'p1.js', 'p2.js', 'p3.js', 'sw.js'):
-                status, body, _ = fetch(f'https://esthetic.smarbiz.sbs/{asset}?release={release}')
+            for asset in ('app.css','app.js','p0.js','p0-booking-change.js','p1.js','p2.js','p3.js','sw.js'):
+                status, body, _ = fetch(f'https://{domain}/{asset}?release={release}')
                 if status != 200 or not body.strip():
-                    raise SystemExit(f'Customer Club asset smoke failed for {asset}: {status}')
+                    raise SystemExit(f'Public asset {asset} failed: {status}')
 
-            status, _, _ = fetch('https://esthetic.smarbiz.sbs/api/mobile/status/')
-            if status != 200:
-                raise SystemExit(f'Mobile API smoke failed after web publish: {status}')
+            api_status, api_body, _ = fetch(f'https://{domain}/api/mobile/status/')
+            if api_status != 200 or 'customer club' not in api_body.lower():
+                raise SystemExit(f'Mobile API failed after P3 web publish: {api_status}')
 
-            print('A+ Esthetic Customer Club web P0-P3 is live on esthetic.smarbiz.sbs.')
+            print('A+ Esthetic Customer Club P0-P3 web UI is live on the production HTTPS domain.')
             PY
 
-            rm -rf "$RELEASE" "$PACKAGE"
+            rm -rf "$RELEASE_DIR" "$PACKAGE"
