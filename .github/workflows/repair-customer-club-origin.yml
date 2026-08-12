@@ -1,0 +1,132 @@
+name: Repair A+ Esthetic Customer Club origin
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/repair-customer-club-origin.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-customer-club-origin-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove duplicate vhost and verify current P0-P3 web origin
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            DOMAIN="esthetic.smarbiz.sbs"
+            TARGET="/etc/nginx/sites-available/a-esthetic-connected.conf"
+            RELEASE="20260812-p3-web"
+
+            command -v python3 >/dev/null
+            command -v nginx >/dev/null
+            test -f "$TARGET"
+            grep -q "server_name $DOMAIN" "$TARGET"
+            grep -q "root /opt/a-esthetic-web/site" "$TARGET"
+            grep -q "p3.js?v=$RELEASE" /opt/a-esthetic-web/site/index.html
+
+            python3 - <<'PY'
+            from pathlib import Path
+
+            domain = 'server_name esthetic.smarbiz.sbs'
+            target = Path('/etc/nginx/sites-available/a-esthetic-connected.conf').resolve()
+            disabled = []
+
+            for directory in (Path('/etc/nginx/sites-enabled'), Path('/etc/nginx/conf.d')):
+                if not directory.exists():
+                    continue
+                for path in list(directory.iterdir()):
+                    if path.name.endswith('.disabled'):
+                        continue
+                    try:
+                        resolved = path.resolve()
+                    except Exception:
+                        resolved = path
+                    if resolved == target:
+                        continue
+                    try:
+                        text = path.read_text(encoding='utf-8', errors='ignore')
+                    except Exception:
+                        continue
+                    if domain not in text:
+                        continue
+                    if directory.name == 'sites-enabled':
+                        path.unlink()
+                        disabled.append(str(path))
+                    else:
+                        renamed = path.with_name(path.name + '.disabled')
+                        if renamed.exists():
+                            renamed.unlink()
+                        path.rename(renamed)
+                        disabled.append(str(path))
+
+            print('Disabled duplicate A+ Esthetic nginx configs:', disabled)
+            PY
+
+            rm -f /etc/nginx/sites-enabled/default
+            ln -sfn "$TARGET" /etc/nginx/sites-enabled/a-esthetic-connected.conf
+
+            DUPES="$(nginx -T 2>&1 | grep -c 'server_name esthetic.smarbiz.sbs' || true)"
+            echo "Active A+ Esthetic server_name occurrences: $DUPES"
+            test "$DUPES" = "1"
+            nginx -t
+            systemctl reload nginx
+
+            python3 - <<'PY'
+            import socket
+            from urllib.error import HTTPError, URLError
+            from urllib.request import Request, urlopen
+
+            release = '20260812-p3-web'
+            marker = f'p3.js?v={release}'
+
+            def fetch(url, host=None):
+                headers = {
+                    'User-Agent': 'A-Esthetic-Origin-Repair/1.0',
+                    'Cache-Control': 'no-cache, no-store',
+                }
+                if host:
+                    headers['Host'] = host
+                req = Request(url, headers=headers)
+                try:
+                    with urlopen(req, timeout=20) as response:
+                        return response.status, response.read().decode('utf-8', 'replace'), dict(response.headers)
+                except HTTPError as exc:
+                    return exc.code, exc.read().decode('utf-8', 'replace'), dict(exc.headers)
+                except URLError as exc:
+                    raise SystemExit(f'Request failed for {url}: {exc}')
+
+            local_status, local_body, local_headers = fetch('http://127.0.0.1/?release=' + release, host='esthetic.smarbiz.sbs')
+            if local_status != 200 or marker not in local_body:
+                raise SystemExit(f'Local origin still not on P3 release: {local_status}')
+            print('Local origin release header:', local_headers.get('X-A-Esthetic-Release'))
+
+            public_status, public_body, public_headers = fetch('https://esthetic.smarbiz.sbs/?release=' + release)
+            if public_status != 200 or marker not in public_body:
+                raise SystemExit(f'Public origin still not on P3 release: status={public_status}, dns={socket.gethostbyname_ex("esthetic.smarbiz.sbs")}')
+            print('Public release header:', public_headers.get('X-A-Esthetic-Release'))
+
+            for asset in ('p0.js', 'p1.js', 'p2.js', 'p3.js'):
+                status, body, _ = fetch(f'https://esthetic.smarbiz.sbs/{asset}?release={release}')
+                if status != 200 or not body.strip():
+                    raise SystemExit(f'Asset {asset} failed: {status}')
+
+            api_status, _, _ = fetch('https://esthetic.smarbiz.sbs/api/mobile/status/')
+            if api_status != 200:
+                raise SystemExit(f'Mobile API failed after nginx repair: {api_status}')
+
+            print('A+ Esthetic public Customer Club P0-P3 origin is verified live.')
+            PY
