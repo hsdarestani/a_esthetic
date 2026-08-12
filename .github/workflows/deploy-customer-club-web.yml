@@ -24,16 +24,19 @@ jobs:
       - name: Validate and package current Customer Club web
         run: |
           set -euo pipefail
-          for FILE in index.html app.css app.js p0.js p0-booking-change.js p1.js p2.js p3.js sw.js; do
-            test -f "www/$FILE"
+          for FILE in index.html app.css app.js p0.js p0-booking-change.js p1.js p2.js p3.js wow.js sw.js; do
+            test -s "www/$FILE"
           done
           grep -q 'p3.js?v=20260812-p3-web' www/index.html
+          grep -q 'app.css?v=20260812-wow-v1' www/index.html
+          grep -q 'wow.js?v=20260812-wow-v1' www/index.html
           node --check www/app.js
           node --check www/p0.js
           node --check www/p0-booking-change.js
           node --check www/p1.js
           node --check www/p2.js
           node --check www/p3.js
+          node --check www/wow.js
           tar -C www -czf customer-club-web.tar.gz .
 
       - name: Upload Customer Club web bundle
@@ -45,7 +48,7 @@ jobs:
           source: "customer-club-web.tar.gz"
           target: "/tmp"
 
-      - name: Publish P0-P3 on the production HTTPS vhost
+      - name: Publish WOW Customer Club on the production HTTPS vhost
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
@@ -59,7 +62,8 @@ jobs:
             PACKAGE="/tmp/customer-club-web.tar.gz"
             VHOST="/etc/nginx/sites-available/a-esthetic-web.conf"
             DOMAIN="esthetic.smarbiz.sbs"
-            RELEASE_ID="20260812-p3-web"
+            P3_RELEASE_ID="20260812-p3-web"
+            WOW_RELEASE_ID="20260812-wow-v1"
 
             command -v python3 >/dev/null
             command -v tar >/dev/null
@@ -72,23 +76,23 @@ jobs:
             mkdir -p "$RELEASE_DIR" "$WEBROOT"
             tar -xzf "$PACKAGE" -C "$RELEASE_DIR"
 
-            for FILE in index.html app.css app.js p0.js p0-booking-change.js p1.js p2.js p3.js sw.js; do
-              test -f "$RELEASE_DIR/$FILE"
+            for FILE in index.html app.css app.js p0.js p0-booking-change.js p1.js p2.js p3.js wow.js sw.js; do
+              test -s "$RELEASE_DIR/$FILE"
             done
-            grep -q "p3.js?v=$RELEASE_ID" "$RELEASE_DIR/index.html"
+            grep -q "p3.js?v=$P3_RELEASE_ID" "$RELEASE_DIR/index.html"
+            grep -q "app.css?v=$WOW_RELEASE_ID" "$RELEASE_DIR/index.html"
+            grep -q "wow.js?v=$WOW_RELEASE_ID" "$RELEASE_DIR/index.html"
 
             rm -rf "$WEBROOT"/*
             cp -a "$RELEASE_DIR"/. "$WEBROOT"/
             chown -R root:root "$WEBROOT"
             find "$WEBROOT" -type d -exec chmod 0755 {} +
             find "$WEBROOT" -type f -exec chmod 0644 {} +
-            grep -q "p3.js?v=$RELEASE_ID" "$WEBROOT/index.html"
+            grep -q "p3.js?v=$P3_RELEASE_ID" "$WEBROOT/index.html"
+            grep -q "wow.js?v=$WOW_RELEASE_ID" "$WEBROOT/index.html"
 
-            # Preserve the Cloudflare-facing TLS origin and certificates, but stop proxying
-            # the browser UI to the retired :8766 web process. The root now serves the same
-            # current www/ assets that are packaged in the native Customer Club app.
             if [ -f "$VHOST" ]; then
-              cp -a "$VHOST" "$VHOST.pre-p3-static"
+              cp -a "$VHOST" "$VHOST.pre-wow-static"
             fi
 
             cat > "$VHOST" <<'NGINX'
@@ -136,8 +140,6 @@ jobs:
               location = /nutzungsbedingungen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
               location = /impressum/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
 
-              # Keep the connected legacy API reachable for compatibility, but the public
-              # Customer Club page itself no longer depends on the legacy :8766 web process.
               location /api/ {
                 proxy_pass http://127.0.0.1:8765;
                 proxy_http_version 1.1;
@@ -151,17 +153,17 @@ jobs:
                 try_files /index.html =404;
                 add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
                 add_header Pragma "no-cache" always;
-                add_header X-A-Esthetic-Release "20260812-p3-web" always;
+                add_header X-A-Esthetic-Release "20260812-wow-v1" always;
               }
               location = /sw.js {
                 try_files /sw.js =404;
                 add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
-                add_header X-A-Esthetic-Release "20260812-p3-web" always;
+                add_header X-A-Esthetic-Release "20260812-wow-v1" always;
               }
               location / {
                 try_files $uri $uri/ /index.html;
                 add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
-                add_header X-A-Esthetic-Release "20260812-p3-web" always;
+                add_header X-A-Esthetic-Release "20260812-wow-v1" always;
               }
 
               add_header X-Content-Type-Options nosniff always;
@@ -174,9 +176,7 @@ jobs:
             rm -f /etc/nginx/sites-enabled/default
             ln -sfn "$VHOST" /etc/nginx/sites-enabled/a-esthetic-web.conf
 
-            # There must be one HTTP and one HTTPS declaration for this domain, both in this
-            # single canonical file; no second enabled vhost may shadow it.
-            CONFLICTS="$(find /etc/nginx/sites-enabled /etc/nginx/conf.d -maxdepth 1 -type f -o -type l 2>/dev/null | while read -r f; do [ "$(readlink -f "$f" 2>/dev/null || echo "$f")" = "$(readlink -f "$VHOST")" ] && continue; grep -l 'server_name esthetic.smarbiz.sbs' "$f" 2>/dev/null || true; done)"
+            CONFLICTS="$(find /etc/nginx/sites-enabled /etc/nginx/conf.d -maxdepth 1 \( -type f -o -type l \) 2>/dev/null | while read -r f; do [ "$(readlink -f "$f" 2>/dev/null || echo "$f")" = "$(readlink -f "$VHOST")" ] && continue; grep -l 'server_name esthetic.smarbiz.sbs' "$f" 2>/dev/null || true; done)"
             test -z "$CONFLICTS" || { echo "Conflicting A+ Esthetic nginx configs: $CONFLICTS"; exit 1; }
 
             nginx -t
@@ -188,17 +188,23 @@ jobs:
             from urllib.error import HTTPError, URLError
             from urllib.request import HTTPSHandler, Request, build_opener, urlopen
 
-            release = '20260812-p3-web'
-            marker = f'p3.js?v={release}'
+            p3_release = '20260812-p3-web'
+            wow_release = '20260812-wow-v1'
+            p3_marker = f'p3.js?v={p3_release}'
+            wow_marker = f'wow.js?v={wow_release}'
+            css_marker = f'app.css?v={wow_release}'
             domain = 'esthetic.smarbiz.sbs'
 
-            if marker not in Path('/opt/a-esthetic-web/site/index.html').read_text(encoding='utf-8'):
-                raise SystemExit('Published webroot is missing the P3 release marker.')
+            webroot_html = Path('/opt/a-esthetic-web/site/index.html').read_text(encoding='utf-8')
+            for marker in (p3_marker, wow_marker, css_marker):
+                if marker not in webroot_html:
+                    raise SystemExit(f'Published webroot is missing marker: {marker}')
 
             def fetch(url, host=None, insecure=False):
                 headers = {
-                    'User-Agent': 'A-Esthetic-P3-Web-Smoke/3.0',
+                    'User-Agent': 'A-Esthetic-WOW-Web-Smoke/1.0',
                     'Cache-Control': 'no-cache, no-store',
+                    'Pragma': 'no-cache',
                 }
                 if host:
                     headers['Host'] = host
@@ -217,33 +223,43 @@ jobs:
                 except URLError as exc:
                     raise SystemExit(f'Web smoke request failed for {url}: {exc}')
 
-            # Direct TLS origin check bypasses Cloudflare while keeping the production Host.
+            # Direct origin: validate both content and our origin-only release header.
             origin_status, origin_html, origin_headers = fetch(
-                f'https://127.0.0.1/?release={release}', host=domain, insecure=True
+                f'https://127.0.0.1/?release={wow_release}', host=domain, insecure=True
             )
-            if origin_status != 200 or marker not in origin_html:
-                raise SystemExit(f'HTTPS origin is not serving P3: {origin_status}')
-            if origin_headers.get('X-A-Esthetic-Release') != release:
-                raise SystemExit('HTTPS origin release header missing or stale.')
+            if origin_status != 200 or not all(m in origin_html for m in (p3_marker, wow_marker, css_marker)):
+                raise SystemExit(f'HTTPS origin is not serving the WOW release: {origin_status}')
+            if origin_headers.get('X-A-Esthetic-Release') != wow_release:
+                raise SystemExit('HTTPS origin WOW release header missing or stale.')
 
+            # Cloudflare may intentionally strip custom origin headers. Browser-visible
+            # content and versioned assets are therefore authoritative for public checks.
             public_status, public_html, public_headers = fetch(
-                f'https://{domain}/?release={release}'
+                f'https://{domain}/?release={wow_release}'
             )
-            if public_status != 200 or marker not in public_html:
-                raise SystemExit(f'Public Customer Club is not serving P3: {public_status}')
-            if public_headers.get('X-A-Esthetic-Release') != release:
-                raise SystemExit('Public release header missing or stale.')
+            print('Public release header (informational):', public_headers.get('X-A-Esthetic-Release'))
+            if public_status != 200 or not all(m in public_html for m in (p3_marker, wow_marker, css_marker)):
+                raise SystemExit(f'Public Customer Club is not serving WOW: {public_status}')
 
-            for asset in ('app.css','app.js','p0.js','p0-booking-change.js','p1.js','p2.js','p3.js','sw.js'):
+            assets = ('app.css','app.js','p0.js','p0-booking-change.js','p1.js','p2.js','p3.js','wow.js','sw.js')
+            for asset in assets:
+                release = p3_release if asset == 'p3.js' else wow_release
                 status, body, _ = fetch(f'https://{domain}/{asset}?release={release}')
                 if status != 200 or not body.strip():
                     raise SystemExit(f'Public asset {asset} failed: {status}')
 
+            css_status, css, _ = fetch(f'https://{domain}/app.css?v={wow_release}')
+            wow_status, wow, _ = fetch(f'https://{domain}/wow.js?v={wow_release}')
+            if css_status != 200 or 'dashboard-home' not in css or 'auth-showcase' not in css or 'feature-tile' not in css:
+                raise SystemExit('Public CSS is not the WOW redesign build.')
+            if wow_status != 200 or 'featureMeta' not in wow or 'enhanceHome' not in wow or 'enhanceMore' not in wow:
+                raise SystemExit('Public wow.js is stale or incomplete.')
+
             api_status, api_body, _ = fetch(f'https://{domain}/api/mobile/status/')
             if api_status != 200 or 'customer club' not in api_body.lower():
-                raise SystemExit(f'Mobile API failed after P3 web publish: {api_status}')
+                raise SystemExit(f'Mobile API failed after WOW web publish: {api_status}')
 
-            print('A+ Esthetic Customer Club P0-P3 web UI is live on the production HTTPS domain.')
+            print('A+ Esthetic Customer Club WOW redesign is live on the production HTTPS domain.')
             PY
 
             rm -rf "$RELEASE_DIR" "$PACKAGE"
