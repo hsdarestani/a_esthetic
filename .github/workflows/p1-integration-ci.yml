@@ -1,0 +1,99 @@
+name: Verify A+ Esthetic P1 experience integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "platform_app/**"
+      - "p0_app/**"
+      - "p1_app/**"
+      - "config/**"
+      - "www/**"
+      - "requirements.txt"
+      - ".github/workflows/p1-integration-ci.yml"
+      - ".github/workflows/deploy-mobile-api.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile and Django system check
+        env:
+          DJANGO_DEBUG: "1"
+          DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
+        run: |
+          python -m compileall -q config platform_app p0_app p1_app
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+          node --check www/p0.js
+          node --check www/p0-booking-change.js
+          node --check www/p1.js
+
+      - name: Apply migrations on clean SQLite
+        env:
+          DJANGO_DEBUG: "1"
+          DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
+          DATABASE_URL: "sqlite:///ci-p1.sqlite3"
+        run: |
+          rm -f ci-p1.sqlite3
+          python manage.py migrate --noinput
+          python manage.py seed_platform
+          python manage.py seed_p1
+
+      - name: Run P0 and P1 regression tests
+        env:
+          DJANGO_DEBUG: "1"
+          DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
+        run: python manage.py test p0_app p1_app --verbosity 2
+
+      - name: Verify Store positioning
+        run: python scripts/store_positioning_check.py
+
+  native-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build Android release verification bundle
+        env:
+          REQUIRE_ANDROID_SIGNING: "0"
+        run: bash scripts/build-android.sh
+
+      - name: Verify P1 web assets are packaged in Android
+        run: |
+          test -f android/app/src/main/assets/public/p0.js
+          test -f android/app/src/main/assets/public/p0-booking-change.js
+          test -f android/app/src/main/assets/public/p1.js
+          grep -q './p1.js' android/app/src/main/assets/public/index.html
+          test -s artifacts/a-esthetic-release.aab
+
+      - name: Upload verification AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-esthetic-p1-android-release-aab
+          path: artifacts/a-esthetic-release.aab
+          if-no-files-found: error
