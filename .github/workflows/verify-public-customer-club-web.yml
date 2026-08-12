@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "www/**"
       - ".github/workflows/verify-public-customer-club-web.yml"
 
 permissions:
@@ -14,19 +15,22 @@ jobs:
   verify-public:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify public P0-P3 Customer Club release
+      - name: Verify public P0-P3 + WOW Customer Club release
         run: |
           python3 - <<'PY'
           from urllib.error import HTTPError, URLError
           from urllib.request import Request, urlopen
 
-          release = '20260812-p3-web'
-          marker = f'p3.js?v={release}'
+          p3_release = '20260812-p3-web'
+          wow_release = '20260812-wow-v1'
+          p3_marker = f'p3.js?v={p3_release}'
+          wow_marker = f'wow.js?v={wow_release}'
+          css_marker = f'app.css?v={wow_release}'
           domain = 'esthetic.smarbiz.sbs'
 
           def fetch(url):
               req = Request(url, headers={
-                  'User-Agent': 'A-Esthetic-Public-Web-Verify/2.0',
+                  'User-Agent': 'A-Esthetic-Public-Web-Verify/3.0',
                   'Cache-Control': 'no-cache, no-store',
                   'Pragma': 'no-cache',
               })
@@ -38,24 +42,34 @@ jobs:
               except URLError as exc:
                   raise SystemExit(f'Public request failed for {url}: {exc}')
 
-          status, html, headers = fetch(f'https://{domain}/?release={release}')
+          status, html, headers = fetch(f'https://{domain}/?release={wow_release}')
           print('Root status:', status)
           print('Release header (informational):', headers.get('X-A-Esthetic-Release'))
           if status != 200:
               raise SystemExit(f'Public root returned {status}')
-          if marker not in html:
-              raise SystemExit('Public root still serves the old Customer Club HTML.')
+          for marker in (p3_marker, wow_marker, css_marker):
+              if marker not in html:
+                  raise SystemExit(f'Public root is missing release marker: {marker}')
 
-          for asset in ('app.css','app.js','p0.js','p0-booking-change.js','p1.js','p2.js','p3.js','sw.js'):
+          assets = ('app.css','app.js','p0.js','p0-booking-change.js','p1.js','p2.js','p3.js','wow.js','sw.js')
+          for asset in assets:
+              release = p3_release if asset == 'p3.js' else wow_release
               asset_status, body, _ = fetch(f'https://{domain}/{asset}?release={release}')
               print(asset, asset_status, len(body))
               if asset_status != 200 or not body.strip():
                   raise SystemExit(f'Public asset {asset} failed: {asset_status}')
+
+          css_status, css, _ = fetch(f'https://{domain}/app.css?v={wow_release}')
+          wow_status, wow, _ = fetch(f'https://{domain}/wow.js?v={wow_release}')
+          if css_status != 200 or 'dashboard-home' not in css or 'auth-showcase' not in css:
+              raise SystemExit('Public CSS is not the WOW redesign build.')
+          if wow_status != 200 or 'featureMeta' not in wow or 'enhanceMore' not in wow:
+              raise SystemExit('Public WOW enhancement layer is stale or missing.')
 
           api_status, api_body, _ = fetch(f'https://{domain}/api/mobile/status/')
           print('Mobile API status:', api_status)
           if api_status != 200 or 'customer club' not in api_body.lower():
               raise SystemExit(f'Mobile API verification failed: {api_status}')
 
-          print('PUBLIC A+ ESTHETIC CUSTOMER CLUB P0-P3 WEB IS LIVE.')
+          print('PUBLIC A+ ESTHETIC CUSTOMER CLUB WOW REDESIGN IS LIVE.')
           PY
