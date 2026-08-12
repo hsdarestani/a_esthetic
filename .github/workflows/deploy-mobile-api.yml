@@ -7,6 +7,7 @@ on:
     paths:
       - "platform_app/**"
       - "p0_app/**"
+      - "p1_app/**"
       - "config/**"
       - "templates/legal.html"
       - "requirements.txt"
@@ -34,7 +35,7 @@ jobs:
           rm -rf /tmp/aesthetic-mobile-package
           mkdir -p /tmp/aesthetic-mobile-package/vendor
           python -m pip install --quiet --target /tmp/aesthetic-mobile-package/vendor -r requirements.txt
-          cp -a config platform_app p0_app templates static /tmp/aesthetic-mobile-package/
+          cp -a config platform_app p0_app p1_app templates static /tmp/aesthetic-mobile-package/
           cp manage.py /tmp/aesthetic-mobile-package/
           tar -C /tmp/aesthetic-mobile-package -czf a-esthetic-mobile-package.tar.gz .
 
@@ -68,8 +69,8 @@ jobs:
             rm -rf "$RELEASE"
             mkdir -p "$RELEASE" "$ROOT"
             tar -xzf "$PACKAGE" -C "$RELEASE"
-            rm -rf "$ROOT/config" "$ROOT/platform_app" "$ROOT/p0_app" "$ROOT/templates" "$ROOT/static" "$ROOT/vendor"
-            cp -a "$RELEASE/config" "$RELEASE/platform_app" "$RELEASE/p0_app" "$RELEASE/templates" "$RELEASE/static" "$RELEASE/vendor" "$ROOT/"
+            rm -rf "$ROOT/config" "$ROOT/platform_app" "$ROOT/p0_app" "$ROOT/p1_app" "$ROOT/templates" "$ROOT/static" "$ROOT/vendor"
+            cp -a "$RELEASE/config" "$RELEASE/platform_app" "$RELEASE/p0_app" "$RELEASE/p1_app" "$RELEASE/templates" "$RELEASE/static" "$RELEASE/vendor" "$ROOT/"
             install -m 0644 "$RELEASE/manage.py" "$ROOT/manage.py"
 
             if [ ! -f "$ENV_FILE" ]; then
@@ -94,11 +95,10 @@ jobs:
             export PYTHONPATH="$ROOT/vendor"
             cd "$ROOT"
 
-            # Existing production tables were originally created with --run-syncdb.
-            # --fake-initial adopts those tables into migration history safely.
             python3 manage.py migrate platform_app --fake-initial --noinput
             python3 manage.py migrate --noinput
             python3 manage.py seed_platform
+            python3 manage.py seed_p1
             python3 manage.py collectstatic --noinput
             python3 manage.py check
 
@@ -194,4 +194,7 @@ jobs:
             ACCOUNT_HEADERS="$(curl -fsSI https://esthetic.smarbiz.sbs/accounts/login/)"
             grep -Eq 'HTTP/[0-9.]+ (200|302)' <<<"$ACCOUNT_HEADERS"
 
-            echo 'A+ Esthetic production-safe Customer Club API is live.'
+            P1_HTTP="$(curl -sS -o /dev/null -w '%{http_code}' https://esthetic.smarbiz.sbs/api/mobile/progress/)"
+            test "$P1_HTTP" = "401"
+
+            echo 'A+ Esthetic production-safe Customer Club API with P1 experience is live.'

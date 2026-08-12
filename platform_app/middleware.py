@@ -24,7 +24,7 @@ class MobileApiCorsMiddleware:
 
         if is_mobile_api and origin in self.ALLOWED_ORIGINS:
             response['Access-Control-Allow-Origin'] = origin
-            response['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+            response['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS'
             response['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
             response['Access-Control-Max-Age'] = '86400'
             response['Vary'] = 'Origin'
