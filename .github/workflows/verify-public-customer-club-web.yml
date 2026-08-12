@@ -18,6 +18,7 @@ jobs:
       - name: Verify public P0-P3 + WOW Customer Club release
         run: |
           python3 - <<'PY'
+          import time
           from urllib.error import HTTPError, URLError
           from urllib.request import Request, urlopen
 
@@ -30,7 +31,7 @@ jobs:
 
           def fetch(url):
               req = Request(url, headers={
-                  'User-Agent': 'A-Esthetic-Public-Web-Verify/3.0',
+                  'User-Agent': 'A-Esthetic-Public-Web-Verify/3.1',
                   'Cache-Control': 'no-cache, no-store',
                   'Pragma': 'no-cache',
               })
@@ -40,16 +41,24 @@ jobs:
               except HTTPError as exc:
                   return exc.code, exc.read().decode('utf-8', 'replace'), dict(exc.headers)
               except URLError as exc:
-                  raise SystemExit(f'Public request failed for {url}: {exc}')
+                  return 0, str(exc), {}
 
-          status, html, headers = fetch(f'https://{domain}/?release={wow_release}')
+          # The production deployment runs in a separate workflow on the same push.
+          # Wait for its public WOW marker instead of racing it and reporting a false failure.
+          status = 0
+          html = ''
+          headers = {}
+          for attempt in range(18):
+              status, html, headers = fetch(f'https://{domain}/?release={wow_release}&attempt={attempt}')
+              if status == 200 and all(marker in html for marker in (p3_marker, wow_marker, css_marker)):
+                  break
+              print(f'Waiting for WOW web deployment: attempt {attempt + 1}/18, status={status}')
+              time.sleep(10)
+          else:
+              raise SystemExit('Public root did not switch to the WOW release within 180 seconds.')
+
           print('Root status:', status)
           print('Release header (informational):', headers.get('X-A-Esthetic-Release'))
-          if status != 200:
-              raise SystemExit(f'Public root returned {status}')
-          for marker in (p3_marker, wow_marker, css_marker):
-              if marker not in html:
-                  raise SystemExit(f'Public root is missing release marker: {marker}')
 
           assets = ('app.css','app.js','p0.js','p0-booking-change.js','p1.js','p2.js','p3.js','wow.js','sw.js')
           for asset in assets:
