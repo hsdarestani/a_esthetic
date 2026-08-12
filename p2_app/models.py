@@ -77,7 +77,7 @@ class ShopProduct(TimeStampedModel):
     is_prescription_product = models.BooleanField(default=False, editable=False)
 
     class Meta:
-        ordering = ["category__sort_order", "name"]
+        ordering = ["category_id", "name"]
         verbose_name = "Shop-Produkt"
         verbose_name_plural = "Shop-Produkte"
 
@@ -171,6 +171,8 @@ class ShopOrder(TimeStampedModel):
     def clean(self):
         if self.delivery_method == "shipping" and not self.shipping_address.strip():
             raise ValidationError("Für Versand ist eine Lieferadresse erforderlich.")
+        if self.stock_released_at and self.status != "cancelled":
+            raise ValidationError("Eine stornierte Bestellung mit freigegebenem Bestand kann nicht reaktiviert werden.")
 
     def __str__(self):
         return self.order_number
