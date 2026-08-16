@@ -111,7 +111,11 @@
     const brand = topbar?.querySelector('.topbrand');
     if (!topbar || !brand) return;
     topbar.classList.add('luxury-topbar');
-    brand.innerHTML = `<span class="topbar-lotus">${lotus('topbar-lotus-svg')}</span><span class="topbar-title"><b>${title}</b><small>A+ ESTHETIC</small></span>`;
+    const needsBrandUpdate = topbar.dataset.luxuryTitle !== title || !brand.querySelector('.topbar-title');
+    if (needsBrandUpdate) {
+      topbar.dataset.luxuryTitle = title;
+      brand.innerHTML = `<span class="topbar-lotus">${lotus('topbar-lotus-svg')}</span><span class="topbar-title"><b>${title}</b><small>A+ ESTHETIC</small></span>`;
+    }
     replaceRefreshWithBell();
   }
 
