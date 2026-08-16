@@ -2,7 +2,7 @@
   'use strict';
 
   const API_BASE = 'https://esthetic.smarbiz.sbs/api/mobile';
-  const DAY_COUNT = 21;
+  const DAY_COUNT = 14;
 
   const authToken = () => localStorage.getItem('aplus_token') || '';
   const pad = value => String(value).padStart(2, '0');
@@ -48,7 +48,17 @@
     let selectedSlot = '';
     let requestId = 0;
 
+    const getServiceId = () => typeof options.getServiceId === 'function'
+      ? Number(options.getServiceId()) || 0
+      : Number(options.serviceId) || 0;
+
     container.innerHTML = `
+      <div class="smart-picker-gate" aria-live="polite">
+        <span class="smart-picker-gate-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 10h18"/><path d="m8.5 15 2 2 5-5"/></svg>
+        </span>
+        <div class="smart-picker-gate-copy"><small>Schritt 2</small><b>Datum & Uhrzeit</b><span>Wählen Sie zuerst oben Ihre Terminart aus.</span></div>
+      </div>
       <div class="smart-picker" aria-label="Wunschtermin auswählen">
         <div class="smart-picker-head">
           <div><small>Wunschtermin</small><strong>Datum & Uhrzeit</strong></div>
@@ -56,7 +66,7 @@
         </div>
         <div class="smart-days" data-picker-days></div>
         <div class="smart-times-head"><b>Freie Zeiten</b><span data-picker-day-label></span></div>
-        <div class="smart-times" data-picker-times><div class="smart-picker-empty">Bitte zuerst eine Terminart auswählen.</div></div>
+        <div class="smart-times" data-picker-times></div>
         <div class="smart-choice" data-picker-choice hidden></div>
       </div>`;
 
@@ -66,9 +76,12 @@
     const statusEl = container.querySelector('[data-picker-status]');
     const choiceEl = container.querySelector('[data-picker-choice]');
 
-    const getServiceId = () => typeof options.getServiceId === 'function'
-      ? Number(options.getServiceId()) || 0
-      : Number(options.serviceId) || 0;
+    function centerActiveDay(behavior = 'smooth') {
+      const active = daysEl.querySelector('.smart-day.active');
+      if (!active) return;
+      const target = active.offsetLeft - Math.max(0, (daysEl.clientWidth - active.offsetWidth) / 2);
+      daysEl.scrollTo({ left: Math.max(0, target), behavior });
+    }
 
     function renderDays() {
       daysEl.innerHTML = allDays.map((key, index) => {
@@ -79,8 +92,7 @@
           <small>${month(key)}</small>
         </button>`;
       }).join('');
-      const active = daysEl.querySelector('.smart-day.active');
-      active?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+      requestAnimationFrame(() => centerActiveDay('smooth'));
     }
 
     function clearSelection() {
@@ -101,14 +113,17 @@
 
     async function loadDay() {
       clearSelection();
-      renderDays();
       const serviceId = getServiceId();
-      const selectedDate = dayDate(selectedDay);
-      dayLabelEl.textContent = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: 'long' }).format(selectedDate);
+      container.classList.toggle('picker-service-ready', !!serviceId);
       if (!serviceId) {
-        timesEl.innerHTML = '<div class="smart-picker-empty">Bitte zuerst eine Terminart auswählen.</div>';
+        timesEl.innerHTML = '';
+        dayLabelEl.textContent = '';
         return;
       }
+
+      renderDays();
+      const selectedDate = dayDate(selectedDay);
+      dayLabelEl.textContent = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: 'long' }).format(selectedDate);
       const id = ++requestId;
       timesEl.innerHTML = '<div class="smart-picker-loading"><i></i><i></i><i></i><i></i><i></i><i></i></div>';
       statusEl.textContent = 'Freie Zeiten…';
@@ -143,8 +158,12 @@
       options.onSelect?.(selectedSlot);
     });
 
-    renderDays();
-    loadDay();
+    if (getServiceId()) {
+      renderDays();
+      loadDay();
+    } else {
+      container.classList.remove('picker-service-ready');
+    }
 
     return {
       refresh() { loadDay(); },
