@@ -1,0 +1,110 @@
+name: Restore real A+ Esthetic booking catalog
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/restore-real-booking-catalog.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Replace demo booking services with real A+ Esthetic catalog
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('platform_app/management/commands/seed_platform.py')
+          text = p.read_text(encoding='utf-8')
+
+          old = '''        service_definitions = [
+            ('A+ Beratungstermin', 'beratung', 30, 10, 'Preis vor Ort'),
+            ('A+ Beauty Termin', 'beauty-termin', 45, 10, 'Preis vor Ort'),
+            ('A+ Club Termin', 'club-termin', 20, 10, 'Kostenlos'),
+            ('A+ Event Termin', 'event-termin', 30, 10, 'Nach Einladung'),
+        ]
+        services = []
+        for name, slug, duration, buffer, price in service_definitions:
+            service, _ = Service.objects.update_or_create(
+                slug=slug,
+                defaults={
+                    'name': name,
+                    'description': 'Organisatorische Terminanfrage über den A+ Customer Club.',
+                    'category': 'nonmedical',
+                    'duration_minutes': duration,
+                    'buffer_minutes': buffer,
+                    'price_label': price,
+                    'active': True,
+                    'bookable_in_app': True,
+                    'requires_medical_confirmation': False,
+                },
+            )
+            services.append(service)
+
+        # Older treatment-specific demo services must not appear in the Customer Club.
+        Service.objects.exclude(pk__in=[item.pk for item in services]).update(bookable_in_app=False)
+'''
+
+          new = '''        # Customer-facing booking catalog mirrors the actual A+ Esthetic treatment areas.
+        # Medical entries are requests/consultations and remain pending until A+ Esthetic confirms them.
+        service_definitions = [
+            ('Ästhetische Erstberatung', 'aesthetische-erstberatung', 'consultation', 30, 10, 'Individuelle Beratung', True),
+            ('Botox Beratung', 'botox-beratung', 'medical', 30, 10, 'ab 119 €', True),
+            ('Hyaluron Beratung', 'hyaluron-beratung', 'medical', 30, 10, 'ab 200 €', True),
+            ('Laser-Haarentfernung', 'laser-haarentfernung', 'nonmedical', 45, 10, 'je nach Areal', False),
+            ('RF-Microneedling', 'rf-microneedling', 'nonmedical', 60, 15, 'Preis nach Region', False),
+            ('PRP Beratung', 'prp-beratung', 'medical', 30, 10, 'Preis nach Beratung', True),
+            ('Skinbooster Beratung', 'skinbooster-beratung', 'medical', 30, 10, 'Preis nach Beratung', True),
+            ('Infusionstherapie', 'infusionstherapie', 'medical', 60, 10, 'ab 119 €', True),
+            ('Injektionslipolyse Beratung', 'injektionslipolyse-beratung', 'medical', 30, 10, 'ab 149 €', True),
+        ]
+        services = []
+        for name, slug, category, duration, buffer, price, medical in service_definitions:
+            service, _ = Service.objects.update_or_create(
+                slug=slug,
+                defaults={
+                    'name': name,
+                    'description': 'Terminanfrage über den A+ Customer Club. Die persönliche Beratung, Aufklärung und Bestätigung erfolgt durch A+ Esthetic.',
+                    'category': category,
+                    'duration_minutes': duration,
+                    'buffer_minutes': buffer,
+                    'price_label': price,
+                    'active': True,
+                    'bookable_in_app': True,
+                    'requires_medical_confirmation': medical,
+                },
+            )
+            services.append(service)
+
+        # Retire generic/demo and legacy services without deleting historical appointments.
+        Service.objects.exclude(pk__in=[item.pk for item in services]).update(bookable_in_app=False)
+'''
+
+          if old not in text:
+              raise SystemExit('Expected demo service block not found')
+          text = text.replace(old, new, 1)
+          text = text.replace("defaults={'role': 'reception', 'active': True}", "defaults={'role': 'specialist', 'active': True}", 1)
+          text = text.replace("staff.role = 'reception'", "staff.role = 'specialist'", 1)
+          p.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Validate Django source
+        run: |
+          python3 -m py_compile platform_app/management/commands/seed_platform.py
+
+      - name: Commit catalog and remove one-off workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/restore-real-booking-catalog.yml
+          git add platform_app/management/commands/seed_platform.py
+          git commit -m "Replace demo booking services with real treatment catalog"
+          git push origin HEAD:main
