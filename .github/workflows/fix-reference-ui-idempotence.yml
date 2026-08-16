@@ -1,0 +1,59 @@
+name: Fix reference UI idempotence
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-reference-ui-idempotence.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Make topbar enhancement idempotent
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('www/reference-ui.js')
+          text = p.read_text(encoding='utf-8')
+          old = '''  function tuneTopbar(title = 'A+ Esthetic') {
+    const topbar = document.querySelector('.topbar');
+    const brand = topbar?.querySelector('.topbrand');
+    if (!topbar || !brand) return;
+    topbar.classList.add('luxury-topbar');
+    brand.innerHTML = `<span class="topbar-lotus">${lotus('topbar-lotus-svg')}</span><span class="topbar-title"><b>${title}</b><small>A+ ESTHETIC</small></span>`;
+    replaceRefreshWithBell();
+  }
+'''
+          new = '''  function tuneTopbar(title = 'A+ Esthetic') {
+    const topbar = document.querySelector('.topbar');
+    const brand = topbar?.querySelector('.topbrand');
+    if (!topbar || !brand) return;
+    topbar.classList.add('luxury-topbar');
+    const needsBrandUpdate = topbar.dataset.luxuryTitle !== title || !brand.querySelector('.topbar-title');
+    if (needsBrandUpdate) {
+      topbar.dataset.luxuryTitle = title;
+      brand.innerHTML = `<span class="topbar-lotus">${lotus('topbar-lotus-svg')}</span><span class="topbar-title"><b>${title}</b><small>A+ ESTHETIC</small></span>`;
+    }
+    replaceRefreshWithBell();
+  }
+'''
+          if old not in text:
+              raise SystemExit('Expected tuneTopbar block not found')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          node --check www/reference-ui.js
+      - name: Commit fix and remove one-off workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-reference-ui-idempotence.yml
+          git add www/reference-ui.js
+          git commit -m "Stop luxury UI observer from redrawing topbar"
+          git push
