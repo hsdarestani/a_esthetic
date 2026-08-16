@@ -94,19 +94,23 @@ def mobile_appointment_change(request, appointment_id):
 
         service = appointment.service
         eligible = StaffMember.objects.filter(active=True, services=service).distinct().order_by("display_name")
-        staff_id = data.get("staff_id") or appointment.staff_id
-        staff = eligible.filter(pk=staff_id).first() if staff_id else None
-        if not staff:
-            return JsonResponse({"ok": False, "error": "staff_not_found"}, status=400)
+        requested_staff_id = data.get("staff_id")
+        if requested_staff_id:
+            eligible = eligible.filter(pk=requested_staff_id)
 
-        locked_staff = StaffMember.objects.select_for_update().get(pk=staff.pk)
         local_day = starts_at.astimezone(timezone.get_current_timezone()).date()
-        if starts_at not in available_slots(
-            service,
-            locked_staff,
-            local_day,
-            exclude_appointment_id=appointment.pk,
-        ):
+        locked_staff = None
+        for candidate in eligible:
+            candidate_locked = StaffMember.objects.select_for_update().get(pk=candidate.pk)
+            if starts_at in available_slots(
+                service,
+                candidate_locked,
+                local_day,
+                exclude_appointment_id=appointment.pk,
+            ):
+                locked_staff = candidate_locked
+                break
+        if not locked_staff:
             return JsonResponse({"ok": False, "error": "time_not_available"}, status=409)
 
         previous_start = appointment.starts_at

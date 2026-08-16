@@ -143,8 +143,17 @@
   }
 
   async function navigate(route) {
+    if (!route || route === state.route || document.body.classList.contains('route-transitioning')) return;
     state.route = route;
-    await renderRoute();
+    document.body.classList.add('route-transitioning');
+    root.querySelectorAll('.nav [data-route]').forEach(button => {
+      button.classList.toggle('active', button.dataset.route === route);
+    });
+    try {
+      await renderRoute();
+    } finally {
+      requestAnimationFrame(() => document.body.classList.remove('route-transitioning'));
+    }
   }
 
   function loading(title = 'A+ Esthetic') {
@@ -158,8 +167,6 @@
 
   async function renderRoute() {
     if (!state.token) return showLogin();
-    const titles = { home: 'Übersicht', club: 'Customer Club', booking: 'Termine', wallet: 'Wallet & Rewards', reminders: 'Erinnerungen', messages: 'Nachrichten', profile: 'Profil', more: 'Mehr' };
-    loading(titles[state.route] || 'A+ Esthetic');
     try {
       if (state.route === 'home') return await renderHome();
       if (state.route === 'club') return await renderClub();
@@ -184,7 +191,6 @@
       <section class="card"><h2>Nächster Termin</h2>${data.next_appointment ? `<div class="row"><div class="row-main"><b>${esc(data.next_appointment.title)}</b><small>${dateTime(data.next_appointment.starts_at)}</small></div><span class="badge">${esc(data.next_appointment.status)}</span></div>` : '<p class="empty">Noch kein Termin geplant.</p>'}<div class="actions"><button class="btn primary" data-route="booking">Termin anfragen</button></div></section>
       <section class="card"><h2>Erinnerungen</h2>${data.reminders.length ? data.reminders.map(item => `<div class="row"><div class="row-main"><b>${esc(item.title)}</b><small>${dateTime(item.scheduled_for)}</small></div></div>`).join('') : '<p class="empty">Keine aktiven Erinnerungen.</p>'}<div class="actions"><button class="btn ghost" data-route="reminders">Alle anzeigen</button></div></section>
     `, 'home');
-    bindShell();
   }
 
   async function renderClub() {
@@ -208,24 +214,49 @@
 
   async function renderBooking() {
     const data = await api('/booking/');
-    const min = new Date(Date.now() + 60 * 60 * 1000);
-    min.setMinutes(min.getMinutes() - min.getTimezoneOffset());
-    const minValue = min.toISOString().slice(0, 16);
     shell(`
-      <div class="pagehead"><span>Organisation</span><h1>Termine</h1><p>Terminart und Wunschzeit auswählen. Weitere Details klärt das A+ Team separat.</p></div>
-      <section class="card"><h2>Neue Anfrage</h2><form id="booking-form" class="form"><label>Terminart<select name="service_id" required><option value="">Bitte wählen</option>${data.services.map(s => `<option value="${s.id}">${esc(s.name)} · ${s.duration_minutes} Min.</option>`).join('')}</select></label><label>Ansprechpartner/in<select name="staff_id"><option value="">A+ Team / offen</option>${data.staff.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label><label>Wunschzeit<input type="datetime-local" name="starts_at" min="${minValue}" required></label><button class="btn primary">Terminanfrage senden</button></form></section>
-      <section class="card"><h2>Ihre Termine</h2>${data.appointments.length ? data.appointments.map(a => `<div class="row"><div class="row-main"><b>${esc(a.service)}</b><small>${dateTime(a.starts_at)}${a.staff ? ` · ${esc(a.staff)}` : ''}</small></div><span class="badge">${esc(a.status)}</span></div>`).join('') : '<p class="empty">Noch keine Termine.</p>'}</section>
+      <div class="pagehead"><span>Organisation</span><h1>Termine</h1><p>Terminart auswählen und anschließend bequem eine freie Zeit wählen.</p></div>
+      <section class="card booking-request-card">
+        <h2>Neue Anfrage</h2>
+        <form id="booking-form" class="form">
+          <label>Terminart
+            <select name="service_id" required>
+              <option value="">Bitte wählen</option>
+              ${data.services.map(s => `<option value="${s.id}">${esc(s.name)} · ${s.duration_minutes} Min.</option>`).join('')}
+            </select>
+          </label>
+          <div class="booking-picker-wrap">
+            <span>Wunschtermin</span>
+            <input type="hidden" name="starts_at" required>
+            <div data-booking-picker></div>
+            <small class="booking-modern-note">Der passende Ansprechpartner aus dem A+ Team wird automatisch für Sie eingeplant.</small>
+          </div>
+          <button class="btn primary" type="submit" disabled>Terminanfrage senden</button>
+        </form>
+      </section>
+      <section class="card"><h2>Ihre Termine</h2>${data.appointments.length ? data.appointments.map(a => `<div class="row"><div class="row-main"><b>${esc(a.service)}</b><small>${dateTime(a.starts_at)}</small></div><span class="badge">${esc(a.status)}</span></div>`).join('') : '<p class="empty">Noch keine Termine.</p>'}</section>
     `, 'booking');
     document.getElementById('booking-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
-      const payload = { service_id: Number(form.get('service_id')), starts_at: new Date(form.get('starts_at')).toISOString() };
-      if (form.get('staff_id')) payload.staff_id = Number(form.get('staff_id'));
+      const startsAt = String(form.get('starts_at') || '');
+      if (!startsAt) {
+        alert('Bitte wählen Sie eine freie Zeit.');
+        return;
+      }
+      const payload = { service_id: Number(form.get('service_id')), starts_at: startsAt };
+      const button = event.currentTarget.querySelector('button[type="submit"]');
+      button.disabled = true;
+      button.textContent = 'Wird gesendet…';
       try {
         await api('/booking/', { method: 'POST', body: JSON.stringify(payload) });
         alert('Terminanfrage wurde gespeichert.');
         await renderBooking();
-      } catch (error) { alert(error.message); }
+      } catch (error) {
+        alert(error.message);
+        button.disabled = false;
+        button.textContent = 'Terminanfrage senden';
+      }
     });
   }
 
@@ -307,7 +338,6 @@
       <section class="card"><h2>Rechtliches</h2><div class="more-grid"><a href="${LEGAL_BASE}/datenschutz/" target="_blank" rel="noopener">Datenschutz</a><a href="${LEGAL_BASE}/nutzungsbedingungen/" target="_blank" rel="noopener">Bedingungen</a><a href="${LEGAL_BASE}/konto-loeschen/" target="_blank" rel="noopener">Konto löschen</a><a href="${LEGAL_BASE}/impressum/" target="_blank" rel="noopener">Impressum</a></div></section>
       <button class="btn ghost" id="logout" style="width:100%">Abmelden</button>
     `, 'more');
-    root.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
     document.getElementById('logout')?.addEventListener('click', () => logout());
   }
 

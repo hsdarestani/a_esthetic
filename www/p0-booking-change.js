@@ -75,68 +75,48 @@
 
   function buildRescheduleEditor(appointment, staffOptions, container) {
     container.innerHTML = '';
-    const candidates = staffOptions.filter(item => item.service_ids.includes(appointment.service_id));
-    if (!candidates.length) {
-      container.innerHTML = '<div class="notice">Für diesen Termin ist aktuell kein Ansprechpartner für eine direkte Umbuchung verfügbar. Bitte kontaktieren Sie das A+ Team.</div>';
-      return;
-    }
-
     const editor = document.createElement('div');
-    editor.className = 'form';
-    editor.style.marginTop = '12px';
+    editor.className = 'form reschedule-modern';
     editor.innerHTML = `
-      <label>Ansprechpartner/in
-        <select data-change-staff>
-          ${candidates.map(item => `<option value="${item.id}" ${item.id === appointment.staff_id ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}
-        </select>
-      </label>
-      <label>Neues Datum<input type="date" data-change-day required></label>
-      <label>Freie Zeit<select data-change-slot required><option value="">Datum wählen</option></select></label>
+      <div data-reschedule-picker></div>
       <div class="actions">
         <button class="btn primary" type="button" data-save-reschedule disabled>Umbuchung speichern</button>
         <button class="btn ghost" type="button" data-close-reschedule>Abbrechen</button>
       </div>`;
     container.appendChild(editor);
 
-    const staff = editor.querySelector('[data-change-staff]');
-    const day = editor.querySelector('[data-change-day]');
-    const slot = editor.querySelector('[data-change-slot]');
     const save = editor.querySelector('[data-save-reschedule]');
-    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    day.min = tomorrow.toISOString().slice(0, 10);
-
-    async function reloadSlots() {
-      save.disabled = true;
-      if (!staff.value || !day.value) {
-        slot.innerHTML = '<option value="">Datum wählen</option>';
-        return;
-      }
-      await loadSlots(appointment.service_id, staff.value, day.value, slot);
+    let selectedSlot = '';
+    const host = editor.querySelector('[data-reschedule-picker]');
+    if (!window.APlusBookingPicker) {
+      host.innerHTML = '<div class="notice">Die Terminauswahl konnte nicht geladen werden. Bitte öffnen Sie die Seite erneut.</div>';
+      return;
     }
 
-    staff.addEventListener('change', reloadSlots);
-    day.addEventListener('change', reloadSlots);
-    slot.addEventListener('change', () => { save.disabled = !slot.value; });
+    window.APlusBookingPicker.mountStandalone(host, {
+      serviceId: appointment.service_id,
+      excludeAppointmentId: appointment.id,
+      onSelect: value => {
+        selectedSlot = value || '';
+        save.disabled = !selectedSlot;
+      },
+    });
+
     editor.querySelector('[data-close-reschedule]').addEventListener('click', () => { container.innerHTML = ''; });
     save.addEventListener('click', async () => {
-      if (!slot.value) return;
+      if (!selectedSlot) return;
       save.disabled = true;
       save.textContent = 'Wird gespeichert…';
       try {
         await api(`/booking/${appointment.id}/change/`, {
           method: 'POST',
-          body: JSON.stringify({
-            action: 'reschedule',
-            staff_id: Number(staff.value),
-            starts_at: slot.value,
-          }),
+          body: JSON.stringify({ action: 'reschedule', starts_at: selectedSlot }),
         });
         refreshBooking();
       } catch (error) {
         alert(errorText(error.message));
         save.disabled = false;
         save.textContent = 'Umbuchung speichern';
-        await reloadSlots();
       }
     });
   }
@@ -174,7 +154,7 @@
         row.innerHTML = `
           <div class="row-main">
             <b>${esc(appointment.service)}</b>
-            <small>${esc(formatDateTime(appointment.starts_at))}${appointment.staff ? ` · ${esc(appointment.staff)}` : ''}</small>
+            <small>${esc(formatDateTime(appointment.starts_at))}</small>
             ${appointment.change_allowed ? '' : '<small>Änderungsfrist abgelaufen – bitte A+ Esthetic kontaktieren.</small>'}
             <div class="actions" style="margin-top:8px">
               <button class="btn ghost" type="button" data-reschedule ${appointment.change_allowed ? '' : 'disabled'}>Umbuchen</button>

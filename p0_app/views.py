@@ -158,21 +158,40 @@ def mobile_slots(request):
         active=True,
         bookable_in_app=True,
     ).first()
-    staff = StaffMember.objects.filter(pk=request.GET.get("staff_id"), active=True).first()
     if not service:
         return JsonResponse({"ok": False, "error": "service_not_found"}, status=400)
-    if not staff or not staff.services.filter(pk=service.pk).exists():
-        return JsonResponse({"ok": False, "error": "staff_not_found"}, status=400)
     try:
         day = date.fromisoformat(str(request.GET.get("day") or ""))
     except ValueError:
         return JsonResponse({"ok": False, "error": "invalid_day"}, status=400)
 
-    slots = available_slots(service, staff, day)
+    exclude_appointment_id = None
+    raw_exclude = request.GET.get("exclude_appointment_id")
+    if raw_exclude:
+        owned = Appointment.objects.filter(pk=raw_exclude, user=user).first()
+        if owned:
+            exclude_appointment_id = owned.pk
+
+    eligible = StaffMember.objects.filter(active=True, services=service).distinct().order_by("display_name")
+    requested_staff_id = request.GET.get("staff_id")
+    if requested_staff_id:
+        eligible = eligible.filter(pk=requested_staff_id)
+    if not eligible.exists():
+        return JsonResponse({"ok": False, "error": "staff_not_found"}, status=400)
+
+    unique_slots = set()
+    for member in eligible:
+        unique_slots.update(available_slots(
+            service,
+            member,
+            day,
+            exclude_appointment_id=exclude_appointment_id,
+        ))
+
+    slots = sorted(unique_slots)
     return JsonResponse({
         "ok": True,
         "service_id": service.pk,
-        "staff_id": staff.pk,
         "day": day.isoformat(),
         "slots": [slot.isoformat() for slot in slots],
     })
