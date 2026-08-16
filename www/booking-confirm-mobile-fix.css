@@ -1,0 +1,112 @@
+/* Mobile confirmation sheet fix: native-feeling bottom sheet with always-visible actions. */
+.a-confirm-layer:not([hidden]){
+  position:fixed!important;
+  inset:0!important;
+  width:100vw!important;
+  height:100dvh!important;
+  z-index:2147483000!important;
+  display:flex!important;
+  align-items:flex-end!important;
+  justify-content:center!important;
+  padding:0!important;
+  overflow:hidden!important;
+  pointer-events:auto!important;
+  touch-action:none;
+}
+.a-confirm-layer .a-confirm-backdrop{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+}
+.a-confirm-layer .a-confirm-sheet{
+  position:relative!important;
+  z-index:2!important;
+  display:flex!important;
+  flex-direction:column!important;
+  width:min(100%,520px)!important;
+  max-width:520px!important;
+  max-height:calc(100dvh - 18px)!important;
+  overflow:hidden!important;
+  overscroll-behavior:contain!important;
+  touch-action:pan-y!important;
+}
+.a-confirm-layer .a-confirm-head{
+  flex:0 0 auto!important;
+  margin-bottom:10px!important;
+}
+.a-confirm-layer .a-confirm-scroll{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  -webkit-overflow-scrolling:touch!important;
+  overscroll-behavior-y:contain!important;
+  touch-action:pan-y!important;
+  padding:0 1px 14px!important;
+  scrollbar-width:thin;
+}
+.a-confirm-layer .a-confirm-actions{
+  position:relative!important;
+  flex:0 0 auto!important;
+  z-index:8!important;
+  margin:0 -20px -20px!important;
+  padding:10px 20px calc(12px + env(safe-area-inset-bottom))!important;
+  background:rgba(255,255,255,.97)!important;
+  border-top:1px solid #eee4d5!important;
+  box-shadow:0 -12px 30px rgba(47,35,13,.08)!important;
+  backdrop-filter:blur(12px)!important;
+  -webkit-backdrop-filter:blur(12px)!important;
+}
+.a-confirm-layer .a-confirm-actions .a-confirm-error{
+  margin:0 0 8px!important;
+}
+.a-confirm-layer .a-confirm-actions .a-confirm-submit{
+  margin:0!important;
+  min-height:48px!important;
+  font-size:11px!important;
+}
+.a-confirm-layer .a-confirm-actions .a-confirm-change{
+  margin:7px 0 0!important;
+  min-height:40px!important;
+}
+.a-confirm-layer .a-confirm-scroll::after{
+  content:"";
+  display:block;
+  height:2px;
+}
+
+@media(max-width:560px){
+  body.a-confirm-open{overflow:hidden!important;overscroll-behavior:none!important}
+  .a-confirm-layer .a-confirm-sheet{
+    width:100%!important;
+    max-width:none!important;
+    height:min(92dvh,820px)!important;
+    max-height:92dvh!important;
+    border-radius:24px 24px 0 0!important;
+    padding:12px 15px 0!important;
+  }
+  .a-confirm-layer .a-sheet-handle{
+    display:block!important;
+    flex:0 0 auto!important;
+    margin:0 auto 9px!important;
+  }
+  .a-confirm-layer .a-confirm-head{
+    padding-bottom:8px!important;
+    border-bottom:1px solid #f1e9de!important;
+  }
+  .a-confirm-layer .a-confirm-scroll{
+    padding-bottom:18px!important;
+  }
+  .a-confirm-layer .a-confirm-actions{
+    margin:0 -15px!important;
+    padding:10px 15px calc(10px + env(safe-area-inset-bottom))!important;
+  }
+  .a-confirm-layer .a-confirm-summary{margin-top:2px!important}
+  .a-confirm-layer .a-confirm-title small{font-size:6.5px!important}
+}
+
+@media(max-height:650px) and (max-width:560px){
+  .a-confirm-layer .a-confirm-sheet{height:96dvh!important;max-height:96dvh!important}
+  .a-confirm-layer .a-confirm-head h3{font-size:20px!important}
+}
