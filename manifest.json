@@ -5,10 +5,10 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f7f3ed",
-  "theme_color": "#17212a",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "lang": "de",
   "description": "A+ Esthetic Beauty Club – Termine, Mitgliedschaft, Dokumente und sichere Kommunikation.",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "icons": []
 }
