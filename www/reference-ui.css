@@ -1,0 +1,214 @@
+:root{
+  --ref-gold:#d2a52e;
+  --ref-gold-deep:#b98108;
+  --ref-gold-soft:#f7ecd0;
+  --ref-ink:#1e1d1b;
+  --ref-muted:#77736c;
+  --ref-line:#eee7db;
+  --ref-surface:#fff;
+  --ref-bg:#fcfaf6;
+  --ref-shadow:0 12px 35px rgba(66,52,22,.07);
+}
+
+body{
+  background:
+    radial-gradient(circle at 8% 0%,rgba(224,199,145,.15),transparent 20rem),
+    linear-gradient(180deg,#fff 0%,#fdfbf8 48%,#faf7f1 100%);
+  color:var(--ref-ink);
+}
+body::before{display:none}
+
+.reference-page{max-width:980px!important}
+.reference-page .pagehead h1,
+.reference-page .card h2,
+.reference-page .hero h2{font-family:"Iowan Old Style",Baskerville,Georgia,serif}
+.reference-page .pagehead span{color:var(--ref-gold-deep)}
+.reference-page .pagehead span::before{background:var(--ref-gold)}
+.reference-page .card{
+  background:rgba(255,255,255,.94);
+  border:1px solid var(--ref-line);
+  box-shadow:var(--ref-shadow);
+  backdrop-filter:blur(18px);
+}
+.reference-page .card>h2:first-child::after{background:linear-gradient(90deg,var(--ref-gold),transparent)}
+.reference-page .btn.primary{
+  background:linear-gradient(135deg,#dfb844,#c89417);
+  color:#fff;
+  box-shadow:0 10px 24px rgba(193,145,25,.20);
+}
+.reference-page .btn.ghost{border-color:#eadfc9;background:#fffaf0;color:#5c4a20}
+.reference-page .badge{background:#fbf2dd;color:#80651e}
+.reference-page .money{color:#b9840c}
+
+/* Premium member card language shared by Home/Club */
+.reference-member-card{
+  background:
+    radial-gradient(circle at 88% 8%,rgba(255,255,255,.25),transparent 12rem),
+    linear-gradient(135deg,#e5ba45 0%,#c99012 70%,#b97e04 100%)!important;
+  color:#fff!important;
+  border:1px solid rgba(255,255,255,.38)!important;
+  box-shadow:0 22px 48px rgba(174,126,14,.22)!important;
+}
+.reference-member-card::after{border-color:rgba(255,255,255,.35)!important;box-shadow:0 0 0 36px rgba(255,255,255,.035),0 0 0 72px rgba(255,255,255,.022)!important}
+.reference-member-card small,.reference-member-card p{color:rgba(255,255,255,.82)!important}
+.reference-member-card .badge{background:rgba(255,255,255,.20)!important;color:#fff!important;border-color:rgba(255,255,255,.30)!important}
+
+/* Wallet reference screen */
+.wallet-reference{padding-top:18px!important}
+.wallet-reference>.pagehead{text-align:center;margin:0 auto 22px;max-width:580px}
+.wallet-reference>.pagehead span{font-size:9px;letter-spacing:.28em;justify-content:center;color:#c49118}
+.wallet-reference>.pagehead span::before{display:none}
+.wallet-reference>.pagehead h1{font-size:clamp(34px,8vw,46px);font-weight:500;margin:6px 0 8px}
+.wallet-reference>.pagehead p{font-size:14px;margin:auto;color:#77726b}
+.wallet-reference>.grid2{grid-template-columns:1fr!important;gap:12px;margin-bottom:18px}
+
+.wallet-balance-card{
+  min-height:170px!important;
+  padding:26px 28px!important;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  background:
+    radial-gradient(circle at 88% 10%,rgba(255,255,255,.34),transparent 10rem),
+    linear-gradient(135deg,#e7be4d 0%,#d7a62e 46%,#c58b0a 100%)!important;
+  border:1px solid rgba(255,255,255,.50)!important;
+  box-shadow:0 18px 42px rgba(188,137,16,.24)!important;
+  border-radius:24px!important;
+  overflow:hidden;
+  color:#fff!important;
+}
+.wallet-balance-card::before{
+  content:""!important;
+  position:absolute!important;
+  inset:0!important;
+  background:linear-gradient(115deg,transparent 0 52%,rgba(255,255,255,.13) 53%,transparent 54%)!important;
+  background-size:46px 46px!important;
+  opacity:.45!important;
+}
+.wallet-balance-card::after{display:none!important}
+.wallet-balance-card>small{font-size:14px!important;letter-spacing:.01em!important;color:rgba(255,255,255,.92)!important;text-transform:none}
+.wallet-balance-number{font-family:"Iowan Old Style",Baskerville,Georgia,serif!important;font-size:clamp(48px,12vw,66px)!important;line-height:.95!important;font-weight:400!important;margin:10px 0 12px!important;letter-spacing:-.045em!important}
+.wallet-balance-card>p{margin:0!important;color:#fff!important;font-size:15px!important;display:flex;align-items:center;gap:8px}
+.coin-symbol{width:23px;height:23px;border:1px solid rgba(255,255,255,.68);border-radius:50%;display:inline-grid;place-items:center;font-size:11px}
+.wallet-emblem{position:absolute!important;right:-20px;bottom:-34px;width:174px;height:174px;border:2px solid rgba(255,255,255,.23);border-radius:50%;display:grid;place-items:center;transform:rotate(-10deg);box-shadow:inset 0 0 0 23px rgba(255,255,255,.025),inset 0 0 0 47px rgba(255,255,255,.025)}
+.wallet-emblem::before,.wallet-emblem::after{content:"";position:absolute;width:62%;height:86%;border:2px solid rgba(255,255,255,.18);border-radius:60% 60% 48% 48%;transform:rotate(48deg)}
+.wallet-emblem::after{transform:rotate(-48deg)}
+.wallet-emblem span{font-family:Georgia,serif;font-size:34px;font-style:italic;color:rgba(255,255,255,.42);position:relative;z-index:2}
+
+.wallet-credit-card{
+  min-height:74px!important;
+  padding:15px 18px!important;
+  border-radius:18px!important;
+  display:grid!important;
+  grid-template-columns:1fr auto!important;
+  grid-template-rows:auto auto!important;
+  align-items:center!important;
+  background:#fff!important;
+  color:var(--ref-ink)!important;
+  border:1px solid var(--ref-line)!important;
+  box-shadow:0 8px 24px rgba(55,43,19,.05)!important;
+}
+.wallet-credit-card::before,.wallet-credit-card::after{display:none!important}
+.wallet-credit-card small{color:#9c7a27!important;grid-column:1;grid-row:1;font-size:11px!important;text-transform:uppercase;letter-spacing:.11em!important}
+.wallet-credit-card h2{grid-column:2;grid-row:1/3;margin:0!important;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;font-size:24px!important;font-weight:800!important;color:#2b2925}
+.wallet-credit-card p{grid-column:1;grid-row:2;margin:3px 0 0!important;color:var(--ref-muted)!important;font-size:11px!important}
+
+.rewards-card{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:18px!important;overflow:hidden}
+.rewards-card>h2{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;font-size:20px!important;margin:0 0 3px!important}
+.rewards-card>h2::after{display:none!important}
+.section-action{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:11px;font-weight:650;color:#c38e11;letter-spacing:0}
+.reward-item{
+  border:1px solid #eee5d7!important;
+  border-radius:17px!important;
+  background:linear-gradient(180deg,#fff 0%,#fffdf9 100%);
+  padding:9px!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:stretch!important;
+  justify-content:flex-start!important;
+  gap:7px!important;
+  min-width:0;
+  box-shadow:0 6px 18px rgba(62,47,18,.035);
+}
+.reward-visual{height:78px;border-radius:13px;background:radial-gradient(circle at 50% 28%,#fff 0%,#fbf4e5 50%,#f3e2b7 100%);display:grid;place-items:center;overflow:hidden;border:1px solid rgba(210,165,46,.13)}
+.reward-visual span{font-size:42px;filter:sepia(.35) saturate(.85);transform:translateY(1px)}
+.reward-item .row-main{flex:1;padding:1px 1px 0}
+.reward-item .row-main b{font-size:12px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:29px}
+.reward-item .row-main small{font-size:9px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:24px}
+.reward-cost{align-self:flex-start!important;padding:6px 8px!important;border-radius:999px!important;font-size:10px!important;background:#f8f0e4!important;border:0!important;color:#756137!important;box-shadow:none!important;min-width:0!important}
+.reward-cost:disabled{opacity:.45!important}
+.mini-coin{width:15px;height:15px;border:1px solid #d4a839;border-radius:50%;display:inline-grid;place-items:center;font-size:7px;color:#c38e0d}
+.reward-pulse{animation:rewardPulse 1.05s ease}
+@keyframes rewardPulse{0%,100%{box-shadow:none}40%{box-shadow:0 0 0 8px rgba(211,166,44,.18)}}
+.redeem-jump{grid-column:1/-1;border:0;border-radius:13px;padding:13px 18px;background:linear-gradient(90deg,#ddb43e,#c79010);color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 9px 22px rgba(190,137,12,.18);cursor:pointer}
+
+.packages-card{padding:17px 20px!important}
+.packages-card>h2{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;font-size:16px!important;margin-bottom:8px!important}
+.packages-card .row{padding:10px 0!important}
+
+.history-card{padding:18px 20px!important}
+.history-card>h2{display:flex;align-items:center;justify-content:space-between;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;font-size:18px!important;margin-bottom:7px!important}
+.history-card>h2::after{display:none!important}
+.history-item{padding:11px 0!important;gap:11px!important}
+.history-icon{width:38px;height:38px;flex:0 0 38px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#e1b43d,#be850b);color:#fff;font-size:16px;box-shadow:0 6px 15px rgba(179,126,10,.17)}
+.history-item .row-main{flex:1}
+.history-item .row-main b{font-size:13px}
+.history-item .row-main small{font-size:10px}
+.history-item .money{font-size:14px;color:#c28a0b}
+
+.benefits-panel{background:rgba(255,255,255,.96);border:1px solid var(--ref-line);border-radius:20px;padding:17px 12px 15px;margin:0 0 16px;box-shadow:var(--ref-shadow);text-align:center}
+.benefits-panel h2{font:500 20px/1.2 "Iowan Old Style",Baskerville,Georgia,serif;color:#bd8910;margin:0 0 14px}
+.benefits-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.benefits-grid>div{display:grid;justify-items:center;gap:6px;min-width:0}
+.benefits-grid span{font-size:23px;color:#c99418;line-height:1}
+.benefits-grid b{font-size:9px;line-height:1.18;font-weight:650;color:#393631}
+
+/* Main navigation, intentionally close to the approved mobile visual */
+@media(max-width:979px){
+  .shell{padding-bottom:104px!important}
+  .content{padding:18px 15px 42px!important}
+  .topbar{height:66px;padding:10px 16px;background:rgba(255,255,255,.94);border-bottom:1px solid #f1ece4;backdrop-filter:blur(22px)}
+  .topbar-row{height:100%;justify-content:center;position:relative}
+  .topbrand{justify-content:center;text-align:center}
+  .topbrand .brandmark{display:none}
+  .topbrand b{font-family:"Iowan Old Style",Baskerville,Georgia,serif;font-size:19px;letter-spacing:-.015em;font-weight:600}
+  .topbrand small{font-size:7px;letter-spacing:.16em;color:#b68b28;margin-top:1px}
+  .iconbtn{position:absolute;right:0;width:38px;height:38px;border:0;box-shadow:none;background:#fff;color:#ae831d;border-radius:50%}
+
+  .nav.reference-nav{height:79px;left:0;right:0;bottom:0;display:flex!important;align-items:flex-start!important;justify-content:space-around!important;padding:8px 5px calc(7px + env(safe-area-inset-bottom))!important;background:rgba(255,255,255,.97)!important;border-top:1px solid #eee8de!important;box-shadow:0 -10px 30px rgba(53,43,24,.07)!important}
+  .nav.reference-nav button{flex:1;min-width:0;display:flex!important;flex-direction:column;align-items:center;justify-content:flex-start;gap:4px;padding:6px 1px!important;color:#8b8985!important;font-size:9px!important;font-weight:600!important;height:62px}
+  .nav.reference-nav button .nav-icon{font-size:20px!important;line-height:22px;color:#8e8b86}
+  .nav.reference-nav button.active{color:#c48e0d!important}
+  .nav.reference-nav button.active .nav-icon{color:#c48e0d!important}
+  .nav.reference-nav button.active::after{display:none!important}
+  .nav.reference-nav .nav-center{position:relative;transform:translateY(-19px);overflow:visible;z-index:3}
+  .nav-center-mark{width:58px;height:58px;border-radius:50%;display:grid!important;place-items:center;background:linear-gradient(145deg,#dfb83e,#bd8306);color:#fff!important;font:italic 20px Georgia,serif!important;border:4px solid #fff;box-shadow:0 8px 22px rgba(174,122,5,.26),inset 0 0 0 1px rgba(255,255,255,.35)}
+  .nav-center-label{font-size:8px!important;color:#b88612!important;margin-top:0}
+
+  .reference-page .pagehead{margin-bottom:17px}
+  .reference-page .pagehead h1{font-size:32px}
+  .reference-page .card{border-radius:20px;margin-bottom:13px}
+  .home-reference .hero,.club-reference .hero{border-radius:23px!important}
+  .home-reference .stats{gap:9px;margin:11px 0 14px}
+  .home-reference .stat{padding:14px;border-radius:17px}
+}
+
+@media(max-width:390px){
+  .rewards-card{gap:7px;padding:14px!important}
+  .reward-item{padding:7px!important}
+  .reward-visual{height:68px}
+  .reward-visual span{font-size:36px}
+  .reward-item .row-main b{font-size:11px}
+  .benefits-grid b{font-size:8px}
+  .wallet-balance-card{min-height:156px!important;padding:23px!important}
+}
+
+@media(min-width:980px){
+  .wallet-reference{max-width:1040px!important}
+  .wallet-reference>.grid2{grid-template-columns:1.65fr .75fr!important;align-items:stretch}
+  .wallet-reference>.grid2 .wallet-balance-card{grid-column:1}
+  .wallet-reference>.grid2 .wallet-credit-card{grid-column:2;min-height:170px!important;display:flex!important;flex-direction:column!important;justify-content:center!important;align-items:flex-start!important}
+  .wallet-credit-card h2{font-size:32px!important;margin:8px 0!important}
+  .rewards-card{grid-template-columns:repeat(3,1fr)}
+  .reward-visual{height:112px}
+}
