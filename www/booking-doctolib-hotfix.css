@@ -1,0 +1,32 @@
+/* Booking interaction hotfix: hidden UI must truly disappear and never intercept clicks. */
+.a-confirm-layer[hidden],
+.a-flow-step[hidden],
+.a-date-body[hidden],
+.a-more-dates[hidden],
+.a-booking-message[hidden]{display:none!important}
+.a-confirm-layer[hidden]{pointer-events:none!important;visibility:hidden!important}
+.a-confirm-layer:not([hidden]){pointer-events:auto!important;visibility:visible!important}
+#booking-form[data-doctolib-flow="1"],
+#booking-form[data-doctolib-flow="1"] .a-booking-flow,
+#booking-form[data-doctolib-flow="1"] .a-flow-step,
+#booking-form[data-doctolib-flow="1"] button,
+#booking-form[data-doctolib-flow="1"] input{pointer-events:auto!important}
+#booking-form[data-doctolib-flow="1"] .a-booking-flow{position:relative;z-index:2}
+
+/* Official A+ Esthetic logo asset hosts. */
+.official-logo-host{background:transparent!important;border:0!important;box-shadow:none!important;padding:0!important;overflow:visible!important}
+.official-brand-logo{display:block;object-fit:contain;max-width:100%;max-height:100%}
+.brandmark.official-logo-host{width:48px!important;height:48px!important}
+.brandmark.official-logo-host .official-brand-logo{width:48px;height:48px}
+.boot-logo.official-logo-host{width:92px!important;height:92px!important;border-radius:0!important}
+.boot-logo.official-logo-host .official-brand-logo{width:92px;height:92px}
+.topbar-lotus.official-logo-host{width:42px!important;height:42px!important;display:grid!important;place-items:center!important}
+.topbar-lotus.official-logo-host .official-brand-logo{width:42px;height:42px}
+.nav-center-disc.official-logo-host .official-brand-logo{width:34px;height:34px}
+.wallet-lotus-watermark.official-logo-host .official-brand-logo{width:100%;height:100%;opacity:.22}
+.reward-art .official-brand-logo{width:38px;height:38px;object-fit:contain}
+
+@media(max-width:560px){
+  .topbar-lotus.official-logo-host{width:38px!important;height:38px!important}
+  .topbar-lotus.official-logo-host .official-brand-logo{width:38px;height:38px}
+}
