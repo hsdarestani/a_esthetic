@@ -163,38 +163,45 @@ class Command(BaseCommand):
             defaults={'remaining_sessions': 4, 'expires_at': timezone.localdate() + timedelta(days=210), 'status': 'active'},
         )
 
+        # Customer-facing booking catalog mirrors the real treatment areas offered by A+ Esthetic.
+        # Medical entries are booking requests/consultations and stay pending until A+ Esthetic confirms them.
         service_definitions = [
-            ('A+ Beratungstermin', 'beratung', 30, 10, 'Preis vor Ort'),
-            ('A+ Beauty Termin', 'beauty-termin', 45, 10, 'Preis vor Ort'),
-            ('A+ Club Termin', 'club-termin', 20, 10, 'Kostenlos'),
-            ('A+ Event Termin', 'event-termin', 30, 10, 'Nach Einladung'),
+            ('Ästhetische Erstberatung', 'aesthetische-erstberatung', 'consultation', 30, 10, 'Individuelle Beratung', True),
+            ('Botox Beratung', 'botox-beratung', 'medical', 30, 10, 'ab 119 €', True),
+            ('Hyaluron Beratung', 'hyaluron-beratung', 'medical', 30, 10, 'ab 200 €', True),
+            ('Laser-Haarentfernung', 'laser-haarentfernung', 'nonmedical', 45, 10, 'je nach Areal', False),
+            ('RF-Microneedling', 'rf-microneedling', 'nonmedical', 60, 15, 'Preis nach Region', False),
+            ('PRP Beratung', 'prp-beratung', 'medical', 30, 10, 'Preis nach Beratung', True),
+            ('Skinbooster Beratung', 'skinbooster-beratung', 'medical', 30, 10, 'Preis nach Beratung', True),
+            ('Infusionstherapie', 'infusionstherapie', 'medical', 60, 10, 'ab 119 €', True),
+            ('Injektionslipolyse Beratung', 'injektionslipolyse-beratung', 'medical', 30, 10, 'ab 149 €', True),
         ]
         services = []
-        for name, slug, duration, buffer, price in service_definitions:
+        for name, slug, category, duration, buffer, price, medical in service_definitions:
             service, _ = Service.objects.update_or_create(
                 slug=slug,
                 defaults={
                     'name': name,
-                    'description': 'Organisatorische Terminanfrage über den A+ Customer Club.',
-                    'category': 'nonmedical',
+                    'description': 'Terminanfrage über den A+ Customer Club. Die persönliche Beratung, Aufklärung und Bestätigung erfolgt durch A+ Esthetic.',
+                    'category': category,
                     'duration_minutes': duration,
                     'buffer_minutes': buffer,
                     'price_label': price,
                     'active': True,
                     'bookable_in_app': True,
-                    'requires_medical_confirmation': False,
+                    'requires_medical_confirmation': medical,
                 },
             )
             services.append(service)
 
-        # Older treatment-specific demo services must not appear in the Customer Club.
+        # Retire generic/demo and legacy services without deleting historical appointments.
         Service.objects.exclude(pk__in=[item.pk for item in services]).update(bookable_in_app=False)
 
         staff, _ = StaffMember.objects.get_or_create(
             display_name='A+ Esthetic Team',
-            defaults={'role': 'reception', 'active': True},
+            defaults={'role': 'specialist', 'active': True},
         )
-        staff.role = 'reception'
+        staff.role = 'specialist'
         staff.active = True
         staff.save(update_fields=['role', 'active'])
         staff.services.set(services)
