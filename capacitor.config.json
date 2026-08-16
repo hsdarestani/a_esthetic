@@ -3,18 +3,18 @@
   "appName": "A+ Esthetic",
   "webDir": "www",
   "loggingBehavior": "none",
-  "backgroundColor": "#000000",
+  "backgroundColor": "#FFFFFF",
   "zoomEnabled": false,
   "android": {
     "allowMixedContent": false,
     "webContentsDebuggingEnabled": false,
-    "backgroundColor": "#000000"
+    "backgroundColor": "#FFFFFF"
   },
   "ios": {
     "preferredContentMode": "mobile",
     "allowsLinkPreview": false,
     "webContentsDebuggingEnabled": false,
     "contentInset": "automatic",
-    "backgroundColor": "#000000"
+    "backgroundColor": "#FFFFFF"
   }
 }
