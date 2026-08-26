@@ -1,9 +1,10 @@
 from django.urls import path
 
-from . import booking_proxy_views, views
+from . import booking_proxy_views, dashboard_proxy_views, views
 
 urlpatterns = [
     path("konto-loeschen/", views.account_deletion_page, name="p0_account_deletion"),
+    path("api/mobile/dashboard/", dashboard_proxy_views.mobile_dashboard, name="p0_mobile_dashboard"),
     path("api/mobile/booking/", booking_proxy_views.mobile_booking, name="p0_mobile_booking"),
     path("api/mobile/booking/manageable/", booking_proxy_views.mobile_manageable_appointments, name="p0_mobile_manageable_appointments"),
     path("api/mobile/booking/<str:appointment_id>/change/", booking_proxy_views.mobile_appointment_change, name="p0_mobile_appointment_change"),
