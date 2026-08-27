@@ -1,6 +1,10 @@
 name: Configure A+Esthetic patient record sync
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/configure-patient-record-sync.yml"
   workflow_run:
     workflows: ["Deploy A+ Esthetic native Customer Club API"]
     types: [completed]
@@ -14,7 +18,7 @@ concurrency:
 
 jobs:
   configure:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    if: ${{ github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     steps:
       - name: Configure private localhost synchronization
