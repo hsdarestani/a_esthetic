@@ -1,0 +1,111 @@
+name: Configure A+Esthetic patient record sync
+
+on:
+  workflow_run:
+    workflows: ["Deploy A+ Esthetic native Customer Club API"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-patient-record-sync
+  cancel-in-progress: true
+
+jobs:
+  configure:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure private localhost synchronization
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            ROOT="/opt/a-esthetic-mobile"
+            ENV_FILE="$ROOT/mobile.env"
+            TOKEN_FILE="/etc/aesthetic-patient-sync.token"
+            SYNC_URL="http://127.0.0.1:8017/api/internal/patient-records/ingest/"
+
+            test -f "$ENV_FILE"
+            test -f "$ROOT/manage.py"
+
+            if [ ! -s "$TOKEN_FILE" ]; then
+              umask 0077
+              openssl rand -hex 32 > "$TOKEN_FILE"
+            fi
+            if getent group aestheticbook >/dev/null 2>&1; then
+              chown root:aestheticbook "$TOKEN_FILE"
+              chmod 0640 "$TOKEN_FILE"
+            else
+              chown root:root "$TOKEN_FILE"
+              chmod 0600 "$TOKEN_FILE"
+            fi
+            TOKEN="$(tr -d '\r\n' < "$TOKEN_FILE")"
+            test -n "$TOKEN"
+
+            # Keep the existing mobile environment intact while replacing only
+            # the patient-record integration settings.
+            sed -i '/^PATIENT_RECORD_SYNC_URL=/d;/^PATIENT_RECORD_SYNC_TOKEN=/d;/^PATIENT_RECORD_SYNC_TIMEOUT=/d' "$ENV_FILE"
+            cat >> "$ENV_FILE" <<EOF
+            PATIENT_RECORD_SYNC_URL=$SYNC_URL
+            PATIENT_RECORD_SYNC_TOKEN=$TOKEN
+            PATIENT_RECORD_SYNC_TIMEOUT=5
+            EOF
+            chmod 0600 "$ENV_FILE"
+
+            # Reload the API so newly created ConsentRecords immediately use the
+            # integration environment. The sync itself is best-effort and never
+            # blocks consent capture if the booking service is temporarily down.
+            systemctl restart a-esthetic-mobile.service
+
+            cat > /etc/systemd/system/a-esthetic-patient-record-sync.service <<EOF
+            [Unit]
+            Description=A+Esthetic consent to patient record synchronization
+            After=network.target a-esthetic-mobile.service aesthetic-book.service
+
+            [Service]
+            Type=oneshot
+            WorkingDirectory=$ROOT
+            EnvironmentFile=$ENV_FILE
+            Environment=PYTHONPATH=$ROOT/vendor
+            ExecStart=/usr/bin/python3 $ROOT/manage.py sync_patient_records --limit 1000
+            PrivateTmp=true
+            NoNewPrivileges=true
+            EOF
+
+            cat > /etc/systemd/system/a-esthetic-patient-record-sync.timer <<EOF
+            [Unit]
+            Description=Retry A+Esthetic patient record synchronization
+
+            [Timer]
+            OnBootSec=3min
+            OnUnitActiveSec=15min
+            RandomizedDelaySec=45s
+            Persistent=true
+
+            [Install]
+            WantedBy=timers.target
+            EOF
+
+            systemctl daemon-reload
+            systemctl enable --now a-esthetic-patient-record-sync.timer
+
+            # The booking service reads the same token file dynamically. A bad
+            # token must be rejected with 401; 503 would mean integration is not configured.
+            HTTP_CODE="$(curl -sS -o /tmp/patient-sync-smoke.json -w '%{http_code}' -X POST -H 'X-Aesthetic-Patient-Sync: deliberately-wrong' "$SYNC_URL")"
+            test "$HTTP_CODE" = "401"
+
+            set -a
+            . "$ENV_FILE"
+            set +a
+            export PYTHONPATH="$ROOT/vendor"
+            cd "$ROOT"
+            python3 manage.py sync_patient_records --limit 1000
+            systemctl is-active --quiet a-esthetic-mobile.service
+            systemctl is-active --quiet a-esthetic-patient-record-sync.timer
+            echo "A+Esthetic patient record synchronization configured."
