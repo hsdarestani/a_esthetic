@@ -21,7 +21,7 @@ jobs:
     if: ${{ github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     steps:
-      - name: Configure private localhost synchronization
+      - name: Configure secure cross-server synchronization
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.HOST }}
@@ -32,45 +32,31 @@ jobs:
             set -euo pipefail
             ROOT="/opt/a-esthetic-mobile"
             ENV_FILE="$ROOT/mobile.env"
-            TOKEN_FILE="/etc/aesthetic-patient-sync.token"
-            SYNC_URL="http://127.0.0.1:8017/api/internal/patient-records/ingest/"
+            SYNC_URL="https://book.a-esthetic.de/api/internal/patient-records/ingest/"
 
             test -f "$ENV_FILE"
             test -f "$ROOT/manage.py"
 
-            if [ ! -s "$TOKEN_FILE" ]; then
-              umask 0077
-              openssl rand -hex 32 > "$TOKEN_FILE"
-            fi
-            if getent group aestheticbook >/dev/null 2>&1; then
-              chown root:aestheticbook "$TOKEN_FILE"
-              chmod 0640 "$TOKEN_FILE"
-            else
-              chown root:root "$TOKEN_FILE"
-              chmod 0600 "$TOKEN_FILE"
-            fi
-            TOKEN="$(tr -d '\r\n' < "$TOKEN_FILE")"
-            test -n "$TOKEN"
-
-            # Keep the existing mobile environment intact while replacing only
-            # the patient-record integration settings.
-            sed -i '/^PATIENT_RECORD_SYNC_URL=/d;/^PATIENT_RECORD_SYNC_TOKEN=/d;/^PATIENT_RECORD_SYNC_TIMEOUT=/d' "$ENV_FILE"
+            # The booking service is on a different server. It authenticates this
+            # backend by the actual reverse-proxy source address of esthetic.smarbiz.sbs.
+            # Remove the obsolete localhost-only token created by the first setup.
+            rm -f /etc/aesthetic-patient-sync.token
+            sed -i '/^PATIENT_RECORD_SYNC_URL=/d;/^PATIENT_RECORD_SYNC_TOKEN=/d;/^PATIENT_RECORD_SYNC_TOKEN_FILE=/d;/^PATIENT_RECORD_SYNC_TIMEOUT=/d' "$ENV_FILE"
             cat >> "$ENV_FILE" <<EOF
             PATIENT_RECORD_SYNC_URL=$SYNC_URL
-            PATIENT_RECORD_SYNC_TOKEN=$TOKEN
-            PATIENT_RECORD_SYNC_TIMEOUT=5
+            PATIENT_RECORD_SYNC_TIMEOUT=8
             EOF
             chmod 0600 "$ENV_FILE"
 
-            # Reload the API so newly created ConsentRecords immediately use the
-            # integration environment. The sync itself is best-effort and never
-            # blocks consent capture if the booking service is temporarily down.
+            # Reload the API so new ConsentRecords immediately use the public,
+            # server-authenticated bridge. A temporary sync failure never blocks
+            # consent capture; the timer retries idempotently.
             systemctl restart a-esthetic-mobile.service
 
             cat > /etc/systemd/system/a-esthetic-patient-record-sync.service <<EOF
             [Unit]
             Description=A+Esthetic consent to patient record synchronization
-            After=network.target a-esthetic-mobile.service aesthetic-book.service
+            After=network.target a-esthetic-mobile.service
 
             [Service]
             Type=oneshot
@@ -99,10 +85,14 @@ jobs:
             systemctl daemon-reload
             systemctl enable --now a-esthetic-patient-record-sync.timer
 
-            # The booking service reads the same token file dynamically. A bad
-            # token must be rejected with 401; 503 would mean integration is not configured.
-            HTTP_CODE="$(curl -sS -o /tmp/patient-sync-smoke.json -w '%{http_code}' -X POST -H 'X-Aesthetic-Patient-Sync: deliberately-wrong' "$SYNC_URL")"
-            test "$HTTP_CODE" = "401"
+            # Empty POST should pass server authentication and then fail payload
+            # validation with 400. 401 means the source-server allowlist failed.
+            HTTP_CODE="$(curl -sS -o /tmp/patient-sync-smoke.json -w '%{http_code}' -X POST "$SYNC_URL")"
+            if [ "$HTTP_CODE" != "400" ]; then
+              cat /tmp/patient-sync-smoke.json || true
+              echo "Unexpected patient sync bridge status: $HTTP_CODE" >&2
+              exit 1
+            fi
 
             set -a
             . "$ENV_FILE"
