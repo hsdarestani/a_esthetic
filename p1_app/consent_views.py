@@ -53,12 +53,18 @@ def mobile_progress_consent(request):
         profile.save(update_fields=["health_data_consent"])
         action = "Einwilligung für private Verlaufsfotos erteilt"
     else:
-        ConsentRecord.objects.filter(
+        withdrawal_time = timezone.now()
+        active_records = list(ConsentRecord.objects.filter(
             user=user,
             template=template,
             accepted=True,
             withdrawn_at__isnull=True,
-        ).update(withdrawn_at=timezone.now())
+        ))
+        for record in active_records:
+            record.withdrawn_at = withdrawal_time
+            # save() deliberately triggers the patient-file synchronization signal,
+            # preserving the withdrawal as a separate immutable audit event.
+            record.save(update_fields=["withdrawn_at"])
         profile.health_data_consent = False
         profile.save(update_fields=["health_data_consent"])
         active = None
