@@ -26,51 +26,70 @@ jobs:
           BOOK_ENV=/etc/aesthetic-book.env
           MOBILE_ENV=/opt/a-esthetic-mobile/mobile.env
           test -s "$BOOK_ENV"
+          for attempt in $(seq 1 60); do
+            [ -s "$MOBILE_ENV" ] && break
+            sleep 2
+          done
           test -s "$MOBILE_ENV"
 
-          set -a
-          . "$BOOK_ENV"
-          set +a
-          SMTP_PASSWORD=""
-          if [ -n "${EMAIL_HOST_PASSWORD:-}" ]; then
-            SMTP_PASSWORD="$EMAIL_HOST_PASSWORD"
-          elif [ -n "${EMAIL_HOST_PASSWORD_B64:-}" ]; then
-            SMTP_PASSWORD="$(printf '%s' "$EMAIL_HOST_PASSWORD_B64" | base64 -d)"
-          fi
-          test -n "$SMTP_PASSWORD"
-          test -n "${EMAIL_HOST_USER:-}"
-
-          python3 - "$MOBILE_ENV" "$SMTP_PASSWORD" "${EMAIL_HOST:-smtp.strato.de}" "${EMAIL_PORT:-465}" "$EMAIL_HOST_USER" <<'PY'
+          python3 - "$BOOK_ENV" "$MOBILE_ENV" <<'PY'
+          import base64
+          import shlex
           import sys
           from pathlib import Path
 
-          path = Path(sys.argv[1])
-          password, host, port, user = sys.argv[2:6]
+          book_path = Path(sys.argv[1])
+          mobile_path = Path(sys.argv[2])
+
+          def parse_simple(path):
+              values = {}
+              for raw in path.read_text().splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith('#') or '=' not in line:
+                      continue
+                  key, value = line.split('=', 1)
+                  value = value.strip()
+                  if len(value) >= 2 and value[0] == value[-1] and value[0] in {'\"', "'"}:
+                      value = value[1:-1]
+                  values[key.strip()] = value
+              return values
+
+          book = parse_simple(book_path)
+          password = book.get('EMAIL_HOST_PASSWORD', '')
+          if not password and book.get('EMAIL_HOST_PASSWORD_B64'):
+              password = base64.b64decode(book['EMAIL_HOST_PASSWORD_B64']).decode('utf-8')
+          user = book.get('EMAIL_HOST_USER', '')
+          if not user or not password:
+              raise SystemExit('Booking SMTP credentials are incomplete')
+
           values = {
-              'EMAIL_HOST': host,
-              'EMAIL_PORT': port,
+              'EMAIL_BACKEND': 'django.core.mail.backends.smtp.EmailBackend',
+              'EMAIL_HOST': book.get('EMAIL_HOST') or 'smtp.strato.de',
+              'EMAIL_PORT': book.get('EMAIL_PORT') or '465',
               'EMAIL_HOST_USER': user,
               'EMAIL_HOST_PASSWORD': password,
               'EMAIL_USE_SSL': '1',
               'EMAIL_USE_TLS': '0',
-              'EMAIL_TIMEOUT': '15',
+              'EMAIL_TIMEOUT': book.get('EMAIL_TIMEOUT') or '15',
               'DEFAULT_FROM_EMAIL': f'A+ Esthetic <{user}>',
           }
-          lines = path.read_text().splitlines()
-          seen = set()
+
+          lines = mobile_path.read_text().splitlines()
           output = []
+          seen = set()
           for line in lines:
-              key = line.split('=', 1)[0] if '=' in line else ''
+              key = line.split('=', 1)[0].strip() if '=' in line else ''
               if key in values:
-                  output.append(f'{key}={values[key]}')
+                  output.append(f'{key}={shlex.quote(values[key])}')
                   seen.add(key)
               else:
                   output.append(line)
           for key, value in values.items():
               if key not in seen:
-                  output.append(f'{key}={value}')
-          path.write_text('\n'.join(output) + '\n')
+                  output.append(f'{key}={shlex.quote(value)}')
+          mobile_path.write_text('\n'.join(output) + '\n')
           PY
+
           chmod 600 "$MOBILE_ENV"
           systemctl restart a-esthetic-mobile.service
           sleep 3
@@ -85,7 +104,7 @@ jobs:
           from django.conf import settings
           from django.core.mail import get_connection
           assert settings.EMAIL_BACKEND == 'django.core.mail.backends.smtp.EmailBackend', settings.EMAIL_BACKEND
-          assert bool(settings.EMAIL_HOST_PASSWORD)
+          assert settings.EMAIL_HOST and settings.EMAIL_HOST_USER and settings.EMAIL_HOST_PASSWORD
           connection = get_connection(fail_silently=False)
           opened = connection.open()
           connection.close()
@@ -94,13 +113,12 @@ jobs:
           print('REFERRAL_SMTP_READY=1')
           PY
 
-          set +x
-          if grep -q '^FIREBASE_SERVICE_ACCOUNT_JSON=' "$MOBILE_ENV" || grep -q '^FIREBASE_SERVICE_ACCOUNT_B64=' "$MOBILE_ENV"; then
+          if grep -Eq '^(FIREBASE_SERVICE_ACCOUNT_JSON|FIREBASE_SERVICE_ACCOUNT_B64)=' "$MOBILE_ENV"; then
             echo 'ANDROID_PUSH_CREDENTIALS=present'
           else
             echo 'ANDROID_PUSH_CREDENTIALS=missing'
           fi
-          if grep -q '^APNS_KEY_ID=' "$MOBILE_ENV" && grep -q '^APNS_TEAM_ID=' "$MOBILE_ENV" && { grep -q '^APNS_PRIVATE_KEY=' "$MOBILE_ENV" || grep -q '^APNS_PRIVATE_KEY_B64=' "$MOBILE_ENV"; }; then
+          if grep -q '^APNS_KEY_ID=' "$MOBILE_ENV" && grep -q '^APNS_TEAM_ID=' "$MOBILE_ENV" && grep -Eq '^(APNS_PRIVATE_KEY|APNS_PRIVATE_KEY_B64)=' "$MOBILE_ENV"; then
             echo 'IOS_PUSH_CREDENTIALS=present'
           else
             echo 'IOS_PUSH_CREDENTIALS=missing'
