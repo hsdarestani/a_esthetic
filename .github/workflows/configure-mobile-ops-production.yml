@@ -14,17 +14,65 @@ jobs:
   configure:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify mobile API and push provider configuration
+      - name: Install available push provider secrets securely
         env:
           HOST: ${{ secrets.HOST }}
           PASS: ${{ secrets.PASS }}
+          FCM_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          FCM_B64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_B64 }}
+          APNS_KEY_ID: ${{ secrets.APNS_KEY_ID }}
+          APNS_TEAM_ID: ${{ secrets.APNS_TEAM_ID }}
+          APNS_PRIVATE_KEY: ${{ secrets.APNS_PRIVATE_KEY }}
+          APNS_PRIVATE_KEY_B64: ${{ secrets.APNS_PRIVATE_KEY_B64 }}
         run: |
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          TMP="$(mktemp)"
+          chmod 600 "$TMP"
+          trap 'rm -f "$TMP"' EXIT
+
+          if [ -n "${FCM_B64:-}" ]; then
+            printf 'FIREBASE_SERVICE_ACCOUNT_B64=%s\n' "$FCM_B64" >> "$TMP"
+            echo 'REPOSITORY_FCM_SECRET=present_b64'
+          elif [ -n "${FCM_JSON:-}" ]; then
+            VALUE="$(printf '%s' "$FCM_JSON" | base64 -w0)"
+            printf 'FIREBASE_SERVICE_ACCOUNT_B64=%s\n' "$VALUE" >> "$TMP"
+            echo 'REPOSITORY_FCM_SECRET=present_json'
+          else
+            echo 'REPOSITORY_FCM_SECRET=missing'
+          fi
+
+          if [ -n "${APNS_KEY_ID:-}" ] && [ -n "${APNS_TEAM_ID:-}" ]; then
+            if [ -n "${APNS_PRIVATE_KEY_B64:-}" ]; then
+              printf 'APNS_KEY_ID=%s\nAPNS_TEAM_ID=%s\nAPNS_PRIVATE_KEY_B64=%s\nAPNS_USE_SANDBOX=0\n' "$APNS_KEY_ID" "$APNS_TEAM_ID" "$APNS_PRIVATE_KEY_B64" >> "$TMP"
+              echo 'REPOSITORY_APNS_SECRET=present_b64'
+            elif [ -n "${APNS_PRIVATE_KEY:-}" ]; then
+              VALUE="$(printf '%s' "$APNS_PRIVATE_KEY" | base64 -w0)"
+              printf 'APNS_KEY_ID=%s\nAPNS_TEAM_ID=%s\nAPNS_PRIVATE_KEY_B64=%s\nAPNS_USE_SANDBOX=0\n' "$APNS_KEY_ID" "$APNS_TEAM_ID" "$VALUE" >> "$TMP"
+              echo 'REPOSITORY_APNS_SECRET=present_key'
+            else
+              echo 'REPOSITORY_APNS_SECRET=missing_private_key'
+            fi
+          else
+            echo 'REPOSITORY_APNS_SECRET=missing'
+          fi
+
+          if [ -s "$TMP" ]; then
+            sshpass -p "$PASS" scp -q -o StrictHostKeyChecking=no "$TMP" root@"$HOST":/tmp/aesthetic-push-secrets.env
+          fi
+
           sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no root@"$HOST" 'bash -se' <<'REMOTE'
           set -euo pipefail
           MOBILE_ENV=/opt/a-esthetic-mobile/mobile.env
           test -s "$MOBILE_ENV"
+          if [ -s /tmp/aesthetic-push-secrets.env ]; then
+            sed -i '/^FIREBASE_SERVICE_ACCOUNT_JSON=/d;/^FIREBASE_SERVICE_ACCOUNT_B64=/d;/^APNS_KEY_ID=/d;/^APNS_TEAM_ID=/d;/^APNS_PRIVATE_KEY=/d;/^APNS_PRIVATE_KEY_B64=/d;/^APNS_USE_SANDBOX=/d' "$MOBILE_ENV"
+            cat /tmp/aesthetic-push-secrets.env >> "$MOBILE_ENV"
+            rm -f /tmp/aesthetic-push-secrets.env
+            chmod 600 "$MOBILE_ENV"
+            systemctl restart a-esthetic-mobile.service
+            sleep 2
+          fi
           systemctl is-active --quiet a-esthetic-mobile.service
           echo 'MOBILE_API_READY=1'
           echo 'REFERRAL_EMAIL_PROVIDER=book-relay'
