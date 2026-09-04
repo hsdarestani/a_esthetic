@@ -24,23 +24,27 @@ jobs:
       - name: Validate and package current Customer Club web
         run: |
           set -euo pipefail
-          for FILE in index.html app.css app.js p0.js p0-booking-change.js p1.js p2.js p3.js reference-ui.css reference-ui.js sw.js; do
+          for FILE in index.html app.css app.js p0.js p1.js p2.js p3.js reference-ui.css reference-ui.js sw.js booking-direct-api.js booking-book-flow.js booking-book-flow.css booking-manage.js; do
             test -s "www/$FILE"
           done
           grep -q 'p3.js?v=20260812-p3-web' www/index.html
           grep -q 'app.css?v=20260812-core' www/index.html
           grep -q 'reference-ui.css?v=20260816-luxury-v2' www/index.html
           grep -q 'reference-ui.js?v=20260816-luxury-v2' www/index.html
-          if grep -q 'wow.js' www/index.html; then
-            echo 'Legacy wow.js must not be loaded by the luxury mobile UI.'
+          grep -q 'booking-book-flow.js?v=20260904-book-match-v2' www/index.html
+          grep -q 'booking-manage.js?v=20260904-book-manage-v1' www/index.html
+          if grep -Eq 'booking-modern|booking-doctolib|p0-booking-change|booking-confirm-mobile-fix|wow.js' www/index.html; then
+            echo 'A retired booking/UI asset is still loaded.'
             exit 1
           fi
           node --check www/app.js
           node --check www/p0.js
-          node --check www/p0-booking-change.js
           node --check www/p1.js
           node --check www/p2.js
           node --check www/p3.js
+          node --check www/booking-direct-api.js
+          node --check www/booking-book-flow.js
+          node --check www/booking-manage.js
           node --check www/reference-ui.js
           tar -C www -czf customer-club-web.tar.gz .
 
@@ -82,13 +86,15 @@ jobs:
             mkdir -p "$RELEASE_DIR" "$WEBROOT"
             tar -xzf "$PACKAGE" -C "$RELEASE_DIR"
 
-            for FILE in index.html app.css app.js p0.js p0-booking-change.js p1.js p2.js p3.js reference-ui.css reference-ui.js sw.js; do
+            for FILE in index.html app.css app.js p0.js p1.js p2.js p3.js reference-ui.css reference-ui.js sw.js booking-direct-api.js booking-book-flow.js booking-book-flow.css booking-manage.js; do
               test -s "$RELEASE_DIR/$FILE"
             done
             grep -q "p3.js?v=$P3_RELEASE_ID" "$RELEASE_DIR/index.html"
             grep -q "app.css?v=$CORE_RELEASE_ID" "$RELEASE_DIR/index.html"
             grep -q "reference-ui.css?v=$LUX_RELEASE_ID" "$RELEASE_DIR/index.html"
             grep -q "reference-ui.js?v=$LUX_RELEASE_ID" "$RELEASE_DIR/index.html"
+            grep -q 'booking-book-flow.js?v=20260904-book-match-v2' "$RELEASE_DIR/index.html"
+            grep -q 'booking-manage.js?v=20260904-book-manage-v1' "$RELEASE_DIR/index.html"
 
             rm -rf "$WEBROOT"/*
             cp -a "$RELEASE_DIR"/. "$WEBROOT"/
@@ -159,17 +165,17 @@ jobs:
                 try_files /index.html =404;
                 add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
                 add_header Pragma "no-cache" always;
-                add_header X-A-Esthetic-Release "20260816-luxury-v2" always;
+                add_header X-A-Esthetic-Release "20260904-book-canonical-v2" always;
               }
               location = /sw.js {
                 try_files /sw.js =404;
                 add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
-                add_header X-A-Esthetic-Release "20260816-luxury-v2" always;
+                add_header X-A-Esthetic-Release "20260904-book-canonical-v2" always;
               }
               location / {
                 try_files $uri $uri/ /index.html;
                 add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
-                add_header X-A-Esthetic-Release "20260816-luxury-v2" always;
+                add_header X-A-Esthetic-Release "20260904-book-canonical-v2" always;
               }
 
               add_header X-Content-Type-Options nosniff always;
@@ -194,27 +200,28 @@ jobs:
             from urllib.error import HTTPError, URLError
             from urllib.request import HTTPSHandler, Request, build_opener, urlopen
 
-            p3_release = '20260812-p3-web'
-            core_release = '20260812-core'
-            lux_release = '20260816-luxury-v2'
             markers = (
-                f'p3.js?v={p3_release}',
-                f'app.css?v={core_release}',
-                f'reference-ui.css?v={lux_release}',
-                f'reference-ui.js?v={lux_release}',
+                'p3.js?v=20260812-p3-web',
+                'app.css?v=20260812-core',
+                'reference-ui.css?v=20260816-luxury-v2',
+                'reference-ui.js?v=20260816-luxury-v2',
+                'booking-book-flow.js?v=20260904-book-match-v2',
+                'booking-manage.js?v=20260904-book-manage-v1',
             )
             domain = 'esthetic.smarbiz.sbs'
+            release_id = '20260904-book-canonical-v2'
 
             webroot_html = Path('/opt/a-esthetic-web/site/index.html').read_text(encoding='utf-8')
             for marker in markers:
                 if marker not in webroot_html:
                     raise SystemExit(f'Published webroot is missing marker: {marker}')
-            if 'wow.js' in webroot_html:
-                raise SystemExit('Legacy wow.js is still loaded in published index.html')
+            retired = ('booking-modern', 'booking-doctolib', 'p0-booking-change', 'booking-confirm-mobile-fix', 'wow.js')
+            if any(marker in webroot_html for marker in retired):
+                raise SystemExit('A retired booking/UI asset is still loaded in published index.html')
 
             def fetch(url, host=None, insecure=False):
                 headers = {
-                    'User-Agent': 'A-Esthetic-Luxury-Web-Smoke/2.0',
+                    'User-Agent': 'A-Esthetic-Canonical-Booking-Smoke/1.0',
                     'Cache-Control': 'no-cache, no-store',
                     'Pragma': 'no-cache',
                 }
@@ -235,37 +242,32 @@ jobs:
                 except URLError as exc:
                     raise SystemExit(f'Web smoke request failed for {url}: {exc}')
 
-            origin_status, origin_html, _ = fetch(
-                f'https://127.0.0.1/?release={lux_release}', host=domain, insecure=True
-            )
+            origin_status, origin_html, _ = fetch(f'https://127.0.0.1/?release={release_id}', host=domain, insecure=True)
             if origin_status != 200 or not all(m in origin_html for m in markers):
-                raise SystemExit(f'HTTPS origin is not serving the luxury release: {origin_status}')
+                raise SystemExit(f'HTTPS origin is not serving canonical booking release: {origin_status}')
 
-            public_status, public_html, _ = fetch(f'https://{domain}/?release={lux_release}')
+            public_status, public_html, _ = fetch(f'https://{domain}/?release={release_id}')
             if public_status != 200 or not all(m in public_html for m in markers):
-                raise SystemExit(f'Public Customer Club is not serving luxury release: {public_status}')
+                raise SystemExit(f'Public Customer Club is not serving canonical booking release: {public_status}')
 
             assets = (
-                'app.css','app.js','p0.js','p0-booking-change.js','p1.js','p2.js','p3.js',
-                'reference-ui.css','reference-ui.js','sw.js'
+                'app.css','app.js','p0.js','p1.js','p2.js','p3.js','reference-ui.css','reference-ui.js','sw.js',
+                'booking-direct-api.js','booking-book-flow.js','booking-book-flow.css','booking-manage.js'
             )
             for asset in assets:
-                status, body, _ = fetch(f'https://{domain}/{asset}?release={lux_release}')
+                status, body, _ = fetch(f'https://{domain}/{asset}?release={release_id}')
                 if status != 200 or not body.strip():
                     raise SystemExit(f'Public asset {asset} failed: {status}')
 
-            css_status, css, _ = fetch(f'https://{domain}/reference-ui.css?v={lux_release}')
-            js_status, js, _ = fetch(f'https://{domain}/reference-ui.js?v={lux_release}')
-            if css_status != 200 or 'wallet-balance' not in css or 'luxury-nav' not in css or 'luxury-reward-card' not in css:
-                raise SystemExit('Public luxury CSS is stale or incomplete.')
-            if js_status != 200 or 'enhanceWallet' not in js or 'rewardArt' not in js or 'rebuildNavigation' not in js:
-                raise SystemExit('Public luxury JS is stale or incomplete.')
-
             api_status, api_body, _ = fetch(f'https://{domain}/api/mobile/status/')
             if api_status != 200 or 'customer club' not in api_body.lower():
-                raise SystemExit(f'Mobile API failed after luxury web publish: {api_status}')
+                raise SystemExit(f'Mobile API failed after web publish: {api_status}')
 
-            print('A+ Esthetic luxury Customer Club UI is live on production HTTPS.')
+            package_status, _, _ = fetch(f'https://{domain}/api/mobile/package-booking/')
+            if package_status not in {401, 405}:
+                raise SystemExit(f'Package bridge endpoint smoke failed: {package_status}')
+
+            print('A+ Esthetic canonical booking Customer Club UI is live on production HTTPS.')
             PY
 
             rm -rf "$RELEASE_DIR" "$PACKAGE"
