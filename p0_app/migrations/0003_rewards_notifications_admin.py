@@ -91,7 +91,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="appnotification",
-            index=models.Index(fields=["user", "read_at", "created_at"], name="p0_app_appn_user_id_8ce2ef_idx"),
+            index=models.Index(fields=["user", "read_at", "created_at"], name="p0_notify_user_read_idx"),
         ),
         migrations.RunPython(bootstrap_ops, noop_reverse),
     ]
