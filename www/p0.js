@@ -36,86 +36,6 @@
     legal.parentNode.insertBefore(row, legal);
   }
 
-  function toLocalInput(iso) {
-    const d = new Date(iso);
-    const pad = value => String(value).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
-
-  function enhanceBooking() {
-    const form = document.getElementById('booking-form');
-    if (!form || form.dataset.p0Enhanced === '1') return;
-    form.dataset.p0Enhanced = '1';
-
-    const service = form.querySelector('[name="service_id"]');
-    const staff = form.querySelector('[name="staff_id"]');
-    const startsAt = form.querySelector('[name="starts_at"]');
-    if (!service || !staff || !startsAt) return;
-
-    const originalLabel = startsAt.closest('label');
-    startsAt.type = 'hidden';
-    originalLabel.childNodes.forEach(node => {
-      if (node.nodeType === Node.TEXT_NODE) node.textContent = '';
-    });
-
-    const dateLabel = document.createElement('label');
-    dateLabel.textContent = 'Datum';
-    const day = document.createElement('input');
-    day.type = 'date';
-    day.required = true;
-    const minDate = new Date();
-    minDate.setHours(0, 0, 0, 0);
-    day.min = minDate.toISOString().slice(0, 10);
-    dateLabel.appendChild(day);
-
-    const slotLabel = document.createElement('label');
-    slotLabel.textContent = 'Freie Zeit';
-    const slots = document.createElement('select');
-    slots.required = true;
-    slots.innerHTML = '<option value="">Zuerst Leistung, Team und Datum wählen</option>';
-    slotLabel.appendChild(slots);
-
-    originalLabel.parentNode.insertBefore(dateLabel, originalLabel);
-    originalLabel.parentNode.insertBefore(slotLabel, originalLabel);
-    originalLabel.style.display = 'none';
-
-    async function loadSlots() {
-      startsAt.value = '';
-      if (!service.value || !staff.value || !day.value) {
-        slots.innerHTML = '<option value="">Zuerst Leistung, Team und Datum wählen</option>';
-        return;
-      }
-      slots.disabled = true;
-      slots.innerHTML = '<option value="">Freie Zeiten werden geladen…</option>';
-      try {
-        const data = await p0Api(`/slots/?service_id=${encodeURIComponent(service.value)}&staff_id=${encodeURIComponent(staff.value)}&day=${encodeURIComponent(day.value)}`);
-        slots.innerHTML = data.slots.length
-          ? '<option value="">Freie Zeit wählen</option>' + data.slots.map(iso => {
-              const d = new Date(iso);
-              return `<option value="${iso}">${new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' }).format(d)}</option>`;
-            }).join('')
-          : '<option value="">An diesem Tag keine freie Zeit</option>';
-      } catch (_) {
-        slots.innerHTML = '<option value="">Freie Zeiten konnten nicht geladen werden</option>';
-      } finally {
-        slots.disabled = false;
-      }
-    }
-
-    service.addEventListener('change', loadSlots);
-    staff.addEventListener('change', loadSlots);
-    day.addEventListener('change', loadSlots);
-    slots.addEventListener('change', () => {
-      startsAt.value = slots.value ? toLocalInput(slots.value) : '';
-    });
-
-    const hint = document.createElement('div');
-    hint.className = 'notice';
-    hint.style.marginBottom = '12px';
-    hint.textContent = 'Es werden nur tatsächlich freie Zeiten innerhalb der A+ Arbeitszeiten angezeigt.';
-    form.parentNode.insertBefore(hint, form);
-  }
-
   async function enhanceProfile() {
     const profileForm = document.getElementById('profile-form');
     if (!profileForm || document.getElementById('p0-privacy-tools')) return;
@@ -194,7 +114,6 @@
 
   function enhance() {
     enhanceLogin();
-    enhanceBooking();
     enhanceProfile();
   }
 
