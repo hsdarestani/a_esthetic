@@ -20,6 +20,25 @@ if [ ! -d ios ]; then
 fi
 npx cap sync ios
 
+# When Publisher has provisioned the production Push Notifications capability,
+# explicitly request the entitlement in the signed target. A provisioning
+# profile alone is not enough; the archive itself must contain aps-environment.
+PUSH_ENTITLEMENTS=""
+if [ "${REQUIRE_NATIVE_PUSH:-0}" = "1" ]; then
+  PUSH_ENTITLEMENTS="$ROOT/ios/App/App/App.entitlements"
+  cat > "$PUSH_ENTITLEMENTS" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>aps-environment</key>
+  <string>production</string>
+</dict>
+</plist>
+PLIST
+  echo "Enabled production aps-environment entitlement for A+ Esthetic."
+fi
+
 # Keep the existing logo-driven launch screen, but always use the dedicated
 # finished artwork in assets/appicon.png for the actual iOS AppIcon set.
 # @capacitor/assets gives assets/ios/icon.* precedence for the iOS icon.
@@ -88,6 +107,10 @@ XCODE_ARGS=(
   TARGETED_DEVICE_FAMILY=1
   PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"
 )
+
+if [ -n "$PUSH_ENTITLEMENTS" ]; then
+  XCODE_ARGS+=(CODE_SIGN_ENTITLEMENTS="App/App.entitlements")
+fi
 
 if [ -n "$TEAM_ID" ]; then
   XCODE_ARGS+=(DEVELOPMENT_TEAM="$TEAM_ID")
