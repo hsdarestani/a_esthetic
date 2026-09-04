@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import export_views, views
+from . import export_views, shop_disabled_views, views
 
 urlpatterns = [
     path("api/mobile/export/", export_views.mobile_full_export, name="p2_mobile_full_export"),
@@ -14,8 +14,8 @@ urlpatterns = [
     path("api/mobile/cabinet/<int:product_id>/routine/", views.mobile_cabinet_routine, name="p2_mobile_cabinet_routine"),
     path("api/mobile/cabinet/routine/<int:routine_id>/toggle/", views.mobile_routine_toggle, name="p2_mobile_routine_toggle"),
     path("api/mobile/cabinet/routine/<int:routine_id>/delete/", views.mobile_routine_delete, name="p2_mobile_routine_delete"),
-    path("api/mobile/shop/", views.mobile_shop, name="p2_mobile_shop"),
-    path("api/mobile/shop/orders/", views.mobile_shop_orders, name="p2_mobile_shop_orders"),
-    path("api/mobile/shop/orders/<int:order_id>/", views.mobile_shop_order_detail, name="p2_mobile_shop_order_detail"),
-    path("api/mobile/shop/orders/<int:order_id>/cancel/", views.mobile_shop_order_cancel, name="p2_mobile_shop_order_cancel"),
+    path("api/mobile/shop/", shop_disabled_views.mobile_shop, name="p2_mobile_shop"),
+    path("api/mobile/shop/orders/", shop_disabled_views.mobile_shop_orders, name="p2_mobile_shop_orders"),
+    path("api/mobile/shop/orders/<int:order_id>/", shop_disabled_views.mobile_shop_order_detail, name="p2_mobile_shop_order_detail"),
+    path("api/mobile/shop/orders/<int:order_id>/cancel/", shop_disabled_views.mobile_shop_order_cancel, name="p2_mobile_shop_order_cancel"),
 ]
