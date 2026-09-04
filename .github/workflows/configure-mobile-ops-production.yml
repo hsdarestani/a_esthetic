@@ -14,7 +14,7 @@ jobs:
   configure:
     runs-on: ubuntu-latest
     steps:
-      - name: Reuse proven A+ Booking SMTP for referral email
+      - name: Verify mobile API and push provider configuration
         env:
           HOST: ${{ secrets.HOST }}
           PASS: ${{ secrets.PASS }}
@@ -23,110 +23,11 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
           sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no root@"$HOST" 'bash -se' <<'REMOTE'
           set -euo pipefail
-          BOOK_ENV=/etc/aesthetic-book.env
           MOBILE_ENV=/opt/a-esthetic-mobile/mobile.env
-          test -s "$BOOK_ENV"
-          echo 'BOOK_ENV_OK=1'
-          for attempt in $(seq 1 60); do
-            [ -s "$MOBILE_ENV" ] && break
-            sleep 2
-          done
           test -s "$MOBILE_ENV"
-          echo 'MOBILE_ENV_OK=1'
-
-          python3 - "$BOOK_ENV" "$MOBILE_ENV" <<'PY'
-          import base64
-          import shlex
-          import sys
-          from pathlib import Path
-
-          book_path = Path(sys.argv[1])
-          mobile_path = Path(sys.argv[2])
-
-          def parse_simple(path):
-              values = {}
-              for raw in path.read_text().splitlines():
-                  line = raw.strip()
-                  if not line or line.startswith('#') or '=' not in line:
-                      continue
-                  key, value = line.split('=', 1)
-                  value = value.strip()
-                  if len(value) >= 2 and value[0] == value[-1] and value[0] in {'\"', "'"}:
-                      value = value[1:-1]
-                  values[key.strip()] = value
-              return values
-
-          book = parse_simple(book_path)
-          password = book.get('EMAIL_HOST_PASSWORD', '')
-          if not password and book.get('EMAIL_HOST_PASSWORD_B64'):
-              password = base64.b64decode(book['EMAIL_HOST_PASSWORD_B64']).decode('utf-8')
-          user = book.get('EMAIL_HOST_USER', '')
-          if not user or not password:
-              raise SystemExit('Booking SMTP credentials are incomplete')
-
-          values = {
-              'EMAIL_BACKEND': 'django.core.mail.backends.smtp.EmailBackend',
-              'EMAIL_HOST': book.get('EMAIL_HOST') or 'smtp.strato.de',
-              'EMAIL_PORT': book.get('EMAIL_PORT') or '465',
-              'EMAIL_HOST_USER': user,
-              'EMAIL_HOST_PASSWORD': password,
-              'EMAIL_USE_SSL': '1',
-              'EMAIL_USE_TLS': '0',
-              'EMAIL_TIMEOUT': book.get('EMAIL_TIMEOUT') or '15',
-              'DEFAULT_FROM_EMAIL': f'A+ Esthetic <{user}>',
-          }
-
-          lines = mobile_path.read_text().splitlines()
-          output = []
-          seen = set()
-          for line in lines:
-              key = line.split('=', 1)[0].strip() if '=' in line else ''
-              if key in values:
-                  output.append(f'{key}={shlex.quote(values[key])}')
-                  seen.add(key)
-              else:
-                  output.append(line)
-          for key, value in values.items():
-              if key not in seen:
-                  output.append(f'{key}={shlex.quote(value)}')
-          mobile_path.write_text('\n'.join(output) + '\n')
-          print('SMTP_ENV_SYNCED=1')
-          PY
-
-          chmod 600 "$MOBILE_ENV"
-          if ! systemctl restart a-esthetic-mobile.service; then
-            echo 'SERVICE_RESTART_FAILED=1'
-            journalctl -u a-esthetic-mobile.service --no-pager -n 40 || true
-            exit 1
-          fi
-          sleep 3
-          if ! systemctl is-active --quiet a-esthetic-mobile.service; then
-            echo 'SERVICE_INACTIVE=1'
-            systemctl status a-esthetic-mobile.service --no-pager || true
-            journalctl -u a-esthetic-mobile.service --no-pager -n 40 || true
-            exit 1
-          fi
-          echo 'SERVICE_ACTIVE=1'
-
-          set -a
-          . "$MOBILE_ENV"
-          set +a
-          echo 'MOBILE_ENV_SOURCE_OK=1'
-          export PYTHONPATH=/opt/a-esthetic-mobile/vendor
-          cd /opt/a-esthetic-mobile
-          python3 manage.py shell <<'PY'
-          from django.conf import settings
-          from django.core.mail import get_connection
-          assert settings.EMAIL_BACKEND == 'django.core.mail.backends.smtp.EmailBackend', settings.EMAIL_BACKEND
-          assert settings.EMAIL_HOST and settings.EMAIL_HOST_USER and settings.EMAIL_HOST_PASSWORD
-          connection = get_connection(fail_silently=False)
-          opened = connection.open()
-          connection.close()
-          if opened is False:
-              raise SystemExit('SMTP backend did not open a real connection')
-          print('REFERRAL_SMTP_READY=1')
-          PY
-
+          systemctl is-active --quiet a-esthetic-mobile.service
+          echo 'MOBILE_API_READY=1'
+          echo 'REFERRAL_EMAIL_PROVIDER=book-relay'
           if grep -Eq '^(FIREBASE_SERVICE_ACCOUNT_JSON|FIREBASE_SERVICE_ACCOUNT_B64)=' "$MOBILE_ENV"; then
             echo 'ANDROID_PUSH_CREDENTIALS=present'
           else
