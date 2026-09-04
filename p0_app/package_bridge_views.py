@@ -88,7 +88,7 @@ def _select_package(user, service_slug, service_name):
 
 def _payload(redemption=None, package=None, used=False, released=False):
     package = package or (redemption.member_package if redemption else None)
-    return {
+    return JsonResponse({
         "ok": True,
         "package_used": bool(used),
         "package_released": bool(released),
@@ -100,7 +100,7 @@ def _payload(redemption=None, package=None, used=False, released=False):
             "status": package.status,
             "expires_at": package.expires_at.isoformat(),
         },
-    }
+    })
 
 
 @csrf_exempt
