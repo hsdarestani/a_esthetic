@@ -1,8 +1,8 @@
 import json
+from unittest import mock
 
 from django.contrib.auth.models import User
-from django.core import mail
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 from platform_app.mobile_api import _token_for
 from platform_app.models import Reward, UserProfile, WalletAccount
@@ -10,7 +10,6 @@ from platform_app.models import Reward, UserProfile, WalletAccount
 from .ops_models import AppNotification, PushDevice, RewardRedemption
 
 
-@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class CustomerOpsTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -40,13 +39,20 @@ class CustomerOpsTests(TestCase):
             **(auth or self.auth),
         )
 
-    def test_referral_sends_real_email_backend_message(self):
-        response = self.post_json("/api/mobile/club/", {"invited_email": "friend@example.de"})
+    def test_referral_uses_verified_book_email_relay(self):
+        with mock.patch(
+            "p0_app.referral_views._send_referral_email",
+            return_value="https://esthetic.smarbiz.sbs/?ref=APLUS-ABCDEF1234",
+        ) as sender:
+            response = self.post_json("/api/mobile/club/", {"invited_email": "friend@example.de"})
         self.assertEqual(response.status_code, 201, response.content)
         self.assertTrue(response.json()["email_sent"])
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, ["friend@example.de"])
-        self.assertIn("APLUS-", mail.outbox[0].body)
+        sender.assert_called_once()
+        referral = sender.call_args.args[0]
+        request = sender.call_args.args[1]
+        self.assertEqual(referral.invited_email, "friend@example.de")
+        self.assertTrue(referral.code.startswith("APLUS-"))
+        self.assertTrue(request.headers.get("Authorization", "").startswith("Bearer "))
 
     def test_reward_redemption_has_fulfillment_and_admin_can_complete(self):
         reward = Reward.objects.create(name="Test Reward", description="Test", coin_cost=100, inventory=2, active=True)
