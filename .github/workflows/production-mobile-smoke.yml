@@ -1,0 +1,153 @@
+name: A+ Esthetic production mobile smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/production-mobile-smoke.yml"
+  workflow_run:
+    workflows: ["Deploy A+ Esthetic native Customer Club API"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-production-mobile-smoke
+  cancel-in-progress: true
+
+jobs:
+  production-smoke:
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exercise production customer and admin flows
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            ROOT=/opt/a-esthetic-mobile
+            ENV_FILE=$ROOT/mobile.env
+            BASE=https://esthetic.smarbiz.sbs
+            PREFIX="production-smoke-$(date +%s)-$$"
+            export PREFIX
+
+            test -s "$ENV_FILE"
+            test -f "$ROOT/manage.py"
+            systemctl is-active --quiet a-esthetic-mobile.service
+            set -a
+            . "$ENV_FILE"
+            set +a
+            export PYTHONPATH="$ROOT/vendor"
+            cd "$ROOT"
+
+            cleanup() {
+              python3 - <<'PY' || true
+            import os
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+            import django
+            django.setup()
+            from django.contrib.auth.models import User
+            from platform_app.models import Reward
+            prefix = os.environ.get('PREFIX', '')
+            if prefix:
+                User.objects.filter(username__startswith=prefix).delete()
+                Reward.objects.filter(name__startswith=prefix).delete()
+            PY
+              rm -f /tmp/aesthetic-production-smoke.env
+            }
+            trap cleanup EXIT
+
+            python3 - <<'PY'
+            import os, shlex
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+            import django
+            django.setup()
+            from django.contrib.auth.models import User
+            from platform_app.mobile_api import _token_for
+            from platform_app.models import Reward, UserProfile, WalletAccount
+
+            prefix = os.environ['PREFIX']
+            customer = User.objects.create(username=f'{prefix}-customer', email=f'{prefix}@example.invalid', first_name='Production', last_name='Smoke')
+            customer.set_unusable_password(); customer.save(update_fields=['password'])
+            UserProfile.objects.create(user=customer, phone='+49000000000', health_data_consent=True)
+            WalletAccount.objects.create(user=customer, coin_balance=1000)
+            admin = User.objects.create(username=f'{prefix}-admin', email=f'{prefix}-admin@example.invalid', is_staff=True)
+            admin.set_unusable_password(); admin.save(update_fields=['password'])
+            UserProfile.objects.create(user=admin, role='admin')
+            WalletAccount.objects.create(user=admin, coin_balance=0)
+            reward = Reward.objects.create(name=f'{prefix}-reward', description='Production smoke', coin_cost=100, inventory=1, active=True)
+            values = {
+                'CUSTOMER_TOKEN': _token_for(customer),
+                'ADMIN_TOKEN': _token_for(admin),
+                'CUSTOMER_ID': str(customer.pk),
+                'REWARD_ID': str(reward.pk),
+            }
+            with open('/tmp/aesthetic-production-smoke.env', 'w') as handle:
+                for key, value in values.items():
+                    handle.write(f'{key}={shlex.quote(value)}\n')
+            PY
+            . /tmp/aesthetic-production-smoke.env
+
+            json_ok() { python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True, d'; }
+            get_ok() {
+              path="$1"
+              body="$(curl -fsS --max-time 25 -H "Authorization: Bearer $CUSTOMER_TOKEN" "$BASE$path")"
+              printf '%s' "$body" | json_ok
+              echo "PASS GET $path"
+            }
+
+            get_ok /api/mobile/me/
+            get_ok /api/mobile/dashboard/
+            get_ok /api/mobile/profile/
+            get_ok /api/mobile/devices/
+            get_ok /api/mobile/notifications/
+            get_ok /api/mobile/wallet/
+            get_ok /api/mobile/club/
+
+            patient_ok=0
+            for attempt in $(seq 1 12); do
+              if body="$(curl -fsS --max-time 25 -H "Authorization: Bearer $CUSTOMER_TOKEN" "$BASE/api/mobile/patient-records/" 2>/dev/null)" && printf '%s' "$body" | json_ok; then
+                patient_ok=1; break
+              fi
+              sleep 5
+            done
+            test "$patient_ok" = 1
+            echo 'PASS shared patient record gateway'
+
+            get_ok /api/mobile/progress/
+            get_ok /api/mobile/aftercare/
+            get_ok /api/mobile/beauty-plans/
+            get_ok /api/mobile/wallet-pass/
+            get_ok /api/mobile/cabinet/
+            shop="$(curl -fsS --max-time 25 -H "Authorization: Bearer $CUSTOMER_TOKEN" "$BASE/api/mobile/shop/")"
+            printf '%s' "$shop" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True and d.get("enabled") is False, d'
+            echo 'PASS Shop locked disabled'
+            get_ok /api/mobile/gamification/
+            get_ok /api/mobile/events/
+            get_ok /api/mobile/concierge/
+            get_ok /api/mobile/conversations/
+
+            redeem="$(curl -fsS --max-time 25 -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $CUSTOMER_TOKEN" -d '{}' "$BASE/api/mobile/wallet/reward/$REWARD_ID/")"
+            printf '%s' "$redeem" | json_ok
+            REDEMPTION_ID="$(printf '%s' "$redeem" | python3 -c 'import json,sys; print(json.load(sys.stdin)["redemption"]["id"])')"
+            fulfilled="$(curl -fsS --max-time 25 -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $ADMIN_TOKEN" -d '{"action":"fulfill","note":"production smoke"}' "$BASE/api/mobile/admin/rewards/$REDEMPTION_ID/")"
+            printf '%s' "$fulfilled" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True and d["redemption"]["status"] == "fulfilled", d'
+            echo 'PASS Reward fulfillment'
+
+            admin_overview="$(curl -fsS --max-time 25 -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE/api/mobile/admin/")"
+            printf '%s' "$admin_overview" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True and d["links"]["book_admin"].startswith("https://book.a-esthetic.de/"), d'
+            notification="$(curl -fsS --max-time 25 -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $ADMIN_TOKEN" -d "{\"user_id\":$CUSTOMER_ID,\"title\":\"Production Smoke\",\"body\":\"Notification Center production validation\",\"category\":\"general\",\"deeplink\":\"profile\"}" "$BASE/api/mobile/admin/notifications/")"
+            printf '%s' "$notification" | json_ok
+            notifications="$(curl -fsS --max-time 25 -H "Authorization: Bearer $CUSTOMER_TOKEN" "$BASE/api/mobile/notifications/")"
+            printf '%s' "$notifications" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True and any(x.get("title") == "Production Smoke" for x in d.get("notifications", [])), d'
+            echo 'PASS Admin + Notification Center'
+
+            if grep -Eq '^(FIREBASE_SERVICE_ACCOUNT_JSON|FIREBASE_SERVICE_ACCOUNT_B64)=' "$ENV_FILE"; then echo 'ANDROID_PUSH_CREDENTIALS=present'; else echo 'ANDROID_PUSH_CREDENTIALS=missing'; fi
+            if grep -q '^APNS_KEY_ID=' "$ENV_FILE" && grep -q '^APNS_TEAM_ID=' "$ENV_FILE" && grep -Eq '^(APNS_PRIVATE_KEY|APNS_PRIVATE_KEY_B64)=' "$ENV_FILE"; then echo 'IOS_PUSH_CREDENTIALS=present'; else echo 'IOS_PUSH_CREDENTIALS=missing'; fi
+            echo 'All production Profile/P0/P1/P2/P3 smoke checks passed.'
