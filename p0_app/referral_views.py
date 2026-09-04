@@ -1,7 +1,8 @@
 import json
 import secrets
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
-from django.core.mail import EmailMultiAlternatives, get_connection
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
@@ -13,6 +14,9 @@ from platform_app import mobile_api as legacy_mobile_api
 from platform_app.models import AuditLog, Campaign, GiftCard, Referral
 
 from .push import create_notification
+
+
+REFERRAL_RELAY_URL = "https://book.a-esthetic.de/api/mobile/referral-email/"
 
 
 def _auth(request):
@@ -35,36 +39,36 @@ def _new_code():
             return code
 
 
-def _send_referral_email(referral):
-    referrer_name = referral.referrer.get_full_name() or referral.referrer.username
-    invite_url = f"https://esthetic.smarbiz.sbs/?ref={referral.code}"
-    subject = f"{referrer_name} lädt Sie zu A+ Esthetic ein"
-    text = (
-        f"Hallo,\n\n{referrer_name} hat Sie zum A+ Esthetic Customer Club eingeladen.\n\n"
-        f"Einladung öffnen: {invite_url}\n\n"
-        "Mit freundlichen Grüßen\nA+ Esthetic"
+def _send_referral_email(referral, request):
+    auth = str(request.headers.get("Authorization") or "").strip()
+    if not auth.startswith("Bearer "):
+        raise RuntimeError("customer_club_auth_missing")
+    body = json.dumps({
+        "invited_email": referral.invited_email,
+        "referral_code": referral.code,
+    }).encode("utf-8")
+    remote = Request(
+        REFERRAL_RELAY_URL,
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": auth,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "A-Esthetic-Customer-Club-Referral/1.0",
+        },
     )
-    html = f"""
-    <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#172027">
-      <div style="font-size:28px;font-weight:800;letter-spacing:.04em;margin-bottom:20px">A+ ESTHETIC</div>
-      <h1 style="font-size:25px;margin:0 0 14px">Eine persönliche Einladung</h1>
-      <p style="font-size:16px;line-height:1.6"><strong>{referrer_name}</strong> hat Sie zum A+ Esthetic Customer Club eingeladen.</p>
-      <p style="margin:26px 0"><a href="{invite_url}" style="display:inline-block;background:#172027;color:#fff;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:700">Einladung öffnen</a></p>
-      <p style="font-size:13px;line-height:1.5;color:#66717a">Diese Einladung wurde von einem A+ Esthetic Mitglied an diese E-Mail-Adresse gesendet. Falls Sie keine Einladung erwartet haben, können Sie diese Nachricht ignorieren.</p>
-    </div>
-    """
-    connection = get_connection(fail_silently=False)
-    message = EmailMultiAlternatives(
-        subject=subject,
-        body=text,
-        to=[referral.invited_email],
-        connection=connection,
-    )
-    message.attach_alternative(html, "text/html")
-    sent = message.send(fail_silently=False)
-    if sent != 1:
-        raise RuntimeError("referral_email_not_sent")
-    return invite_url
+    try:
+        with urlopen(remote, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            if response.status not in {200, 201} or not payload.get("ok") or not payload.get("email_sent"):
+                raise RuntimeError(f"book_referral_relay_{response.status}")
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:500]
+        raise RuntimeError(f"book_referral_relay_http_{exc.code}:{detail}") from exc
+    except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"book_referral_relay_unavailable:{exc}") from exc
+    return f"https://esthetic.smarbiz.sbs/?ref={referral.code}"
 
 
 @csrf_exempt
@@ -100,7 +104,7 @@ def mobile_club(request):
             )
         referral_id = referral.pk
         try:
-            invite_url = _send_referral_email(referral)
+            invite_url = _send_referral_email(referral, request)
             email_sent = True
         except Exception as exc:
             AuditLog.objects.create(
@@ -108,7 +112,7 @@ def mobile_club(request):
                 action="Referral-E-Mail fehlgeschlagen",
                 entity_type="Referral",
                 entity_id=str(referral.pk),
-                metadata={"error": str(exc)[:500]},
+                metadata={"error": str(exc)[:500], "relay": "book"},
                 ip_address=request.META.get("REMOTE_ADDR"),
             )
             return JsonResponse({
@@ -122,7 +126,7 @@ def mobile_club(request):
             action="Referral-E-Mail versendet",
             entity_type="Referral",
             entity_id=str(referral.pk),
-            metadata={"invite_url": invite_url},
+            metadata={"invite_url": invite_url, "relay": "book"},
             ip_address=request.META.get("REMOTE_ADDR"),
         )
         create_notification(
