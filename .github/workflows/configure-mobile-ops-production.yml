@@ -26,11 +26,13 @@ jobs:
           BOOK_ENV=/etc/aesthetic-book.env
           MOBILE_ENV=/opt/a-esthetic-mobile/mobile.env
           test -s "$BOOK_ENV"
+          echo 'BOOK_ENV_OK=1'
           for attempt in $(seq 1 60); do
             [ -s "$MOBILE_ENV" ] && break
             sleep 2
           done
           test -s "$MOBILE_ENV"
+          echo 'MOBILE_ENV_OK=1'
 
           python3 - "$BOOK_ENV" "$MOBILE_ENV" <<'PY'
           import base64
@@ -88,16 +90,28 @@ jobs:
               if key not in seen:
                   output.append(f'{key}={shlex.quote(value)}')
           mobile_path.write_text('\n'.join(output) + '\n')
+          print('SMTP_ENV_SYNCED=1')
           PY
 
           chmod 600 "$MOBILE_ENV"
-          systemctl restart a-esthetic-mobile.service
+          if ! systemctl restart a-esthetic-mobile.service; then
+            echo 'SERVICE_RESTART_FAILED=1'
+            journalctl -u a-esthetic-mobile.service --no-pager -n 40 || true
+            exit 1
+          fi
           sleep 3
-          systemctl is-active --quiet a-esthetic-mobile.service
+          if ! systemctl is-active --quiet a-esthetic-mobile.service; then
+            echo 'SERVICE_INACTIVE=1'
+            systemctl status a-esthetic-mobile.service --no-pager || true
+            journalctl -u a-esthetic-mobile.service --no-pager -n 40 || true
+            exit 1
+          fi
+          echo 'SERVICE_ACTIVE=1'
 
           set -a
           . "$MOBILE_ENV"
           set +a
+          echo 'MOBILE_ENV_SOURCE_OK=1'
           export PYTHONPATH=/opt/a-esthetic-mobile/vendor
           cd /opt/a-esthetic-mobile
           python3 manage.py shell <<'PY'
