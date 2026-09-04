@@ -97,7 +97,7 @@ class AppNotification(models.Model):
     class Meta:
         app_label = "p0_app"
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["user", "read_at", "created_at"])]
+        indexes = [models.Index(fields=["user", "read_at", "created_at"], name="p0_notify_user_read_idx")]
 
     def __str__(self):
         return f"{self.user} – {self.title}"
