@@ -90,3 +90,51 @@ class DataExportRequest(models.Model):
 
     class Meta:
         ordering = ["-requested_at"]
+
+
+class PackageBookingService(models.Model):
+    """Deterministic mapping between a Customer Club package and a book service."""
+
+    package_definition = models.ForeignKey(
+        "platform_app.PackageDefinition",
+        on_delete=models.CASCADE,
+        related_name="booking_service_mappings",
+    )
+    service_slug = models.SlugField(max_length=160)
+    service_name = models.CharField(max_length=180, blank=True)
+    active = models.BooleanField(default=True)
+    auto_created = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("package_definition", "service_slug")]
+        ordering = ["package_definition_id", "service_slug"]
+
+    def __str__(self):
+        return f"{self.package_definition} → {self.service_slug}"
+
+
+class PackageBookingRedemption(models.Model):
+    STATUS = [("reserved", "Reserviert"), ("released", "Freigegeben")]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="package_booking_redemptions",
+    )
+    member_package = models.ForeignKey(
+        "platform_app.MemberPackage",
+        on_delete=models.PROTECT,
+        related_name="booking_redemptions",
+    )
+    booking_public_id = models.CharField(max_length=64, unique=True)
+    service_slug = models.SlugField(max_length=160)
+    status = models.CharField(max_length=16, choices=STATUS, default="reserved")
+    reserved_at = models.DateTimeField(default=timezone.now)
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-reserved_at"]
+
+    def __str__(self):
+        return f"{self.booking_public_id} – {self.member_package} – {self.status}"
