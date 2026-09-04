@@ -6,3 +6,6 @@ qrcode[pil]==8.2
 django-allauth[socialaccount,mfa]==65.18.0
 cryptography>=45.0,<47
 PyJWT>=2.10,<3
+requests>=2.32,<3
+google-auth>=2.38,<3
+httpx[http2]>=0.28,<1
