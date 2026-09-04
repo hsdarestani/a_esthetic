@@ -59,6 +59,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -72,6 +76,7 @@ jobs:
           grep -R "PushNotifications" android/app/src/main -n >/dev/null || true
       - name: Compile Android debug binary
         run: |
+          java -version
           cd android
           ./gradlew --no-daemon assembleDebug
 
