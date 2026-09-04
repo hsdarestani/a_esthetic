@@ -9,6 +9,7 @@ from platform_app.mobile_api import _token_for
 from platform_app.models import MemberAccount, WalletAccount
 
 from .models import CabinetProduct, RoutineStep, ShopCategory, ShopOrder, ShopProduct
+from .services import create_shop_order, release_reserved_stock
 
 
 class P2ExperienceTests(TestCase):
@@ -113,73 +114,48 @@ class P2ExperienceTests(TestCase):
         self.assertEqual([item["name"] for item in listing.json()["products"]], ["Mein Serum"])
         self.assertEqual(listing.json()["products"][0]["routines"][0]["period"], "evening")
 
-    def test_shop_uses_server_price_reserves_stock_and_cancel_restores_once(self):
-        created = self.client.post(
+    def test_shop_public_api_is_disabled_but_order_service_preserves_price_and_stock(self):
+        public = self.client.get("/api/mobile/shop/", **self.auth)
+        self.assertEqual(public.status_code, 200, public.content)
+        self.assertFalse(public.json()["enabled"])
+        blocked = self.client.post(
             "/api/mobile/shop/orders/",
-            data=json.dumps({
-                "items": [{"product_id": self.product.pk, "quantity": 2, "price_cents": 1}],
-                "delivery_method": "collect",
-            }),
+            data=json.dumps({"items": [{"product_id": self.product.pk, "quantity": 2}]}),
             content_type="application/json",
             **self.auth,
         )
-        self.assertEqual(created.status_code, 201, created.content)
-        order = ShopOrder.objects.get(pk=created.json()["order"]["id"])
+        self.assertEqual(blocked.status_code, 409)
+        self.assertEqual(blocked.json()["error"], "shop_disabled")
+
+        order = create_shop_order(
+            user=self.user,
+            raw_items=[{"product_id": self.product.pk, "quantity": 2, "price_cents": 1}],
+            delivery_method="collect",
+        )
         self.assertEqual(order.total_cents, 5000)
         self.assertEqual(order.items.get().unit_price_cents, 2500)
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 3)
 
-        forbidden = self.client.get(f"/api/mobile/shop/orders/{order.pk}/", **self.other_auth)
-        self.assertEqual(forbidden.status_code, 404)
-
-        cancelled = self.client.post(
-            f"/api/mobile/shop/orders/{order.pk}/cancel/",
-            data="{}",
-            content_type="application/json",
-            **self.auth,
-        )
-        self.assertEqual(cancelled.status_code, 200, cancelled.content)
-        self.product.refresh_from_db()
-        order.refresh_from_db()
-        self.assertEqual(self.product.stock_quantity, 5)
-        self.assertEqual(order.status, "cancelled")
-        self.assertIsNotNone(order.stock_released_at)
-
-        second = self.client.post(
-            f"/api/mobile/shop/orders/{order.pk}/cancel/",
-            data="{}",
-            content_type="application/json",
-            **self.auth,
-        )
-        self.assertEqual(second.status_code, 409)
+        self.assertTrue(release_reserved_stock(order))
+        self.assertFalse(release_reserved_stock(order))
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 5)
 
-    def test_shop_validates_shipping_and_stock(self):
-        missing_address = self.client.post(
-            "/api/mobile/shop/orders/",
-            data=json.dumps({
-                "items": [{"product_id": self.product.pk, "quantity": 1}],
-                "delivery_method": "shipping",
-            }),
-            content_type="application/json",
-            **self.auth,
-        )
-        self.assertEqual(missing_address.status_code, 400)
-        self.assertEqual(missing_address.json()["error"], "shipping_address_required")
+    def test_shop_service_validation_remains_covered_while_ui_is_disabled(self):
+        with self.assertRaisesMessage(ValidationError, "shipping_address_required"):
+            create_shop_order(
+                user=self.user,
+                raw_items=[{"product_id": self.product.pk, "quantity": 1}],
+                delivery_method="shipping",
+            )
 
-        insufficient = self.client.post(
-            "/api/mobile/shop/orders/",
-            data=json.dumps({
-                "items": [{"product_id": self.product.pk, "quantity": 6}],
-                "delivery_method": "collect",
-            }),
-            content_type="application/json",
-            **self.auth,
-        )
-        self.assertEqual(insufficient.status_code, 400)
-        self.assertEqual(insufficient.json()["error"], "insufficient_stock")
+        with self.assertRaisesMessage(ValidationError, "insufficient_stock"):
+            create_shop_order(
+                user=self.user,
+                raw_items=[{"product_id": self.product.pk, "quantity": 6}],
+                delivery_method="collect",
+            )
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 5)
 
@@ -198,13 +174,13 @@ class P2ExperienceTests(TestCase):
         CabinetProduct.objects.create(user=self.user, name="Mein Produkt")
         CabinetProduct.objects.create(user=self.other, name="Fremdes Produkt")
 
-        order_response = self.client.post(
-            "/api/mobile/shop/orders/",
-            data=json.dumps({"items": [{"product_id": self.product.pk, "quantity": 1}], "delivery_method": "collect"}),
-            content_type="application/json",
-            **self.auth,
+        # Shop is intentionally not exposed to customers, but existing internal
+        # order/export code remains operational for historical records.
+        create_shop_order(
+            user=self.user,
+            raw_items=[{"product_id": self.product.pk, "quantity": 1}],
+            delivery_method="collect",
         )
-        self.assertEqual(order_response.status_code, 201)
 
         response = self.client.get("/api/mobile/export/", **self.auth)
         self.assertEqual(response.status_code, 200, response.content)
