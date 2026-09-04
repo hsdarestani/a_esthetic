@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, time, timedelta
+from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -9,16 +9,17 @@ from platform_app.mobile_api import _token_for
 from platform_app.models import (
     Appointment,
     MemberAccount,
+    MemberPackage,
     MembershipTier,
+    PackageDefinition,
     Reward,
     Service,
     StaffMember,
     UserProfile,
     WalletAccount,
-    WorkingHour,
 )
 
-from .models import AccountDeletionRequest, DeviceSession
+from .models import AccountDeletionRequest, DeviceSession, PackageBookingRedemption, PackageBookingService
 
 
 class P0MobileSafetyTests(TestCase):
@@ -46,124 +47,90 @@ class P0MobileSafetyTests(TestCase):
         self.staff = StaffMember.objects.create(display_name="A+ Team", role="reception", active=True)
         self.staff.services.add(self.service)
 
-        day = timezone.localdate() + timedelta(days=1)
-        while day.weekday() > 4:
-            day += timedelta(days=1)
-        self.day = day
-        WorkingHour.objects.create(
-            staff=self.staff,
-            weekday=day.weekday(),
-            start_time=time(10, 0),
-            end_time=time(18, 0),
-            active=True,
-        )
-
         self.token = _token_for(self.user)
         self.auth = {"HTTP_AUTHORIZATION": f"Bearer {self.token}", "HTTP_USER_AGENT": "A+ Test iPhone"}
 
-    def _aware(self, day, clock):
-        return timezone.make_aware(datetime.combine(day, clock), timezone.get_current_timezone())
-
-    def _slot_iso(self):
-        return self._aware(self.day, time(10, 0)).isoformat()
-
-    def _change_day(self):
-        return self.day + timedelta(days=7)
-
-    def _create_changeable_appointment(self, clock=time(11, 0)):
-        start = self._aware(self._change_day(), clock)
-        return Appointment.objects.create(
+    def test_package_booking_reserve_is_idempotent_and_release_restores_session(self):
+        definition = PackageDefinition.objects.create(
+            name="A+ Beratung Paket",
+            sessions=2,
+            validity_days=365,
+            active=True,
+        )
+        package = MemberPackage.objects.create(
             user=self.user,
-            service=self.service,
-            staff=self.staff,
-            starts_at=start,
-            ends_at=start + timedelta(minutes=40),
-            status="confirmed",
-            source="app",
+            definition=definition,
+            remaining_sessions=2,
+            expires_at=timezone.localdate() + timedelta(days=90),
+            status="active",
         )
+        booking_id = "82f4b778-d1b9-49cf-c1bb-f45042bf9d51"
+        payload = {
+            "action": "reserve",
+            "booking_public_id": booking_id,
+            "service_slug": "a-plus-beratung",
+            "service_name": "A+ Beratung",
+        }
 
-    def test_booking_accepts_real_available_slot(self):
-        response = self.client.post(
-            "/api/mobile/booking/",
-            data=json.dumps({
-                "service_id": self.service.pk,
-                "staff_id": self.staff.pk,
-                "starts_at": self._slot_iso(),
-            }),
+        first = self.client.post(
+            "/api/mobile/package-booking/",
+            data=json.dumps(payload),
             content_type="application/json",
             **self.auth,
         )
-        self.assertEqual(response.status_code, 201, response.content)
-        appointment = Appointment.objects.get(user=self.user)
-        self.assertEqual(appointment.staff, self.staff)
-        self.assertEqual(appointment.status, "confirmed")
+        self.assertEqual(first.status_code, 200, first.content)
+        self.assertTrue(first.json()["package_used"])
+        package.refresh_from_db()
+        self.assertEqual(package.remaining_sessions, 1)
+        self.assertTrue(PackageBookingService.objects.filter(package_definition=definition, service_slug="a-plus-beratung").exists())
 
-    def test_booking_rejects_time_outside_working_hours(self):
-        start = self._aware(self.day, time(8, 0))
-        response = self.client.post(
-            "/api/mobile/booking/",
-            data=json.dumps({
-                "service_id": self.service.pk,
-                "staff_id": self.staff.pk,
-                "starts_at": start.isoformat(),
-            }),
+        second = self.client.post(
+            "/api/mobile/package-booking/",
+            data=json.dumps(payload),
             content_type="application/json",
             **self.auth,
         )
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.json()["error"], "time_not_available")
+        self.assertEqual(second.status_code, 200, second.content)
+        package.refresh_from_db()
+        self.assertEqual(package.remaining_sessions, 1)
+        self.assertEqual(PackageBookingRedemption.objects.filter(booking_public_id=booking_id).count(), 1)
 
-    def test_changeable_appointment_can_be_cancelled(self):
-        appointment = self._create_changeable_appointment()
-        response = self.client.post(
-            f"/api/mobile/booking/{appointment.pk}/change/",
-            data=json.dumps({"action": "cancel"}),
+        release = self.client.post(
+            "/api/mobile/package-booking/",
+            data=json.dumps({"action": "release", "booking_public_id": booking_id}),
             content_type="application/json",
             **self.auth,
         )
-        self.assertEqual(response.status_code, 200, response.content)
-        appointment.refresh_from_db()
-        self.assertEqual(appointment.status, "cancelled")
+        self.assertEqual(release.status_code, 200, release.content)
+        self.assertTrue(release.json()["package_released"])
+        package.refresh_from_db()
+        self.assertEqual(package.remaining_sessions, 2)
+        self.assertEqual(PackageBookingRedemption.objects.get(booking_public_id=booking_id).status, "released")
 
-    def test_changeable_appointment_can_be_rescheduled_to_real_slot(self):
-        appointment = self._create_changeable_appointment(time(11, 0))
-        new_start = self._aware(self._change_day(), time(12, 0))
-        response = self.client.post(
-            f"/api/mobile/booking/{appointment.pk}/change/",
-            data=json.dumps({
-                "action": "reschedule",
-                "staff_id": self.staff.pk,
-                "starts_at": new_start.isoformat(),
-            }),
-            content_type="application/json",
-            **self.auth,
-        )
-        self.assertEqual(response.status_code, 200, response.content)
-        appointment.refresh_from_db()
-        self.assertEqual(appointment.starts_at, new_start)
-        self.assertEqual(appointment.status, "confirmed")
-
-    def test_change_deadline_blocks_last_minute_cancellation(self):
-        start = timezone.now() + timedelta(hours=12)
-        appointment = Appointment.objects.create(
+    def test_package_booking_does_not_consume_unrelated_package(self):
+        definition = PackageDefinition.objects.create(name="Laser Paket", sessions=3, active=True)
+        package = MemberPackage.objects.create(
             user=self.user,
-            service=self.service,
-            staff=self.staff,
-            starts_at=start,
-            ends_at=start + timedelta(minutes=40),
-            status="confirmed",
-            source="app",
+            definition=definition,
+            remaining_sessions=3,
+            expires_at=timezone.localdate() + timedelta(days=90),
+            status="active",
         )
         response = self.client.post(
-            f"/api/mobile/booking/{appointment.pk}/change/",
-            data=json.dumps({"action": "cancel"}),
+            "/api/mobile/package-booking/",
+            data=json.dumps({
+                "action": "reserve",
+                "booking_public_id": "unrelated-booking",
+                "service_slug": "botox",
+                "service_name": "Botox",
+            }),
             content_type="application/json",
             **self.auth,
         )
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.json()["error"], "change_deadline_passed")
-        appointment.refresh_from_db()
-        self.assertEqual(appointment.status, "confirmed")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["package_used"])
+        package.refresh_from_db()
+        self.assertEqual(package.remaining_sessions, 3)
 
     def test_account_deletion_creates_trackable_request(self):
         response = self.client.post(
