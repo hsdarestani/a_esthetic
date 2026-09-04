@@ -1,0 +1,108 @@
+name: Configure A+ Esthetic mobile operations production
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/configure-mobile-ops-production.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reuse proven A+ Booking SMTP for referral email
+        env:
+          HOST: ${{ secrets.HOST }}
+          PASS: ${{ secrets.PASS }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no root@"$HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          BOOK_ENV=/etc/aesthetic-book.env
+          MOBILE_ENV=/opt/a-esthetic-mobile/mobile.env
+          test -s "$BOOK_ENV"
+          test -s "$MOBILE_ENV"
+
+          set -a
+          . "$BOOK_ENV"
+          set +a
+          SMTP_PASSWORD=""
+          if [ -n "${EMAIL_HOST_PASSWORD:-}" ]; then
+            SMTP_PASSWORD="$EMAIL_HOST_PASSWORD"
+          elif [ -n "${EMAIL_HOST_PASSWORD_B64:-}" ]; then
+            SMTP_PASSWORD="$(printf '%s' "$EMAIL_HOST_PASSWORD_B64" | base64 -d)"
+          fi
+          test -n "$SMTP_PASSWORD"
+          test -n "${EMAIL_HOST_USER:-}"
+
+          python3 - "$MOBILE_ENV" "$SMTP_PASSWORD" "${EMAIL_HOST:-smtp.strato.de}" "${EMAIL_PORT:-465}" "$EMAIL_HOST_USER" <<'PY'
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          password, host, port, user = sys.argv[2:6]
+          values = {
+              'EMAIL_HOST': host,
+              'EMAIL_PORT': port,
+              'EMAIL_HOST_USER': user,
+              'EMAIL_HOST_PASSWORD': password,
+              'EMAIL_USE_SSL': '1',
+              'EMAIL_USE_TLS': '0',
+              'EMAIL_TIMEOUT': '15',
+              'DEFAULT_FROM_EMAIL': f'A+ Esthetic <{user}>',
+          }
+          lines = path.read_text().splitlines()
+          seen = set()
+          output = []
+          for line in lines:
+              key = line.split('=', 1)[0] if '=' in line else ''
+              if key in values:
+                  output.append(f'{key}={values[key]}')
+                  seen.add(key)
+              else:
+                  output.append(line)
+          for key, value in values.items():
+              if key not in seen:
+                  output.append(f'{key}={value}')
+          path.write_text('\n'.join(output) + '\n')
+          PY
+          chmod 600 "$MOBILE_ENV"
+          systemctl restart a-esthetic-mobile.service
+          sleep 3
+          systemctl is-active --quiet a-esthetic-mobile.service
+
+          set -a
+          . "$MOBILE_ENV"
+          set +a
+          export PYTHONPATH=/opt/a-esthetic-mobile/vendor
+          cd /opt/a-esthetic-mobile
+          python3 manage.py shell <<'PY'
+          from django.conf import settings
+          from django.core.mail import get_connection
+          assert settings.EMAIL_BACKEND == 'django.core.mail.backends.smtp.EmailBackend', settings.EMAIL_BACKEND
+          assert bool(settings.EMAIL_HOST_PASSWORD)
+          connection = get_connection(fail_silently=False)
+          opened = connection.open()
+          connection.close()
+          if opened is False:
+              raise SystemExit('SMTP backend did not open a real connection')
+          print('REFERRAL_SMTP_READY=1')
+          PY
+
+          set +x
+          if grep -q '^FIREBASE_SERVICE_ACCOUNT_JSON=' "$MOBILE_ENV" || grep -q '^FIREBASE_SERVICE_ACCOUNT_B64=' "$MOBILE_ENV"; then
+            echo 'ANDROID_PUSH_CREDENTIALS=present'
+          else
+            echo 'ANDROID_PUSH_CREDENTIALS=missing'
+          fi
+          if grep -q '^APNS_KEY_ID=' "$MOBILE_ENV" && grep -q '^APNS_TEAM_ID=' "$MOBILE_ENV" && { grep -q '^APNS_PRIVATE_KEY=' "$MOBILE_ENV" || grep -q '^APNS_PRIVATE_KEY_B64=' "$MOBILE_ENV"; }; then
+            echo 'IOS_PUSH_CREDENTIALS=present'
+          else
+            echo 'IOS_PUSH_CREDENTIALS=missing'
+          fi
+          REMOTE
