@@ -1,0 +1,98 @@
+name: A+ Esthetic Android iOS feature matrix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "www/**"
+      - "platform_app/**"
+      - "p0_app/**"
+      - "p1_app/**"
+      - "p2_app/**"
+      - "p3_app/**"
+      - "config/**"
+      - "package.json"
+      - "requirements.txt"
+      - ".github/workflows/native-feature-matrix.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-native-feature-matrix
+  cancel-in-progress: true
+
+jobs:
+  django-feature-suite:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_DEBUG: "1"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
+      EMAIL_BACKEND: "django.core.mail.backends.locmem.EmailBackend"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Migration and model consistency
+        run: |
+          python manage.py makemigrations --check --dry-run
+          python manage.py migrate --noinput
+          python manage.py check
+      - name: Profile P0 P1 P2 P3 feature tests
+        run: python manage.py test platform_app p0_app p1_app p2_app p3_app -v 2
+      - name: Browser JavaScript syntax
+        run: |
+          node --check www/app.js
+          node --check www/p0.js
+          node --check www/p1.js
+          node --check www/p2.js
+          node --check www/p3.js
+          node --check www/ops.js
+          node --check www/booking-direct-api.js
+          node --check www/booking-book-flow.js
+          node --check www/booking-manage.js
+
+  android-native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+      - name: Generate and sync Android project
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+          npm list @capacitor/push-notifications
+          grep -R "PushNotifications" android/app/src/main -n >/dev/null || true
+      - name: Compile Android debug binary
+        run: |
+          cd android
+          ./gradlew --no-daemon assembleDebug
+
+  ios-native:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+      - name: Generate and sync iOS project
+        run: |
+          rm -rf ios
+          npx cap add ios
+          npx cap sync ios
+          npm list @capacitor/push-notifications
+      - name: Compile iOS simulator binary
+        run: |
+          if [ -d ios/App/App.xcworkspace ]; then
+            xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+          else
+            xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+          fi
