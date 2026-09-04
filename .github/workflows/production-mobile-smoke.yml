@@ -6,6 +6,11 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/production-mobile-smoke.yml"
+      - "platform_app/patient_documents.py"
+      - "p0_app/push.py"
+      - "p0_app/notification_views.py"
+      - "www/ops.js"
+      - "www/p0.js"
   workflow_run:
     workflows: ["Deploy A+ Esthetic native Customer Club API"]
     types: [completed]
