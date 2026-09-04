@@ -21,8 +21,8 @@ from .models import AuditLog, UserProfile
 from .patient_sync import _token
 
 BOOK_BASE = "https://book.a-esthetic.de"
-BOOK_INGEST_URL = f"{BOOK_BASE}/api/internal/patient-records/ingest/"
 BOOK_LIST_URL = f"{BOOK_BASE}/api/internal/patient-records/portal/list/"
+BOOK_UPLOAD_URL = f"{BOOK_BASE}/api/internal/patient-records/portal/upload/"
 BOOK_FILE_URL = f"{BOOK_BASE}/api/internal/patient-records/portal/file/"
 BOOK_ARCHIVE_URL = f"{BOOK_BASE}/api/internal/patient-records/portal/archive/"
 BOOK_HOST = "book.a-esthetic.de"
@@ -45,24 +45,33 @@ def _identity(user):
     }
 
 
-def _book_headers():
+def _customer_authorization(request):
+    value = str(request.headers.get("Authorization") or "").strip()
+    return value if value.lower().startswith("bearer ") else ""
+
+
+def _book_headers(authorization=""):
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json; charset=utf-8",
         "User-Agent": "A+Esthetic-Customer-PatientPortal/1.0",
     }
+    if authorization:
+        headers["Authorization"] = authorization
+    # Retain the server bridge as an optional maintenance fallback, but customer
+    # authorization is primary and is independently verified by Book against /me/.
     token = _token()
     if token:
         headers["X-Aesthetic-Patient-Sync"] = token
     return headers
 
 
-def _book_json(url, payload, timeout=12):
+def _book_json(url, payload, timeout=12, authorization=""):
     request = Request(
         url,
         data=json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
         method="POST",
-        headers=_book_headers(),
+        headers=_book_headers(authorization),
     )
     try:
         with urlopen(request, timeout=timeout) as response:
@@ -87,12 +96,12 @@ def _error_from_book(error, status):
     return JsonResponse({"ok": False, "error": code}, status=safe_status)
 
 
-def _book_binary(payload):
+def _book_binary(payload, authorization=""):
     request = Request(
         BOOK_FILE_URL,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         method="POST",
-        headers=_book_headers(),
+        headers=_book_headers(authorization),
     )
     try:
         with urlopen(request, timeout=20) as response:
@@ -120,7 +129,11 @@ def mobile_patient_records(request):
     if error:
         return error
     profile, _ = UserProfile.objects.get_or_create(user=user)
-    payload, book_error, status = _book_json(BOOK_LIST_URL, _identity(user))
+    payload, book_error, status = _book_json(
+        BOOK_LIST_URL,
+        _identity(user),
+        authorization=_customer_authorization(request),
+    )
     if not payload:
         return _error_from_book(book_error, status)
     return JsonResponse({
@@ -174,18 +187,12 @@ def mobile_patient_record_upload(request):
     uploaded = request.FILES.get("file")
     payload = {
         **_identity(user),
-        "source": "a_esthetic_app_customer",
         "external_id": f"customer-upload:{user.pk}:{uuid.uuid4().hex}",
         "kind": kind,
         "title": title,
         "note": note,
         "captured_at": timezone.now().isoformat(),
-        "metadata": {
-            "document_type": "customer_upload",
-            "customer_upload": True,
-            "shared_with_customer": True,
-            "health_data_consent": True,
-        },
+        "health_data_consent": True,
     }
 
     if uploaded:
@@ -212,7 +219,12 @@ def mobile_patient_record_upload(request):
     elif not payload["title"]:
         payload["title"] = "Notiz"
 
-    result, book_error, status = _book_json(BOOK_INGEST_URL, payload, timeout=25)
+    result, book_error, status = _book_json(
+        BOOK_UPLOAD_URL,
+        payload,
+        timeout=25,
+        authorization=_customer_authorization(request),
+    )
     if not result:
         return _error_from_book(book_error, status)
 
@@ -242,11 +254,10 @@ def mobile_patient_record_file(request, record_id):
     user, error = mobile_api._auth(request)
     if error:
         return error
-    status, headers, content = _book_binary({
-        **_identity(user),
-        "record_id": str(record_id),
-        "download": request.GET.get("download") == "1",
-    })
+    status, headers, content = _book_binary(
+        {**_identity(user), "record_id": str(record_id), "download": request.GET.get("download") == "1"},
+        authorization=_customer_authorization(request),
+    )
     if status != 200:
         return JsonResponse({"ok": False, "error": "record_not_found" if status == 404 else "patient_record_service_unavailable"}, status=404 if status == 404 else 503)
     response = HttpResponse(content, content_type=headers.get("Content-Type") or "application/octet-stream")
@@ -264,7 +275,11 @@ def mobile_patient_record_archive(request, record_id):
     user, error = mobile_api._auth(request)
     if error:
         return error
-    result, book_error, status = _book_json(BOOK_ARCHIVE_URL, {**_identity(user), "record_id": str(record_id)})
+    result, book_error, status = _book_json(
+        BOOK_ARCHIVE_URL,
+        {**_identity(user), "record_id": str(record_id)},
+        authorization=_customer_authorization(request),
+    )
     if not result:
         return _error_from_book(book_error, status)
     AuditLog.objects.create(
