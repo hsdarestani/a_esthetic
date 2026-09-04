@@ -57,12 +57,19 @@ jobs:
             os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
             import django
             django.setup()
+            from django.apps import apps
             from django.contrib.auth.models import User
             from platform_app.models import Reward
             prefix = os.environ.get('PREFIX', '')
             if prefix:
-                User.objects.filter(username__startswith=prefix).delete()
-                Reward.objects.filter(name__startswith=prefix).delete()
+                users = User.objects.filter(username__startswith=prefix)
+                rewards = Reward.objects.filter(name__startswith=prefix)
+                redemption_model = next((model for model in apps.get_models() if model.__name__ == 'RewardRedemption'), None)
+                if redemption_model is not None:
+                    redemption_model.objects.filter(user__in=users).delete()
+                    redemption_model.objects.filter(reward__in=rewards).delete()
+                rewards.delete()
+                users.delete()
             PY
               rm -f /tmp/aesthetic-production-smoke.env
             }
