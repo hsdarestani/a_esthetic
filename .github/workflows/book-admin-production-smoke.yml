@@ -1,0 +1,88 @@
+name: A+ Esthetic embedded Book admin production smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/book-admin-production-smoke.yml"
+      - "p0_app/book_admin_proxy_views.py"
+      - "p0_app/urls.py"
+      - "www/book-admin.js"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-book-admin-production-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Aesthetic admin bearer -> Aesthetic proxy -> Book admin API
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            ROOT=/opt/a-esthetic-mobile
+            BASE=https://esthetic.smarbiz.sbs
+            PREFIX="book-admin-smoke-$(date +%s)-$$"
+            export PREFIX
+            cd "$ROOT"
+            set -a
+            . "$ROOT/mobile.env"
+            set +a
+            export PYTHONPATH="$ROOT/vendor"
+
+            cleanup() {
+              python3 - <<'PY' || true
+            import os
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+            import django
+            django.setup()
+            from django.contrib.auth.models import User
+            User.objects.filter(username=os.environ.get('PREFIX', '')).delete()
+            PY
+              rm -f /tmp/aesthetic-book-admin-smoke.env
+            }
+            trap cleanup EXIT
+
+            python3 - <<'PY'
+            import os, shlex
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+            import django
+            django.setup()
+            from django.contrib.auth.models import User
+            from platform_app.mobile_api import _token_for
+            from platform_app.models import UserProfile
+
+            username = os.environ['PREFIX']
+            user = User.objects.create(username=username, email=f'{username}@example.invalid', is_staff=True)
+            user.set_unusable_password()
+            user.save(update_fields=['password'])
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.role = 'admin'
+            profile.save(update_fields=['role'])
+            token = _token_for(user)
+            with open('/tmp/aesthetic-book-admin-smoke.env', 'w') as handle:
+                handle.write(f'ADMIN_TOKEN={shlex.quote(token)}\n')
+            PY
+            . /tmp/aesthetic-book-admin-smoke.env
+
+            for endpoint in overview calendar bookings customers services settings; do
+              url="$BASE/api/mobile/admin/book/$endpoint/"
+              if [ "$endpoint" = calendar ]; then
+                url="$url?date=$(date +%F)"
+              fi
+              body="$(curl -fsS --max-time 30 -H "Authorization: Bearer $ADMIN_TOKEN" "$url")"
+              printf '%s' "$body" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True, d'
+              echo "PASS embedded Book admin: $endpoint"
+            done
+
+            echo 'Embedded Book admin production bridge passed.'
