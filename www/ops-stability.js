@@ -3,9 +3,11 @@
 
   let scheduled = false;
 
-  function keepFirst(selector) {
-    const nodes = [...document.querySelectorAll(selector)];
+  function dedupeWithin(grid, selector) {
+    const nodes = [...grid.querySelectorAll(selector)];
+    if (nodes.length <= 1) return false;
     nodes.slice(1).forEach(node => node.remove());
+    return true;
   }
 
   function cleanProfileHub() {
@@ -15,26 +17,22 @@
     const grid = heading?.closest('.content')?.querySelector('.more-grid');
     if (!grid) return;
 
-    keepFirst('[data-ops-center]');
-    keepFirst('[data-ops-admin]');
-
-    // Keep the two operational entries together at the end of the first menu.
-    const notifications = grid.querySelector('[data-ops-center]');
-    const admin = grid.querySelector('[data-ops-admin]');
-    if (notifications) grid.appendChild(notifications);
-    if (admin) grid.appendChild(admin);
-    grid.dataset.opsStable = '1';
+    // Only mutate the DOM when an actual duplicate exists. Never append/move the
+    // surviving nodes here: moving an existing node fires MutationObserver again
+    // and previously created an endless feedback loop on the profile hub.
+    dedupeWithin(grid, '[data-ops-center]');
+    dedupeWithin(grid, '[data-ops-admin]');
   }
 
   function schedule() {
     if (scheduled) return;
     scheduled = true;
-    queueMicrotask(cleanProfileHub);
+    requestAnimationFrame(cleanProfileHub);
   }
 
   const root = document.getElementById('app') || document.documentElement;
   new MutationObserver(schedule).observe(root, { childList: true, subtree: true });
-  window.addEventListener('DOMContentLoaded', schedule);
+  window.addEventListener('DOMContentLoaded', schedule, { once: true });
   window.addEventListener('pageshow', schedule);
   setTimeout(schedule, 0);
 })();
