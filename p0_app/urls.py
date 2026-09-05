@@ -2,6 +2,7 @@ from django.urls import path
 
 from . import (
     admin_mobile_views,
+    book_admin_proxy_views,
     canonical_booking_views,
     notification_views,
     package_bridge_views,
@@ -28,6 +29,19 @@ urlpatterns = [
     path("api/mobile/admin/modules/<slug:key>/", admin_mobile_views.mobile_admin_module, name="p0_mobile_admin_module"),
     path("api/mobile/admin/rewards/<int:redemption_id>/", admin_mobile_views.mobile_admin_reward, name="p0_mobile_admin_reward"),
     path("api/mobile/admin/notifications/", admin_mobile_views.mobile_admin_notification, name="p0_mobile_admin_notification"),
+
+    path("api/mobile/admin/book/overview/", book_admin_proxy_views.overview, name="p0_mobile_book_admin_overview"),
+    path("api/mobile/admin/book/calendar/", book_admin_proxy_views.calendar, name="p0_mobile_book_admin_calendar"),
+    path("api/mobile/admin/book/bookings/", book_admin_proxy_views.bookings, name="p0_mobile_book_admin_bookings"),
+    path("api/mobile/admin/book/customers/", book_admin_proxy_views.customers, name="p0_mobile_book_admin_customers"),
+    path("api/mobile/admin/book/customers/<int:customer_id>/", book_admin_proxy_views.customer_detail, name="p0_mobile_book_admin_customer_detail"),
+    path("api/mobile/admin/book/services/", book_admin_proxy_views.services, name="p0_mobile_book_admin_services"),
+    path("api/mobile/admin/book/settings/", book_admin_proxy_views.settings, name="p0_mobile_book_admin_settings"),
+    path("api/mobile/admin/book/appointments/<int:appointment_id>/", book_admin_proxy_views.appointment_action, name="p0_mobile_book_admin_appointment"),
+    path("api/mobile/admin/book/blocks/", book_admin_proxy_views.block_action, name="p0_mobile_book_admin_blocks"),
+    path("api/mobile/admin/book/services/<int:service_id>/", book_admin_proxy_views.service_action, name="p0_mobile_book_admin_service"),
+    path("api/mobile/admin/book/day-override/", book_admin_proxy_views.day_override_action, name="p0_mobile_book_admin_override"),
+
     path("api/mobile/account-deletion/", views.mobile_account_deletion, name="p0_mobile_account_deletion"),
     path("api/mobile/devices/", views.mobile_devices, name="p0_mobile_devices"),
     path("api/mobile/devices/<int:device_id>/revoke/", views.mobile_revoke_device, name="p0_mobile_revoke_device"),
