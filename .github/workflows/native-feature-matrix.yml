@@ -12,6 +12,7 @@ on:
       - "p2_app/**"
       - "p3_app/**"
       - "config/**"
+      - "scripts/**"
       - "package.json"
       - "requirements.txt"
       - ".github/workflows/native-feature-matrix.yml"
@@ -53,6 +54,7 @@ jobs:
           node --check www/ops.js
           node --check www/ops-stability.js
           node --check www/book-admin.js
+          node --check www/book-admin-v2.js
           node --check www/runtime-hotfix.js
           node --check www/booking-direct-api.js
           node --check www/booking-book-flow.js
@@ -70,11 +72,14 @@ jobs:
         with:
           node-version: "22"
       - run: npm install
-      - name: Generate and sync Android project
+      - name: Generate, sync and harden Android project
         run: |
           rm -rf android
           npx cap add android
           npx cap sync android
+          python3 scripts/configure_android_system_bars.py
+          grep -R "setDecorFitsSystemWindows(false)" android/app/src/main/java -n
+          grep -R "setOnApplyWindowInsetsListener" android/app/src/main/java -n
           npm list @capacitor/push-notifications
           grep -R "PushNotifications" android/app/src/main -n >/dev/null || true
       - name: Compile Android debug binary
