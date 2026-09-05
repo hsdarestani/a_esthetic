@@ -14,7 +14,6 @@
   <link rel="stylesheet" href="./patient-records.css?v=20260904-shared-patient-file-v1">
   <link rel="stylesheet" href="./mobile-hotfix.css?v=20260905-native-bars-v4">
   <link rel="stylesheet" href="./profile-menu-fix.css?v=20260905-profile-menu-v1">
-  <link rel="stylesheet" href="./book-admin-v2.css?v=20260905-simply-v2">
 </head>
 <body>
   <div class="route-progress" aria-hidden="true"></div>
@@ -27,6 +26,8 @@
   </div>
   <!-- Canonical booking stack: app UI -> book.a-esthetic.de -> book database. -->
   <script src="./booking-direct-api.js?v=20260904-book-source-v2" defer></script>
+  <!-- Must execute before app.js: staff/admin accounts bypass Customer Club entirely. -->
+  <script src="./admin-mode.js?v=20260905-exact-book-admin-v1" defer></script>
   <script src="./app.js?v=20260816-smooth-nav-v1" defer></script>
   <script src="./viewport-shell-fix.js?v=20260905-scroll-footer-v1" defer></script>
   <script src="./p0.js?v=20260904-shared-patient-file-v1" defer></script>
@@ -36,7 +37,6 @@
   <script src="./runtime-hotfix.js?v=20260905-android-stability-v1" defer></script>
   <script src="./ops.js?v=20260904-admin-push-v1" defer></script>
   <script src="./ops-stability.js?v=20260905-profile-menu-v2" defer></script>
-  <script src="./book-admin-v2.js?v=20260905-simply-v2" defer></script>
   <script src="./booking-book-flow.js?v=20260904-book-match-v2" defer></script>
   <script src="./booking-manage.js?v=20260904-book-manage-v1" defer></script>
   <script src="./reference-ui.js?v=20260816-luxury-v2" defer></script>
