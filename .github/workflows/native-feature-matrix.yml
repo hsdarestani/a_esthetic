@@ -51,6 +51,7 @@ jobs:
           node --check www/p2.js
           node --check www/p3.js
           node --check www/ops.js
+          node --check www/runtime-hotfix.js
           node --check www/booking-direct-api.js
           node --check www/booking-book-flow.js
           node --check www/booking-manage.js
@@ -76,9 +77,20 @@ jobs:
           grep -R "PushNotifications" android/app/src/main -n >/dev/null || true
       - name: Compile Android debug binary
         run: |
+          set -euo pipefail
           java -version
           cd android
-          ./gradlew --no-daemon assembleDebug
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon assembleDebug; then
+              exit 0
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "Android Gradle build failed after 3 attempts." >&2
+              exit 1
+            fi
+            echo "Gradle attempt $attempt failed; retrying after transient network/back-end error..." >&2
+            sleep $((attempt * 8))
+          done
 
   ios-native:
     runs-on: macos-latest
