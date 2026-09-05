@@ -5,6 +5,11 @@
   "loggingBehavior": "none",
   "backgroundColor": "#FFFFFF",
   "zoomEnabled": false,
+  "server": {
+    "allowNavigation": [
+      "book.a-esthetic.de"
+    ]
+  },
   "android": {
     "allowMixedContent": false,
     "webContentsDebuggingEnabled": false,
