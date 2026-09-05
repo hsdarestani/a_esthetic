@@ -30,14 +30,13 @@
   <script src="./p0.js?v=20260904-shared-patient-file-v1" defer></script>
   <script src="./p1.js?v=20260812-core" defer></script>
   <script src="./p2.js?v=20260812-core" defer></script>
-  <script src="./p3.js?v=20260812-p3-web" defer></script>
+  <!-- P3 customer surfaces (Challenges, Events, Concierge/Messaging) are intentionally deferred. Do not load p3.js while those modules are disabled: its menu observer would otherwise recreate entries removed by feature flags. -->
   <script src="./runtime-hotfix.js?v=20260905-android-stability-v1" defer></script>
-  <script src="./profile-hang-fix.js?v=20260905-profile-freeze-v1" defer></script>
   <script src="./ops.js?v=20260904-admin-push-v1" defer></script>
   <script src="./booking-book-flow.js?v=20260904-book-match-v2" defer></script>
   <script src="./booking-manage.js?v=20260904-book-manage-v1" defer></script>
   <script src="./reference-ui.js?v=20260816-luxury-v2" defer></script>
   <script src="./brand-logo.js?v=20260905-native-safe-v2" defer></script>
-  <script src="./feature-flags.js?v=20260905-deferred-modules-v1" defer></script>
+  <script src="./feature-flags.js?v=20260905-deferred-modules-v2" defer></script>
 </body>
 </html>
