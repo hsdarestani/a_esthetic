@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import legal_views, mobile_api, patient_documents, views
+from . import admin_aware_login, legal_views, mobile_api, patient_documents, views
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
@@ -28,7 +28,7 @@ urlpatterns = [
     path('nutzungsbedingungen/', legal_views.terms, name='terms'),
 
     path('api/mobile/status/', mobile_api.status, name='mobile_status'),
-    path('api/mobile/login/', mobile_api.login, name='mobile_login'),
+    path('api/mobile/login/', admin_aware_login.login, name='mobile_login'),
     path('api/mobile/me/', mobile_api.me, name='mobile_me'),
     path('api/mobile/dashboard/', mobile_api.dashboard, name='mobile_dashboard'),
     path('api/mobile/club/', mobile_api.club, name='mobile_club'),
