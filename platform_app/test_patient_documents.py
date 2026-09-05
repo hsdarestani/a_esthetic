@@ -66,11 +66,16 @@ class CustomerPatientDocumentTests(TestCase):
         self.profile.refresh_from_db()
         self.assertTrue(self.profile.health_data_consent)
         payload = gateway.call_args.args[1]
-        self.assertEqual(payload["source"], "a_esthetic_app_customer")
-        self.assertTrue(payload["metadata"]["shared_with_customer"])
-        self.assertTrue(payload["metadata"]["customer_upload"])
+        # Source/share metadata is deliberately not client-controlled anymore.
+        # Book authenticates the member bearer token and stamps customer-upload +
+        # shared-with-customer server-side.
+        self.assertNotIn("source", payload)
+        self.assertNotIn("metadata", payload)
+        self.assertTrue(payload["health_data_consent"])
+        self.assertEqual(payload["email"], self.user.email)
         self.assertEqual(payload["original_name"], "befund.pdf")
         self.assertTrue(payload["file_base64"])
+        self.assertEqual(gateway.call_args.kwargs["authorization"], self.auth["HTTP_AUTHORIZATION"])
 
     def test_customer_can_archive_through_identity_scoped_gateway(self):
         self.profile.health_data_consent = True
