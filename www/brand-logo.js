@@ -22,18 +22,10 @@
     host.appendChild(logoImg());
   }
 
-  function replaceStandaloneSvg(svg) {
-    if (!svg || svg.dataset.officialLogoDone === '1') return;
-    const img = logoImg('official-brand-logo');
-    svg.replaceWith(img);
-  }
-
   function protectBookingClicks() {
     const form = document.getElementById('booking-form');
     if (!form || form.dataset.doctolibFlow !== '1') return;
 
-    // The legacy chooser is not used by the progressive flow. If a previous observer
-    // mounted one before the new flow, remove its fixed backdrop so it can never eat clicks.
     document.querySelectorAll('.service-sheet').forEach(sheet => sheet.remove());
     document.body.classList.remove('service-sheet-open');
 
@@ -48,12 +40,11 @@
   }
 
   function applyOfficialLogo() {
+    // The full 1024×1024 brand artwork is only suitable for dedicated logo hosts.
+    // Do not inject it into tiny decorative lotus/nav hosts: Android WebView can
+    // render the intrinsic SVG size outside those containers and cover the page.
     document.querySelectorAll('.brandmark').forEach(node => fillHost(node));
     document.querySelectorAll('.boot-logo').forEach(node => fillHost(node));
-    document.querySelectorAll('.topbar-lotus').forEach(node => fillHost(node));
-    document.querySelectorAll('.nav-center-disc').forEach(node => fillHost(node));
-    document.querySelectorAll('.wallet-lotus-watermark').forEach(node => fillHost(node));
-    document.querySelectorAll('svg.mini-lotus, svg.nav-lotus, svg.topbar-lotus-svg, svg.wallet-lotus-svg').forEach(replaceStandaloneSvg);
     protectBookingClicks();
   }
 
