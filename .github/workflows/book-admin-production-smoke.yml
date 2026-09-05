@@ -1,4 +1,4 @@
-name: A+ Esthetic embedded Book admin production smoke
+name: A+ Esthetic exact Book admin production smoke
 
 on:
   workflow_dispatch:
@@ -8,7 +8,10 @@ on:
       - ".github/workflows/book-admin-production-smoke.yml"
       - "p0_app/book_admin_proxy_views.py"
       - "p0_app/urls.py"
-      - "www/book-admin.js"
+      - "platform_app/admin_aware_login.py"
+      - "www/admin-mode.js"
+      - "www/index.html"
+      - "capacitor.config.json"
 
 permissions:
   contents: read
@@ -21,7 +24,7 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify Aesthetic admin bearer -> Aesthetic proxy -> Book admin API
+      - name: Verify A+ admin bearer opens the real Book administration
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.HOST }}
@@ -32,6 +35,7 @@ jobs:
             set -euo pipefail
             ROOT=/opt/a-esthetic-mobile
             BASE=https://esthetic.smarbiz.sbs
+            BOOK=https://book.a-esthetic.de
             PREFIX="book-admin-smoke-$(date +%s)-$$"
             export PREFIX
             cd "$ROOT"
@@ -49,7 +53,7 @@ jobs:
             from django.contrib.auth.models import User
             User.objects.filter(username=os.environ.get('PREFIX', '')).delete()
             PY
-              rm -f /tmp/aesthetic-book-admin-smoke.env
+              rm -f /tmp/aesthetic-book-admin-smoke.env /tmp/book-admin.cookies /tmp/book-admin-calendar.html
             }
             trap cleanup EXIT
 
@@ -75,6 +79,7 @@ jobs:
             PY
             . /tmp/aesthetic-book-admin-smoke.env
 
+            # Existing JSON bridge remains healthy.
             for endpoint in overview calendar bookings customers services settings; do
               url="$BASE/api/mobile/admin/book/$endpoint/"
               if [ "$endpoint" = calendar ]; then
@@ -82,7 +87,24 @@ jobs:
               fi
               body="$(curl -fsS --max-time 30 -H "Authorization: Bearer $ADMIN_TOKEN" "$url")"
               printf '%s' "$body" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True, d'
-              echo "PASS embedded Book admin: $endpoint"
+              echo "PASS Book admin API: $endpoint"
             done
 
-            echo 'Embedded Book admin production bridge passed.'
+            # New canonical flow: exchange the A+ bearer for a first-party Book staff
+            # session, then render the exact same responsive Book admin HTML the clinic uses.
+            sso="$(curl -fsS --max-time 30 -c /tmp/book-admin.cookies -b /tmp/book-admin.cookies \
+              -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Accept: application/json' \
+              "$BOOK/verwaltung/app-sso/")"
+            printf '%s' "$sso" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True, d; assert d.get("redirect")=="/verwaltung/kalender/", d'
+
+            curl -fsS --max-time 30 -c /tmp/book-admin.cookies -b /tmp/book-admin.cookies \
+              "$BOOK/verwaltung/kalender/" > /tmp/book-admin-calendar.html
+            grep -q 'class="sb-mobile-bar"' /tmp/book-admin-calendar.html
+            grep -q 'data-drawer-open' /tmp/book-admin-calendar.html
+            grep -q 'class="sb-drawer"' /tmp/book-admin-calendar.html
+            grep -q 'Kalender (Tagesansicht)' /tmp/book-admin-calendar.html
+            if grep -q 'nav-center-disc' /tmp/book-admin-calendar.html; then
+              echo 'FAIL: Customer Club bottom navigation leaked into Book admin.' >&2
+              exit 1
+            fi
+            echo 'PASS exact Book admin: real mobile header, hamburger drawer, calendar; no Customer Club footer.'
