@@ -122,6 +122,64 @@ img.official-brand-logo{
   pointer-events:none!important;
 }
 
+/*
+ * Keep the document itself as the only vertical scroll container. Android
+ * WebView and mobile browsers can stop scrolling when a nested app shell owns
+ * overflow while a fixed child lives inside an animated/transformed ancestor.
+ */
+html.aplus-scroll-enabled,
+body.aplus-scroll-enabled{
+  width:100%!important;
+  height:auto!important;
+  min-height:100%!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior-y:auto!important;
+  touch-action:pan-y!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+body.aplus-scroll-enabled{
+  position:static!important;
+}
+#app.app-root{
+  width:100%!important;
+  height:auto!important;
+  min-height:100dvh!important;
+  overflow-x:clip!important;
+  overflow-y:visible!important;
+  position:relative!important;
+}
+#app.app-root>.shell{
+  width:100%!important;
+  height:auto!important;
+  min-height:100dvh!important;
+  overflow-x:clip!important;
+  overflow-y:visible!important;
+  padding-bottom:calc(118px + env(safe-area-inset-bottom))!important;
+  animation:none!important;
+  transform:none!important;
+}
+#app.app-root>.shell>.content,
+#app.app-root>.shell .content{
+  height:auto!important;
+  min-height:0!important;
+  overflow:visible!important;
+  touch-action:pan-y!important;
+}
+
+/* The runtime moves nav out of .shell so fixed positioning is viewport-based. */
+#app.app-root>.nav.luxury-nav{
+  position:fixed!important;
+  left:50%!important;
+  right:auto!important;
+  top:auto!important;
+  bottom:0!important;
+  transform:translateX(-50%)!important;
+  width:min(100%,620px)!important;
+  margin:0!important;
+  z-index:2147483000!important;
+}
+
 @media (max-width:680px){
   .content{padding-bottom:58px!important}
   .topbar.luxury-topbar{padding-left:14px!important;padding-right:14px!important}
@@ -133,5 +191,11 @@ img.official-brand-logo{
     transform:none!important;
     width:100%!important;
     border-radius:20px 20px 0 0!important;
+  }
+  #app.app-root>.nav.luxury-nav{
+    left:0!important;
+    right:0!important;
+    transform:none!important;
+    width:100%!important;
   }
 }
