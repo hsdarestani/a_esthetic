@@ -14,6 +14,7 @@ from platform_app.models import (
     FeatureModule,
     MemberAccount,
     MemberPackage,
+    Referral,
     UserProfile,
     WalletAccount,
     WalletTransaction,
@@ -53,15 +54,18 @@ def _customer_payload(user):
     return {
         "id": user.pk,
         "name": user.get_full_name() or user.username,
+        "username": user.username,
         "email": user.email,
         "phone": profile.phone,
         "role": profile.role,
         "member_number": member.member_number,
         "tier": member.tier.name if member.tier else "A+ Member",
         "member_status": member.status,
+        "valid_until": member.valid_until.isoformat() if member.valid_until else None,
         "coins": wallet.coin_balance,
         "credit_cents": wallet.balance_cents,
         "active_packages": MemberPackage.objects.filter(user=user, status="active").count(),
+        "devices": PushDevice.objects.filter(user=user, enabled=True).count(),
         "joined_at": user.date_joined.isoformat(),
     }
 
@@ -72,7 +76,7 @@ def mobile_admin_overview(request):
     actor, error = _admin_auth(request)
     if error:
         return error
-    customers = User.objects.filter(is_active=True, is_superuser=False)
+    customers = User.objects.filter(is_active=True, is_superuser=False, profile__role="customer")
     pending = RewardRedemption.objects.filter(status__in=["pending", "processing"]).select_related("user", "reward")[:25]
     modules = FeatureModule.objects.order_by("sort_order", "name_de")
     return JsonResponse({
@@ -89,6 +93,7 @@ def mobile_admin_overview(request):
             "pending_rewards": RewardRedemption.objects.filter(status__in=["pending", "processing"]).count(),
             "push_devices": PushDevice.objects.filter(enabled=True).count(),
             "unread_notifications": AppNotification.objects.filter(read_at__isnull=True).count(),
+            "referrals": Referral.objects.count(),
         },
         "links": {"book_admin": BOOK_ADMIN_URL, "app_admin": APP_ADMIN_URL},
         "push": push_configuration(),
@@ -114,7 +119,7 @@ def mobile_admin_customers(request):
     if error:
         return error
     query = str(request.GET.get("q") or "").strip()
-    users = User.objects.filter(is_active=True, is_superuser=False).order_by("-date_joined")
+    users = User.objects.filter(is_active=True, is_superuser=False, profile__role="customer").order_by("-date_joined")
     if query:
         users = users.filter(
             Q(email__icontains=query)
@@ -122,9 +127,265 @@ def mobile_admin_customers(request):
             | Q(first_name__icontains=query)
             | Q(last_name__icontains=query)
             | Q(profile__phone__icontains=query)
+            | Q(member_account__member_number__icontains=query)
         ).distinct()
-    users = users[:100]
+    users = users[:150]
     return JsonResponse({"ok": True, "customers": [_customer_payload(user) for user in users]})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def mobile_admin_customer(request, customer_id):
+    actor, error = _admin_auth(request)
+    if error:
+        return error
+    user = User.objects.filter(pk=customer_id, is_active=True, is_superuser=False, profile__role="customer").first()
+    if not user:
+        return JsonResponse({"ok": False, "error": "customer_not_found"}, status=404)
+
+    if request.method == "POST":
+        data = _json(request)
+        member, _ = MemberAccount.objects.get_or_create(user=user)
+        wallet, _ = WalletAccount.objects.get_or_create(user=user)
+        changed = []
+        status = str(data.get("member_status") or "").strip()
+        if status:
+            allowed = {value for value, _ in MemberAccount.STATUS}
+            if status not in allowed:
+                return JsonResponse({"ok": False, "error": "invalid_member_status"}, status=400)
+            if member.status != status:
+                member.status = status
+                member.save(update_fields=["status"])
+                changed.append("member_status")
+
+        try:
+            coin_delta = int(data.get("coin_delta") or 0)
+            credit_delta = int(data.get("credit_delta_cents") or 0)
+        except (TypeError, ValueError):
+            return JsonResponse({"ok": False, "error": "invalid_wallet_delta"}, status=400)
+
+        with transaction.atomic():
+            if coin_delta:
+                if wallet.coin_balance + coin_delta < 0:
+                    return JsonResponse({"ok": False, "error": "coin_balance_below_zero"}, status=409)
+                wallet.coin_balance += coin_delta
+                WalletTransaction.objects.create(
+                    user=user,
+                    kind="coin",
+                    direction="in" if coin_delta > 0 else "out",
+                    coin_amount=abs(coin_delta),
+                    description="Admin-Korrektur A+ Coins",
+                    reference=f"admin:{actor.pk}",
+                )
+                changed.append("coins")
+            if credit_delta:
+                if wallet.balance_cents + credit_delta < 0:
+                    return JsonResponse({"ok": False, "error": "credit_balance_below_zero"}, status=409)
+                wallet.balance_cents += credit_delta
+                WalletTransaction.objects.create(
+                    user=user,
+                    kind="credit",
+                    direction="in" if credit_delta > 0 else "out",
+                    amount_cents=abs(credit_delta),
+                    description="Admin-Korrektur A+ Credit",
+                    reference=f"admin:{actor.pk}",
+                )
+                changed.append("credit")
+            if coin_delta or credit_delta:
+                wallet.save(update_fields=["coin_balance", "balance_cents", "updated_at"])
+
+        AuditLog.objects.create(
+            actor=actor,
+            action="Customer Club Konto geändert",
+            entity_type="UserAccount",
+            entity_id=str(user.pk),
+            metadata={"changed": changed, "coin_delta": coin_delta, "credit_delta_cents": credit_delta},
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+
+    packages = MemberPackage.objects.filter(user=user).select_related("definition").order_by("-created_at")[:50]
+    devices = PushDevice.objects.filter(user=user).order_by("-last_seen_at")[:20]
+    referrals = Referral.objects.filter(referrer=user).order_by("-created_at")[:50]
+    return JsonResponse({
+        "ok": True,
+        "customer": _customer_payload(user),
+        "packages": [
+            {
+                "id": item.pk,
+                "name": item.definition.name,
+                "remaining_sessions": item.remaining_sessions,
+                "expires_at": item.expires_at.isoformat(),
+                "status": item.status,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in packages
+        ],
+        "devices": [
+            {
+                "id": item.pk,
+                "platform": item.platform,
+                "app_version": item.app_version,
+                "enabled": item.enabled,
+                "last_seen_at": item.last_seen_at.isoformat(),
+            }
+            for item in devices
+        ],
+        "referrals": [
+            {
+                "id": item.pk,
+                "code": item.code,
+                "email": item.invited_email,
+                "status": item.status,
+                "reward_coins": item.reward_coins,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in referrals
+        ],
+    })
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def mobile_admin_packages(request):
+    actor, error = _admin_auth(request)
+    if error:
+        return error
+    status = str(request.GET.get("status") or "").strip()
+    items = MemberPackage.objects.select_related("user", "definition").order_by("-created_at")
+    if status:
+        items = items.filter(status=status)
+    items = items[:200]
+    return JsonResponse({
+        "ok": True,
+        "packages": [
+            {
+                "id": item.pk,
+                "customer_id": item.user_id,
+                "customer": item.user.get_full_name() or item.user.username,
+                "email": item.user.email,
+                "name": item.definition.name,
+                "remaining_sessions": item.remaining_sessions,
+                "expires_at": item.expires_at.isoformat(),
+                "status": item.status,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in items
+        ],
+    })
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def mobile_admin_referrals(request):
+    actor, error = _admin_auth(request)
+    if error:
+        return error
+    items = Referral.objects.select_related("referrer").order_by("-created_at")[:250]
+    return JsonResponse({
+        "ok": True,
+        "referrals": [
+            {
+                "id": item.pk,
+                "customer_id": item.referrer_id,
+                "customer": item.referrer.get_full_name() or item.referrer.username,
+                "email": item.invited_email,
+                "code": item.code,
+                "status": item.status,
+                "status_label": item.get_status_display(),
+                "reward_coins": item.reward_coins,
+                "created_at": item.created_at.isoformat(),
+                "rewarded_at": item.rewarded_at.isoformat() if item.rewarded_at else None,
+            }
+            for item in items
+        ],
+    })
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def mobile_admin_rewards(request):
+    actor, error = _admin_auth(request)
+    if error:
+        return error
+    items = RewardRedemption.objects.select_related("user", "reward").order_by("-requested_at")[:250]
+    return JsonResponse({
+        "ok": True,
+        "redemptions": [redemption_payload(item) | {"customer": _customer_payload(item.user)} for item in items],
+    })
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def mobile_admin_devices(request):
+    actor, error = _admin_auth(request)
+    if error:
+        return error
+    if request.method == "POST":
+        data = _json(request)
+        try:
+            device_id = int(data.get("device_id"))
+        except (TypeError, ValueError):
+            return JsonResponse({"ok": False, "error": "device_required"}, status=400)
+        device = PushDevice.objects.filter(pk=device_id).select_related("user").first()
+        if not device:
+            return JsonResponse({"ok": False, "error": "device_not_found"}, status=404)
+        device.enabled = bool(data.get("enabled", False))
+        device.save(update_fields=["enabled"])
+        AuditLog.objects.create(
+            actor=actor,
+            action="Push-Gerät geändert",
+            entity_type="PushDevice",
+            entity_id=str(device.pk),
+            metadata={"enabled": device.enabled, "customer_id": device.user_id},
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+    items = PushDevice.objects.select_related("user").order_by("-last_seen_at")[:250]
+    return JsonResponse({
+        "ok": True,
+        "devices": [
+            {
+                "id": item.pk,
+                "customer_id": item.user_id,
+                "customer": item.user.get_full_name() or item.user.username,
+                "email": item.user.email,
+                "platform": item.platform,
+                "app_version": item.app_version,
+                "enabled": item.enabled,
+                "last_seen_at": item.last_seen_at.isoformat(),
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in items
+        ],
+    })
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def mobile_admin_notifications_history(request):
+    actor, error = _admin_auth(request)
+    if error:
+        return error
+    items = AppNotification.objects.select_related("user").order_by("-created_at")[:150]
+    return JsonResponse({
+        "ok": True,
+        "notifications": [
+            {
+                "id": item.pk,
+                "customer_id": item.user_id,
+                "customer": item.user.get_full_name() or item.user.username,
+                "email": item.user.email,
+                "title": item.title,
+                "body": item.body,
+                "category": item.category,
+                "deeplink": item.deeplink,
+                "read": bool(item.read_at),
+                "created_at": item.created_at.isoformat(),
+                "push_result": item.push_result,
+            }
+            for item in items
+        ],
+        "push": push_configuration(),
+    })
 
 
 @csrf_exempt
@@ -250,13 +511,13 @@ def mobile_admin_notification(request):
         return JsonResponse({"ok": False, "error": "invalid_notification_category"}, status=400)
 
     if bool(data.get("all_customers")):
-        recipients = list(User.objects.filter(is_active=True, is_superuser=False).order_by("id")[:500])
+        recipients = list(User.objects.filter(is_active=True, is_superuser=False, profile__role="customer").order_by("id")[:500])
     else:
         try:
             user_id = int(data.get("user_id"))
         except (TypeError, ValueError):
             return JsonResponse({"ok": False, "error": "notification_recipient_required"}, status=400)
-        recipient = User.objects.filter(pk=user_id, is_active=True).first()
+        recipient = User.objects.filter(pk=user_id, is_active=True, profile__role="customer").first()
         if not recipient:
             return JsonResponse({"ok": False, "error": "customer_not_found"}, status=404)
         recipients = [recipient]
