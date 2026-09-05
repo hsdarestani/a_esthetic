@@ -32,13 +32,16 @@ img.official-brand-logo{
   -webkit-backdrop-filter:none!important;
   border-bottom:1px solid #ece6dc!important;
   box-shadow:0 4px 16px rgba(45,36,20,.04)!important;
+  height:calc(72px + env(safe-area-inset-top))!important;
+  min-height:calc(72px + env(safe-area-inset-top))!important;
+  padding-top:calc(8px + env(safe-area-inset-top))!important;
 }
 
 .nav.luxury-nav{
   bottom:0!important;
   z-index:999!important;
-  height:86px!important;
-  min-height:86px!important;
+  height:calc(86px + env(safe-area-inset-bottom))!important;
+  min-height:calc(86px + env(safe-area-inset-bottom))!important;
   padding:8px 6px calc(8px + max(env(safe-area-inset-bottom),4px))!important;
   background:#fff!important;
   border:1px solid #ded6ca!important;
