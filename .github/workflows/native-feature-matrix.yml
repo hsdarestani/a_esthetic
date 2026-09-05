@@ -51,6 +51,8 @@ jobs:
           node --check www/p2.js
           node --check www/p3.js
           node --check www/ops.js
+          node --check www/ops-stability.js
+          node --check www/book-admin.js
           node --check www/runtime-hotfix.js
           node --check www/booking-direct-api.js
           node --check www/booking-book-flow.js
