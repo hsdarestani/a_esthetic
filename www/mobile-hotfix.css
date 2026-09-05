@@ -1,0 +1,87 @@
+/* Mobile shell hotfix: keep the bottom navigation readable and inside the viewport. */
+.shell{padding-bottom:118px!important}
+.nav.luxury-nav{
+  bottom:0!important;
+  z-index:999!important;
+  height:82px!important;
+  min-height:82px!important;
+  padding:8px 6px calc(8px + max(env(safe-area-inset-bottom),4px))!important;
+  background:#fff!important;
+  border:1px solid #ded6ca!important;
+  border-bottom:0!important;
+  box-shadow:0 -12px 32px rgba(45,36,20,.14)!important;
+  backdrop-filter:blur(18px) saturate(150%)!important;
+}
+.nav.luxury-nav button{
+  height:62px!important;
+  color:#716e67!important;
+  opacity:1!important;
+}
+.nav.luxury-nav .nav-label{
+  color:inherit!important;
+  font-size:10px!important;
+  font-weight:700!important;
+}
+.nav.luxury-nav .nav-icon,
+.nav.luxury-nav .nav-icon svg{
+  color:inherit!important;
+  opacity:1!important;
+}
+.nav.luxury-nav button.active{
+  color:#b98513!important;
+}
+.nav.luxury-nav .nav-center{
+  transform:translateY(-14px)!important;
+}
+.nav-center-disc{
+  width:58px!important;
+  height:58px!important;
+  overflow:hidden!important;
+  position:relative!important;
+  flex:0 0 58px!important;
+}
+.nav-center-disc .official-brand-logo{
+  display:none!important;
+}
+.nav-center-disc::after{
+  content:"A+";
+  display:grid;
+  place-items:center;
+  width:100%;
+  height:100%;
+  font-family:Georgia,"Times New Roman",serif;
+  font-size:20px;
+  font-style:italic;
+  font-weight:600;
+  color:#fff;
+  line-height:1;
+}
+.nav-center .nav-label{
+  margin-top:2px!important;
+  color:#9a7116!important;
+}
+.runtime-hidden-bell{
+  display:none!important;
+}
+.runtime-notification-bell{
+  position:absolute!important;
+  right:0!important;
+  width:39px!important;
+  height:39px!important;
+  border-radius:50%!important;
+  border:1px solid #e6dfd3!important;
+  background:#fff!important;
+  color:#292824!important;
+  display:grid!important;
+  place-items:center!important;
+  padding:0!important;
+}
+.runtime-notification-bell svg{
+  width:19px!important;
+  height:19px!important;
+  pointer-events:none!important;
+}
+@media (max-width:680px){
+  .content{padding-bottom:54px!important}
+  .nav.luxury-nav{left:0!important;right:0!important;transform:none!important;width:100%!important;border-radius:20px 20px 0 0!important}
+}
