@@ -1,0 +1,10 @@
+/* Profile/Mehr hub cleanup: compact tiles and clearer operational actions. */
+.luxury-profile-hub .card:first-of-type{padding:14px!important}
+.luxury-profile-hub .more-grid{gap:8px!important}
+.luxury-profile-hub .more-grid button,
+.luxury-profile-hub .more-grid a{min-height:62px!important;padding:12px 14px!important;border-radius:15px!important;font-size:11.5px!important;line-height:1.25!important}
+.luxury-profile-hub [data-ops-admin]{background:#fffaf0!important;border-color:#e8d6aa!important;color:#76550f!important}
+.luxury-profile-hub [data-ops-center]{background:#fffdf8!important}
+@media (max-width:380px){
+  .luxury-profile-hub .more-grid{grid-template-columns:1fr!important}
+}
