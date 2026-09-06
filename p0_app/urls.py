@@ -10,6 +10,7 @@ from . import (
     review_views,
     reward_views,
     views,
+    wallet_lookup_views,
 )
 
 urlpatterns = [
@@ -29,6 +30,7 @@ urlpatterns = [
     path("api/mobile/admin/", admin_mobile_views.mobile_admin_overview, name="p0_mobile_admin_overview"),
     path("api/mobile/admin/customers/", admin_mobile_views.mobile_admin_customers, name="p0_mobile_admin_customers"),
     path("api/mobile/admin/customers/<int:customer_id>/", admin_mobile_views.mobile_admin_customer, name="p0_mobile_admin_customer"),
+    path("api/mobile/admin/wallet/lookup/", wallet_lookup_views.mobile_admin_wallet_lookup, name="p0_mobile_admin_wallet_lookup"),
     path("api/mobile/admin/referrals/", admin_mobile_views.mobile_admin_referrals, name="p0_mobile_admin_referrals"),
     path("api/mobile/admin/reviews/", review_views.mobile_admin_reviews, name="p0_mobile_admin_reviews"),
     path("api/mobile/admin/reviews/<int:review_id>/", review_views.mobile_admin_review, name="p0_mobile_admin_review"),
