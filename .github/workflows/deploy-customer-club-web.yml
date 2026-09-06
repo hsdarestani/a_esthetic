@@ -24,13 +24,18 @@ jobs:
       - name: Validate focused A+ patient app
         run: |
           set -euo pipefail
-          for FILE in index.html core-app.css core-app.js booking-direct-api.js admin-mode.js; do
+          for FILE in index.html core-app.css core-app.js booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js focused-upgrade.css focused-upgrade.js assets/logo.svg; do
             test -s "www/$FILE"
           done
-          grep -q 'core-app.css?v=20260906-focus-v1' www/index.html
-          grep -q 'core-app.js?v=20260906-focus-v1' www/index.html
-          grep -q 'booking-direct-api.js?v=20260906-focus-v1' www/index.html
-          grep -q 'admin-mode.js?v=20260906-admin-logout-v2' www/index.html
+          grep -q 'core-app.css?v=20260906-sams-v1' www/index.html
+          grep -q 'core-app.js?v=20260906-sams-v1' www/index.html
+          grep -q 'booking-direct-api.js?v=20260906-sams-v1' www/index.html
+          grep -q 'admin-mode.js?v=20260906-sams-v1' www/index.html
+          grep -q 'booking-book-flow.css?v=20260906-sams-v1' www/index.html
+          grep -q 'booking-book-flow.js?v=20260906-sams-v1' www/index.html
+          grep -q 'focused-upgrade.css?v=20260906-sams-v1' www/index.html
+          grep -q 'focused-upgrade.js?v=20260906-sams-v1' www/index.html
+          grep -q './assets/logo.svg' www/focused-upgrade.js
           python - <<'PY'
           import pathlib
           import re
@@ -48,11 +53,18 @@ jobs:
                   loaded.append(source)
           if loaded:
               raise SystemExit(f'Legacy customer-club runtime is still loaded: {loaded}')
+          required = {'booking-direct-api.js', 'admin-mode.js', 'core-app.js', 'booking-book-flow.js', 'focused-upgrade.js'}
+          names = {source.split('?', 1)[0].rsplit('/', 1)[-1] for source in sources}
+          missing = sorted(required - names)
+          if missing:
+              raise SystemExit(f'Focused runtime is missing required scripts: {missing}')
           print('Focused runtime validation OK:', ', '.join(sources))
           PY
           node --check www/core-app.js
           node --check www/booking-direct-api.js
           node --check www/admin-mode.js
+          node --check www/booking-book-flow.js
+          node --check www/focused-upgrade.js
           tar -C www -czf customer-club-web.tar.gz .
 
       - name: Upload focused web bundle
@@ -83,12 +95,12 @@ jobs:
             mkdir -p "$RELEASE_DIR" "$WEBROOT"
             tar -xzf "$PACKAGE" -C "$RELEASE_DIR"
 
-            for FILE in index.html core-app.css core-app.js booking-direct-api.js admin-mode.js; do
+            for FILE in index.html core-app.css core-app.js booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js focused-upgrade.css focused-upgrade.js assets/logo.svg; do
               test -s "$RELEASE_DIR/$FILE"
             done
-            grep -q 'core-app.js?v=20260906-focus-v1' "$RELEASE_DIR/index.html"
-            grep -q 'core-app.css?v=20260906-focus-v1' "$RELEASE_DIR/index.html"
-            grep -q 'admin-mode.js?v=20260906-admin-logout-v2' "$RELEASE_DIR/index.html"
+            grep -q 'core-app.js?v=20260906-sams-v1' "$RELEASE_DIR/index.html"
+            grep -q 'booking-book-flow.js?v=20260906-sams-v1' "$RELEASE_DIR/index.html"
+            grep -q 'focused-upgrade.js?v=20260906-sams-v1' "$RELEASE_DIR/index.html"
 
             rm -rf "$WEBROOT"/*
             cp -a "$RELEASE_DIR"/. "$WEBROOT"/
@@ -100,13 +112,14 @@ jobs:
             systemctl reload nginx
             sleep 2
 
-            curl -fsS --max-time 20 "https://$DOMAIN/?release=20260906-admin-logout-v2" -o /tmp/aesthetic-focused-index.html
-            grep -q 'core-app.js?v=20260906-focus-v1' /tmp/aesthetic-focused-index.html
-            grep -q 'core-app.css?v=20260906-focus-v1' /tmp/aesthetic-focused-index.html
-            grep -q 'admin-mode.js?v=20260906-admin-logout-v2' /tmp/aesthetic-focused-index.html
-            for FILE in core-app.css core-app.js booking-direct-api.js admin-mode.js; do
-              curl -fsS --max-time 20 "https://$DOMAIN/$FILE?release=20260906-admin-logout-v2" -o "/tmp/$FILE"
-              test -s "/tmp/$FILE"
+            curl -fsS --max-time 20 "https://$DOMAIN/?release=20260906-sams-v1" -o /tmp/aesthetic-focused-index.html
+            grep -q 'core-app.js?v=20260906-sams-v1' /tmp/aesthetic-focused-index.html
+            grep -q 'booking-book-flow.js?v=20260906-sams-v1' /tmp/aesthetic-focused-index.html
+            grep -q 'focused-upgrade.js?v=20260906-sams-v1' /tmp/aesthetic-focused-index.html
+            for FILE in core-app.css core-app.js booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js focused-upgrade.css focused-upgrade.js assets/logo.svg; do
+              SAFE_NAME="$(printf '%s' "$FILE" | tr '/' '-')"
+              curl -fsS --max-time 20 "https://$DOMAIN/$FILE?release=20260906-sams-v1" -o "/tmp/$SAFE_NAME"
+              test -s "/tmp/$SAFE_NAME"
             done
             curl -fsS --max-time 20 "https://$DOMAIN/api/mobile/status/" | grep -qi 'customer club'
 
