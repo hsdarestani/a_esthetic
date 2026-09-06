@@ -31,10 +31,25 @@ jobs:
           grep -q 'core-app.js?v=20260906-focus-v1' www/index.html
           grep -q 'booking-direct-api.js?v=20260906-focus-v1' www/index.html
           grep -q 'admin-mode.js?v=20260906-focus-v1' www/index.html
-          if grep -Eq '<script[^>]+(app\.js|p0\.js|p1\.js|p2\.js|p3\.js|ops\.js|reference-ui\.js|feature-flags\.js|runtime-hotfix\.js)' www/index.html; then
-            echo 'Legacy customer-club runtime is still loaded.'
-            exit 1
-          fi
+          python - <<'PY'
+          import pathlib
+          import re
+
+          html = pathlib.Path('www/index.html').read_text(encoding='utf-8')
+          legacy = {
+              'app.js', 'p0.js', 'p1.js', 'p2.js', 'p3.js', 'ops.js',
+              'reference-ui.js', 'feature-flags.js', 'runtime-hotfix.js',
+          }
+          sources = re.findall(r'<script\b[^>]*\bsrc=["\']([^"\']+)["\']', html, flags=re.I)
+          loaded = []
+          for source in sources:
+              path = source.split('?', 1)[0].split('#', 1)[0]
+              if path.rsplit('/', 1)[-1] in legacy:
+                  loaded.append(source)
+          if loaded:
+              raise SystemExit(f'Legacy customer-club runtime is still loaded: {loaded}')
+          print('Focused runtime validation OK:', ', '.join(sources))
+          PY
           node --check www/core-app.js
           node --check www/booking-direct-api.js
           node --check www/admin-mode.js
