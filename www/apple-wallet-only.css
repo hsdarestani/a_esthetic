@@ -1,0 +1,7 @@
+/* A+ Esthetic uses Apple Wallet only. Keep Google Wallet backend dormant but hidden from the customer UI. */
+.wallet-provider-grid {
+  grid-template-columns: 1fr !important;
+}
+.wallet-provider-grid > :nth-child(n+2) {
+  display: none !important;
+}
