@@ -15,70 +15,71 @@ jobs:
   verify-public:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify public P0-P3 + WOW Customer Club release
+      - name: Verify focused Book + Wallet release
         run: |
           python3 - <<'PY'
           import time
           from urllib.error import HTTPError, URLError
           from urllib.request import Request, urlopen
 
-          p3_release = '20260812-p3-web'
-          wow_release = '20260812-wow-v1'
-          p3_marker = f'p3.js?v={p3_release}'
-          wow_marker = f'wow.js?v={wow_release}'
-          css_marker = f'app.css?v={wow_release}'
+          release = '20260906-sams-v1'
           domain = 'esthetic.smarbiz.sbs'
+          required_markers = (
+              f'core-app.js?v={release}',
+              f'booking-direct-api.js?v={release}',
+              f'booking-book-flow.js?v={release}',
+              f'focused-upgrade.js?v={release}',
+              f'focused-upgrade.css?v={release}',
+          )
 
           def fetch(url):
               req = Request(url, headers={
-                  'User-Agent': 'A-Esthetic-Public-Web-Verify/3.1',
+                  'User-Agent': 'A-Esthetic-Public-Web-Verify/4.0',
                   'Cache-Control': 'no-cache, no-store',
                   'Pragma': 'no-cache',
               })
               try:
                   with urlopen(req, timeout=25) as response:
-                      return response.status, response.read().decode('utf-8', 'replace'), dict(response.headers)
+                      return response.status, response.read().decode('utf-8', 'replace')
               except HTTPError as exc:
-                  return exc.code, exc.read().decode('utf-8', 'replace'), dict(exc.headers)
+                  return exc.code, exc.read().decode('utf-8', 'replace')
               except URLError as exc:
-                  return 0, str(exc), {}
+                  return 0, str(exc)
 
-          # The production deployment runs in a separate workflow on the same push.
-          # Wait for its public WOW marker instead of racing it and reporting a false failure.
           status = 0
           html = ''
-          headers = {}
           for attempt in range(18):
-              status, html, headers = fetch(f'https://{domain}/?release={wow_release}&attempt={attempt}')
-              if status == 200 and all(marker in html for marker in (p3_marker, wow_marker, css_marker)):
+              status, html = fetch(f'https://{domain}/?release={release}&attempt={attempt}')
+              if status == 200 and all(marker in html for marker in required_markers):
                   break
-              print(f'Waiting for WOW web deployment: attempt {attempt + 1}/18, status={status}')
+              print(f'Waiting for focused web deployment: attempt {attempt + 1}/18, status={status}')
               time.sleep(10)
           else:
-              raise SystemExit('Public root did not switch to the WOW release within 180 seconds.')
+              raise SystemExit('Public root did not switch to the focused Book/Wallet release within 180 seconds.')
 
-          print('Root status:', status)
-          print('Release header (informational):', headers.get('X-A-Esthetic-Release'))
-
-          assets = ('app.css','app.js','p0.js','p0-booking-change.js','p1.js','p2.js','p3.js','wow.js','sw.js')
+          assets = (
+              'core-app.css', 'core-app.js', 'booking-direct-api.js', 'admin-mode.js',
+              'booking-book-flow.css', 'booking-book-flow.js',
+              'focused-upgrade.css', 'focused-upgrade.js', 'assets/logo.svg',
+          )
           for asset in assets:
-              release = p3_release if asset == 'p3.js' else wow_release
-              asset_status, body, _ = fetch(f'https://{domain}/{asset}?release={release}')
+              asset_status, body = fetch(f'https://{domain}/{asset}?release={release}')
               print(asset, asset_status, len(body))
               if asset_status != 200 or not body.strip():
                   raise SystemExit(f'Public asset {asset} failed: {asset_status}')
 
-          css_status, css, _ = fetch(f'https://{domain}/app.css?v={wow_release}')
-          wow_status, wow, _ = fetch(f'https://{domain}/wow.js?v={wow_release}')
-          if css_status != 200 or 'dashboard-home' not in css or 'auth-showcase' not in css:
-              raise SystemExit('Public CSS is not the WOW redesign build.')
-          if wow_status != 200 or 'featureMeta' not in wow or 'enhanceMore' not in wow:
-              raise SystemExit('Public WOW enhancement layer is stale or missing.')
+          _, booking_flow = fetch(f'https://{domain}/booking-book-flow.js?release={release}')
+          if 'Behandlung wählen' not in booking_flow or 'Freien Termin wählen' not in booking_flow:
+              raise SystemExit('Canonical Book-style four-step booking flow is missing.')
 
-          api_status, api_body, _ = fetch(f'https://{domain}/api/mobile/status/')
-          print('Mobile API status:', api_status)
+          _, focused_upgrade = fetch(f'https://{domain}/focused-upgrade.js?release={release}')
+          for marker in ('wallet-pass/qr/', 'wallet-pass/apple/', 'wallet-pass/google/', './assets/logo.svg'):
+              if marker not in focused_upgrade:
+                  raise SystemExit(f'Focused Wallet/Login runtime is missing marker: {marker}')
+
+          api_status, api_body = fetch(f'https://{domain}/api/mobile/status/')
           if api_status != 200 or 'customer club' not in api_body.lower():
               raise SystemExit(f'Mobile API verification failed: {api_status}')
 
-          print('PUBLIC A+ ESTHETIC CUSTOMER CLUB WOW REDESIGN IS LIVE.')
+          print('PUBLIC A+ ESTHETIC FOCUSED BOOK + WALLET RELEASE IS LIVE.')
           PY
