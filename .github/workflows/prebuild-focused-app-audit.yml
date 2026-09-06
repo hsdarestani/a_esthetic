@@ -62,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile scripts/prebuild_production_smoke.py
-          for file in booking-direct-api.js admin-mode.js core-app.js booking-consent-bridge.js booking-book-flow.js focused-upgrade.js native-push.js; do
+          for file in booking-direct-api.js admin-mode.js core-app.js booking-consent-bridge.js booking-book-flow.js focused-upgrade.js native-push.js native-interactions.js; do
             node --check "www/$file"
           done
           python - <<'PY'
@@ -70,18 +70,23 @@ jobs:
           html=pathlib.Path('www/index.html').read_text()
           srcs=re.findall(r'<script\b[^>]*\bsrc=["\']([^"\']+)',html,re.I)
           names={s.split('?',1)[0].rsplit('/',1)[-1] for s in srcs}
-          required={'booking-direct-api.js','admin-mode.js','core-app.js','booking-consent-bridge.js','booking-book-flow.js','focused-upgrade.js','native-push.js'}
+          required={'booking-direct-api.js','admin-mode.js','core-app.js','booking-consent-bridge.js','booking-book-flow.js','focused-upgrade.js','native-push.js','native-interactions.js'}
           legacy={'app.js','p0.js','p1.js','p2.js','p3.js','ops.js','reference-ui.js','feature-flags.js','runtime-hotfix.js'}
           assert not (required-names), f'missing runtime: {sorted(required-names)}'
           assert not (names & legacy), f'legacy runtime loaded: {sorted(names & legacy)}'
           css=pathlib.Path('www/apple-wallet-only.css').read_text()
           assert 'nth-child(n+2)' in css
+          interactions_css=pathlib.Path('www/native-interactions.css').read_text()
+          assert '.record-preview-overlay' in interactions_css and '.record-preview-body' in interactions_css
           push=pathlib.Path('www/native-push.js').read_text()
           for needle in ('PushNotifications','/notifications/devices/','requestPermissions','native.register()','DELETE'):
               assert needle in push, f'native push bridge missing {needle}'
           consent=pathlib.Path('www/booking-consent-bridge.js').read_text()
           for needle in ('marketing_opt_in','cancellation_terms_accepted','privacy_accepted','/profile/'):
               assert needle in consent, f'booking consent bridge missing {needle}'
+          interactions=pathlib.Path('www/native-interactions.js').read_text()
+          for needle in ('data-open-review','data-record-file','about:blank','record-preview-overlay','/patient-records/','/reviews/'):
+              assert needle in interactions, f'native interactions missing {needle}'
           book=pathlib.Path('www/booking-direct-api.js').read_text()
           assert 'https://book.a-esthetic.de/api/mobile' in book
           print('FOCUSED_RUNTIME_STATIC_AUDIT=success')
@@ -138,7 +143,7 @@ jobs:
           set -euo pipefail
           for i in $(seq 1 60); do
             HTML="$(curl -fsS --max-time 15 'https://esthetic.smarbiz.sbs/?prebuild-audit=1' || true)"
-            if printf '%s' "$HTML" | grep -q 'native-push.js' && printf '%s' "$HTML" | grep -q 'booking-consent-bridge.js'; then
+            if printf '%s' "$HTML" | grep -q 'native-push.js' && printf '%s' "$HTML" | grep -q 'booking-consent-bridge.js' && printf '%s' "$HTML" | grep -q 'native-interactions.js'; then
               echo 'CURRENT_WEB_RELEASE_READY=1'
               exit 0
             fi
