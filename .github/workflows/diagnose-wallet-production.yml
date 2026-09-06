@@ -1,0 +1,67 @@
+name: Diagnose A+ Esthetic Wallet providers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/diagnose-wallet-production.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Wallet provider configuration safely
+        env:
+          HOST: ${{ secrets.HOST }}
+          PASS: ${{ secrets.PASS }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no root@"$HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          ENV=/opt/a-esthetic-mobile/mobile.env
+          test -s "$ENV"
+          set -a
+          . "$ENV"
+          set +a
+
+          present_var() {
+            key="$1"
+            if [ -n "${!key:-}" ]; then echo "$key=present"; else echo "$key=missing"; fi
+          }
+          present_file_var() {
+            key="$1"
+            value="${!key:-}"
+            if [ -n "$value" ] && [ -s "$value" ]; then echo "$key=present_file"; elif [ -n "$value" ]; then echo "$key=path_set_but_file_missing"; else echo "$key=missing"; fi
+          }
+
+          echo 'APPLE_WALLET_STATUS'
+          present_var APPLE_PASS_TYPE_ID
+          present_var APPLE_TEAM_ID
+          present_file_var APPLE_PASS_CERT_PATH
+          present_file_var APPLE_PASS_KEY_PATH
+          present_file_var APPLE_WWDR_CERT_PATH
+
+          echo 'GOOGLE_WALLET_STATUS'
+          present_var GOOGLE_WALLET_ISSUER_ID
+          present_var GOOGLE_WALLET_SERVICE_ACCOUNT_JSON
+
+          apple=1
+          for key in APPLE_PASS_TYPE_ID APPLE_TEAM_ID APPLE_PASS_CERT_PATH APPLE_PASS_KEY_PATH APPLE_WWDR_CERT_PATH; do
+            value="${!key:-}"
+            if [ -z "$value" ]; then apple=0; fi
+          done
+          for key in APPLE_PASS_CERT_PATH APPLE_PASS_KEY_PATH APPLE_WWDR_CERT_PATH; do
+            value="${!key:-}"
+            if [ -z "$value" ] || [ ! -s "$value" ]; then apple=0; fi
+          done
+          google=1
+          [ -n "${GOOGLE_WALLET_ISSUER_ID:-}" ] || google=0
+          [ -n "${GOOGLE_WALLET_SERVICE_ACCOUNT_JSON:-}" ] || google=0
+          echo "APPLE_WALLET_READY=$apple"
+          echo "GOOGLE_WALLET_READY=$google"
+          REMOTE
