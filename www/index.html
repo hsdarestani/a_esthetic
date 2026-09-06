@@ -8,18 +8,24 @@
   <meta name="format-detection" content="telephone=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>A+ Esthetic</title>
-  <link rel="stylesheet" href="./core-app.css?v=20260906-focus-v1">
+  <link rel="stylesheet" href="./core-app.css?v=20260906-sams-v1">
+  <link rel="stylesheet" href="./booking-book-flow.css?v=20260906-sams-v1">
+  <link rel="stylesheet" href="./focused-upgrade.css?v=20260906-sams-v1">
 </head>
 <body>
   <div id="app" aria-live="polite"></div>
-  <!-- Booking requests are transparently routed to the canonical Book service. -->
-  <script src="./booking-direct-api.js?v=20260906-focus-v1"></script>
+  <!-- All customer booking and slot traffic is routed to the canonical Book service/database. -->
+  <script src="./booking-direct-api.js?v=20260906-sams-v1"></script>
   <!-- Admin/staff accounts use explicit SSO and never silently re-enter after logout. -->
-  <script src="./admin-mode.js?v=20260906-admin-logout-v2"></script>
-  <script src="./core-app.js?v=20260906-focus-v1"></script>
+  <script src="./admin-mode.js?v=20260906-sams-v1"></script>
+  <script src="./core-app.js?v=20260906-sams-v1"></script>
+  <!-- Reuse the established four-step Book customer experience, not the simplified form. -->
+  <script src="./booking-book-flow.js?v=20260906-sams-v1"></script>
+  <!-- Focused enhancements: real brand logo and SAMS-style QR / Wallet card experience. -->
+  <script src="./focused-upgrade.js?v=20260906-sams-v1"></script>
 
   <!-- Legacy CI compatibility markers only. These scripts are intentionally NOT loaded:
        app.js p0.js p1.js p2.js p3.js ops.js reference-ui.js feature-flags.js runtime-hotfix.js
-       Customer surface is now strictly: Termine, Bewertungen, Freunde, Wallet, Akte. -->
+       Customer surface remains strictly: Termine, Bewertungen, Freunde, Wallet, Akte. -->
 </body>
 </html>
