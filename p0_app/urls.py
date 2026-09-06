@@ -7,6 +7,7 @@ from . import (
     notification_views,
     package_bridge_views,
     referral_views,
+    review_views,
     reward_views,
     views,
 )
@@ -16,6 +17,7 @@ urlpatterns = [
     path("api/mobile/dashboard/", canonical_booking_views.mobile_dashboard, name="p0_mobile_dashboard"),
     path("api/mobile/booking/", canonical_booking_views.retired_mobile_booking, name="p0_retired_mobile_booking"),
     path("api/mobile/club/", referral_views.mobile_club, name="p0_mobile_club"),
+    path("api/mobile/reviews/", review_views.mobile_reviews, name="p0_mobile_reviews"),
     path("api/mobile/package-booking/", package_bridge_views.mobile_package_booking, name="p0_mobile_package_booking"),
     path("api/mobile/wallet/", views.mobile_wallet, name="p0_mobile_wallet"),
     path("api/mobile/wallet/reward/<int:reward_id>/", reward_views.mobile_redeem_reward, name="p0_mobile_redeem_reward"),
@@ -27,14 +29,9 @@ urlpatterns = [
     path("api/mobile/admin/", admin_mobile_views.mobile_admin_overview, name="p0_mobile_admin_overview"),
     path("api/mobile/admin/customers/", admin_mobile_views.mobile_admin_customers, name="p0_mobile_admin_customers"),
     path("api/mobile/admin/customers/<int:customer_id>/", admin_mobile_views.mobile_admin_customer, name="p0_mobile_admin_customer"),
-    path("api/mobile/admin/packages/", admin_mobile_views.mobile_admin_packages, name="p0_mobile_admin_packages"),
     path("api/mobile/admin/referrals/", admin_mobile_views.mobile_admin_referrals, name="p0_mobile_admin_referrals"),
-    path("api/mobile/admin/rewards/", admin_mobile_views.mobile_admin_rewards, name="p0_mobile_admin_rewards"),
-    path("api/mobile/admin/devices/", admin_mobile_views.mobile_admin_devices, name="p0_mobile_admin_devices"),
-    path("api/mobile/admin/notifications/history/", admin_mobile_views.mobile_admin_notifications_history, name="p0_mobile_admin_notifications_history"),
-    path("api/mobile/admin/modules/<slug:key>/", admin_mobile_views.mobile_admin_module, name="p0_mobile_admin_module"),
-    path("api/mobile/admin/rewards/<int:redemption_id>/", admin_mobile_views.mobile_admin_reward, name="p0_mobile_admin_reward"),
-    path("api/mobile/admin/notifications/", admin_mobile_views.mobile_admin_notification, name="p0_mobile_admin_notification"),
+    path("api/mobile/admin/reviews/", review_views.mobile_admin_reviews, name="p0_mobile_admin_reviews"),
+    path("api/mobile/admin/reviews/<int:review_id>/", review_views.mobile_admin_review, name="p0_mobile_admin_review"),
 
     path("api/mobile/admin/book/overview/", book_admin_proxy_views.overview, name="p0_mobile_book_admin_overview"),
     path("api/mobile/admin/book/calendar/", book_admin_proxy_views.calendar, name="p0_mobile_book_admin_calendar"),
@@ -48,6 +45,15 @@ urlpatterns = [
     path("api/mobile/admin/book/services/<int:service_id>/", book_admin_proxy_views.service_action, name="p0_mobile_book_admin_service"),
     path("api/mobile/admin/book/day-override/", book_admin_proxy_views.day_override_action, name="p0_mobile_book_admin_override"),
 
+    # Legacy endpoints remain addressable for backwards compatibility, but the new
+    # minimal client/admin surfaces no longer expose packages/rewards/push/modules/devices.
+    path("api/mobile/admin/packages/", admin_mobile_views.mobile_admin_packages, name="p0_mobile_admin_packages"),
+    path("api/mobile/admin/rewards/", admin_mobile_views.mobile_admin_rewards, name="p0_mobile_admin_rewards"),
+    path("api/mobile/admin/devices/", admin_mobile_views.mobile_admin_devices, name="p0_mobile_admin_devices"),
+    path("api/mobile/admin/notifications/history/", admin_mobile_views.mobile_admin_notifications_history, name="p0_mobile_admin_notifications_history"),
+    path("api/mobile/admin/modules/<slug:key>/", admin_mobile_views.mobile_admin_module, name="p0_mobile_admin_module"),
+    path("api/mobile/admin/rewards/<int:redemption_id>/", admin_mobile_views.mobile_admin_reward, name="p0_mobile_admin_reward"),
+    path("api/mobile/admin/notifications/", admin_mobile_views.mobile_admin_notification, name="p0_mobile_admin_notification"),
     path("api/mobile/account-deletion/", views.mobile_account_deletion, name="p0_mobile_account_deletion"),
     path("api/mobile/devices/", views.mobile_devices, name="p0_mobile_devices"),
     path("api/mobile/devices/<int:device_id>/revoke/", views.mobile_revoke_device, name="p0_mobile_revoke_device"),
