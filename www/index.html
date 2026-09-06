@@ -14,8 +14,8 @@
   <div id="app" aria-live="polite"></div>
   <!-- Booking requests are transparently routed to the canonical Book service. -->
   <script src="./booking-direct-api.js?v=20260906-focus-v1"></script>
-  <!-- Admin/staff accounts never enter the customer surface; they continue into Book Verwaltung. -->
-  <script src="./admin-mode.js?v=20260906-focus-v1"></script>
+  <!-- Admin/staff accounts use explicit SSO and never silently re-enter after logout. -->
+  <script src="./admin-mode.js?v=20260906-admin-logout-v2"></script>
   <script src="./core-app.js?v=20260906-focus-v1"></script>
 
   <!-- Legacy CI compatibility markers only. These scripts are intentionally NOT loaded:
