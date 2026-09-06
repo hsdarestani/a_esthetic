@@ -77,7 +77,7 @@ jobs:
           css=pathlib.Path('www/apple-wallet-only.css').read_text()
           assert 'nth-child(n+2)' in css
           push=pathlib.Path('www/native-push.js').read_text()
-          for needle in ('PushNotifications','/notifications/devices/','requestPermissions','plugin.register','DELETE'):
+          for needle in ('PushNotifications','/notifications/devices/','requestPermissions','native.register()','DELETE'):
               assert needle in push, f'native push bridge missing {needle}'
           book=pathlib.Path('www/booking-direct-api.js').read_text()
           assert 'https://book.a-esthetic.de/api/mobile' in book
