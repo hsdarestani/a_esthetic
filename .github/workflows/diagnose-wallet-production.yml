@@ -1,4 +1,4 @@
-name: Diagnose A+ Esthetic Wallet providers
+name: Configure and verify A+ Esthetic Wallet providers
 
 on:
   workflow_dispatch:
@@ -11,57 +11,132 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  configure-wallet:
     runs-on: ubuntu-latest
     steps:
-      - name: Check Wallet provider configuration safely
+      - name: Install Apple Wallet credentials and verify a real pass
         env:
           HOST: ${{ secrets.HOST }}
           PASS: ${{ secrets.PASS }}
+          APPLE_PASS_TYPE_ID: ${{ secrets.APPLE_PASS_TYPE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_P12_B64: ${{ secrets.APPLE_WALLET_P12_BASE64 }}
+          APPLE_P12_PASSWORD: ${{ secrets.APPLE_WALLET_P12_PASSWORD }}
+          APPLE_WWDR_B64: ${{ secrets.APPLE_WALLET_WWDR_CERT_BASE64 }}
+          GOOGLE_WALLET_ISSUER_ID: ${{ secrets.GOOGLE_WALLET_ISSUER_ID }}
+          GOOGLE_WALLET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_WALLET_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass openssl
+
+          missing=0
+          for key in APPLE_PASS_TYPE_ID APPLE_TEAM_ID APPLE_P12_B64 APPLE_P12_PASSWORD APPLE_WWDR_B64; do
+            if [ -z "${!key:-}" ]; then
+              echo "$key=missing"
+              missing=1
+            else
+              echo "$key=present"
+            fi
+          done
+          if [ "$missing" != 0 ]; then
+            echo 'APPLE_WALLET_SECRETS_READY=0'
+            exit 2
+          fi
+
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          chmod 700 "$TMP"
+          printf '%s' "$APPLE_P12_B64" | base64 --decode > "$TMP/pass.p12"
+          printf '%s' "$APPLE_WWDR_B64" | base64 --decode > "$TMP/wwdr.cer"
+          printf '%s' "$APPLE_P12_PASSWORD" > "$TMP/p12.password"
+          printf '%s' "$APPLE_PASS_TYPE_ID" > "$TMP/pass-type-id"
+          printf '%s' "$APPLE_TEAM_ID" > "$TMP/team-id"
+          chmod 600 "$TMP"/*
+
+          openssl pkcs12 -in "$TMP/pass.p12" -passin file:"$TMP/p12.password" -clcerts -nokeys -out "$TMP/pass-cert-check.pem" >/dev/null 2>&1
+          openssl pkcs12 -in "$TMP/pass.p12" -passin file:"$TMP/p12.password" -nocerts -nodes -out "$TMP/pass-key-check.pem" >/dev/null 2>&1
+          CERT_FP="$(openssl x509 -in "$TMP/pass-cert-check.pem" -pubkey -noout | openssl pkey -pubin -outform DER 2>/dev/null | sha256sum | cut -d' ' -f1)"
+          KEY_FP="$(openssl pkey -in "$TMP/pass-key-check.pem" -pubout -outform DER 2>/dev/null | sha256sum | cut -d' ' -f1)"
+          test "$CERT_FP" = "$KEY_FP"
+          echo 'APPLE_P12_CERT_KEY_MATCH=1'
+
+          if openssl x509 -inform DER -in "$TMP/wwdr.cer" -noout >/dev/null 2>&1; then
+            openssl x509 -inform DER -in "$TMP/wwdr.cer" -out "$TMP/wwdr-check.pem"
+          else
+            openssl x509 -in "$TMP/wwdr.cer" -out "$TMP/wwdr-check.pem"
+          fi
+          echo 'APPLE_WWDR_CERT_VALID=1'
+
+          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no root@"$HOST" 'rm -rf /tmp/aesthetic-wallet-install && mkdir -m 700 /tmp/aesthetic-wallet-install'
+          sshpass -p "$PASS" scp -q -o StrictHostKeyChecking=no \
+            "$TMP/pass.p12" "$TMP/wwdr.cer" "$TMP/p12.password" "$TMP/pass-type-id" "$TMP/team-id" \
+            root@"$HOST":/tmp/aesthetic-wallet-install/
+
           sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no root@"$HOST" 'bash -se' <<'REMOTE'
           set -euo pipefail
-          ENV=/opt/a-esthetic-mobile/mobile.env
-          test -s "$ENV"
+          SRC=/tmp/aesthetic-wallet-install
+          BASE=/opt/a-esthetic-mobile
+          WALLET="$BASE/wallet-credentials"
+          ENVFILE="$BASE/mobile.env"
+          test -s "$ENVFILE"
+          install -d -m 700 "$WALLET"
+
+          P12_PASSWORD="$(cat "$SRC/p12.password")"
+          PASS_TYPE_ID="$(cat "$SRC/pass-type-id")"
+          TEAM_ID="$(cat "$SRC/team-id")"
+
+          openssl pkcs12 -in "$SRC/pass.p12" -passin pass:"$P12_PASSWORD" -clcerts -nokeys -out "$WALLET/pass-cert.pem" >/dev/null 2>&1
+          openssl pkcs12 -in "$SRC/pass.p12" -passin pass:"$P12_PASSWORD" -nocerts -nodes -out "$WALLET/pass-key.pem" >/dev/null 2>&1
+          if openssl x509 -inform DER -in "$SRC/wwdr.cer" -noout >/dev/null 2>&1; then
+            openssl x509 -inform DER -in "$SRC/wwdr.cer" -out "$WALLET/wwdr.pem"
+          else
+            openssl x509 -in "$SRC/wwdr.cer" -out "$WALLET/wwdr.pem"
+          fi
+          chmod 600 "$WALLET/pass-cert.pem" "$WALLET/pass-key.pem" "$WALLET/wwdr.pem"
+
+          CERT_FP="$(openssl x509 -in "$WALLET/pass-cert.pem" -pubkey -noout | openssl pkey -pubin -outform DER 2>/dev/null | sha256sum | cut -d' ' -f1)"
+          KEY_FP="$(openssl pkey -in "$WALLET/pass-key.pem" -pubout -outform DER 2>/dev/null | sha256sum | cut -d' ' -f1)"
+          test "$CERT_FP" = "$KEY_FP"
+
+          sed -i '/^APPLE_PASS_TYPE_ID=/d;/^APPLE_TEAM_ID=/d;/^APPLE_PASS_CERT_PATH=/d;/^APPLE_PASS_KEY_PATH=/d;/^APPLE_WWDR_CERT_PATH=/d' "$ENVFILE"
+          {
+            printf 'APPLE_PASS_TYPE_ID=%s\n' "$PASS_TYPE_ID"
+            printf 'APPLE_TEAM_ID=%s\n' "$TEAM_ID"
+            printf 'APPLE_PASS_CERT_PATH=%s\n' "$WALLET/pass-cert.pem"
+            printf 'APPLE_PASS_KEY_PATH=%s\n' "$WALLET/pass-key.pem"
+            printf 'APPLE_WWDR_CERT_PATH=%s\n' "$WALLET/wwdr.pem"
+          } >> "$ENVFILE"
+          chmod 600 "$ENVFILE"
+          rm -rf "$SRC"
+
+          systemctl restart a-esthetic-mobile.service
+          sleep 2
+          systemctl is-active --quiet a-esthetic-mobile.service
+          echo 'MOBILE_API_READY=1'
+
           set -a
-          . "$ENV"
+          . "$ENVFILE"
           set +a
-
-          present_var() {
-            key="$1"
-            if [ -n "${!key:-}" ]; then echo "$key=present"; else echo "$key=missing"; fi
-          }
-          present_file_var() {
-            key="$1"
-            value="${!key:-}"
-            if [ -n "$value" ] && [ -s "$value" ]; then echo "$key=present_file"; elif [ -n "$value" ]; then echo "$key=path_set_but_file_missing"; else echo "$key=missing"; fi
-          }
-
-          echo 'APPLE_WALLET_STATUS'
-          present_var APPLE_PASS_TYPE_ID
-          present_var APPLE_TEAM_ID
-          present_file_var APPLE_PASS_CERT_PATH
-          present_file_var APPLE_PASS_KEY_PATH
-          present_file_var APPLE_WWDR_CERT_PATH
-
-          echo 'GOOGLE_WALLET_STATUS'
-          present_var GOOGLE_WALLET_ISSUER_ID
-          present_var GOOGLE_WALLET_SERVICE_ACCOUNT_JSON
-
-          apple=1
           for key in APPLE_PASS_TYPE_ID APPLE_TEAM_ID APPLE_PASS_CERT_PATH APPLE_PASS_KEY_PATH APPLE_WWDR_CERT_PATH; do
             value="${!key:-}"
-            if [ -z "$value" ]; then apple=0; fi
+            test -n "$value"
           done
-          for key in APPLE_PASS_CERT_PATH APPLE_PASS_KEY_PATH APPLE_WWDR_CERT_PATH; do
-            value="${!key:-}"
-            if [ -z "$value" ] || [ ! -s "$value" ]; then apple=0; fi
+          test -s "$APPLE_PASS_CERT_PATH"
+          test -s "$APPLE_PASS_KEY_PATH"
+          test -s "$APPLE_WWDR_CERT_PATH"
+          echo 'APPLE_WALLET_READY=1'
+
+          PY=""
+          for candidate in "$BASE/venv/bin/python" "$BASE/.venv/bin/python" /usr/bin/python3; do
+            if [ -x "$candidate" ] && "$candidate" -c 'import django' >/dev/null 2>&1; then PY="$candidate"; break; fi
           done
-          google=1
-          [ -n "${GOOGLE_WALLET_ISSUER_ID:-}" ] || google=0
-          [ -n "${GOOGLE_WALLET_SERVICE_ACCOUNT_JSON:-}" ] || google=0
-          echo "APPLE_WALLET_READY=$apple"
-          echo "GOOGLE_WALLET_READY=$google"
+          test -n "$PY"
+          cd "$BASE"
+          "$PY" manage.py shell -c "from platform_app.models import MemberAccount; from p2_app.passes import build_apple_pass; m=MemberAccount.objects.filter(status='active').select_related('user').first(); assert m is not None, 'no_active_member_for_wallet_test'; b=build_apple_pass(m.user).getvalue(); assert b[:2] == b'PK' and len(b) > 1000; print('APPLE_PKPASS_GENERATION=success')"
+
+          if [ -n "${GOOGLE_WALLET_ISSUER_ID:-}" ] && [ -n "${GOOGLE_WALLET_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo 'GOOGLE_WALLET_REPOSITORY_SECRETS=present'
+          else
+            echo 'GOOGLE_WALLET_REPOSITORY_SECRETS=missing'
+          fi
           REMOTE
