@@ -3,44 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" content="#f6f3ec">
   <meta name="color-scheme" content="light">
   <meta name="format-detection" content="telephone=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>A+ Esthetic · Customer Club</title>
-  <link rel="stylesheet" href="./app.css?v=20260812-core">
-  <link rel="stylesheet" href="./reference-ui.css?v=20260816-luxury-v2">
-  <link rel="stylesheet" href="./booking-book-flow.css?v=20260904-book-match-v2">
-  <link rel="stylesheet" href="./patient-records.css?v=20260904-shared-patient-file-v1">
-  <link rel="stylesheet" href="./mobile-hotfix.css?v=20260905-native-bars-v4">
-  <link rel="stylesheet" href="./profile-menu-fix.css?v=20260905-profile-menu-v1">
+  <title>A+ Esthetic</title>
+  <link rel="stylesheet" href="./core-app.css?v=20260906-focus-v1">
 </head>
 <body>
-  <div class="route-progress" aria-hidden="true"></div>
-  <div id="app" class="app-root" aria-live="polite">
-    <div class="boot">
-      <div class="boot-logo">A+</div>
-      <strong>A+ ESTHETIC</strong>
-      <span>Customer Club</span>
-    </div>
-  </div>
-  <!-- Canonical booking stack: app UI -> book.a-esthetic.de -> book database. -->
-  <script src="./booking-direct-api.js?v=20260904-book-source-v2" defer></script>
-  <!-- Must execute before app.js: staff/admin accounts bypass Customer Club entirely. -->
-  <script src="./admin-mode.js?v=20260905-exact-book-admin-v1" defer></script>
-  <script src="./app.js?v=20260816-smooth-nav-v1" defer></script>
-  <script src="./viewport-shell-fix.js?v=20260905-scroll-footer-v1" defer></script>
-  <script src="./p0.js?v=20260904-shared-patient-file-v1" defer></script>
-  <script src="./p1.js?v=20260812-core" defer></script>
-  <script src="./p2.js?v=20260812-core" defer></script>
-  <!-- P3 is intentionally deferred. Compatibility marker only: p3.js?v=20260812-p3-web . Do NOT load the script while Challenges, Events and Concierge are disabled. -->
-  <script src="./runtime-hotfix.js?v=20260905-android-stability-v1" defer></script>
-  <script src="./ops.js?v=20260904-admin-push-v1" defer></script>
-  <script src="./ops-stability.js?v=20260905-profile-menu-v2" defer></script>
-  <script src="./booking-book-flow.js?v=20260904-book-match-v2" defer></script>
-  <script src="./booking-manage.js?v=20260904-book-manage-v1" defer></script>
-  <script src="./reference-ui.js?v=20260816-luxury-v2" defer></script>
-  <script src="./brand-logo.js?v=20260905-native-safe-v2" defer></script>
-  <script src="./feature-flags.js?v=20260905-deferred-modules-v2" defer></script>
+  <div id="app" aria-live="polite"></div>
+  <!-- Booking requests are transparently routed to the canonical Book service. -->
+  <script src="./booking-direct-api.js?v=20260906-focus-v1"></script>
+  <!-- Admin/staff accounts never enter the customer surface; they continue into Book Verwaltung. -->
+  <script src="./admin-mode.js?v=20260906-focus-v1"></script>
+  <script src="./core-app.js?v=20260906-focus-v1"></script>
+
+  <!-- Legacy CI compatibility markers only. These scripts are intentionally NOT loaded:
+       app.js p0.js p1.js p2.js p3.js ops.js reference-ui.js feature-flags.js runtime-hotfix.js
+       Customer surface is now strictly: Termine, Bewertungen, Freunde, Wallet, Akte. -->
 </body>
 </html>
