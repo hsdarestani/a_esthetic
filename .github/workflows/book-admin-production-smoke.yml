@@ -1,4 +1,4 @@
-name: A+ Esthetic unified Book admin production smoke
+name: A+ Esthetic focused Book admin production smoke
 
 on:
   workflow_dispatch:
@@ -8,6 +8,8 @@ on:
       - ".github/workflows/book-admin-production-smoke.yml"
       - "p0_app/admin_mobile_views.py"
       - "p0_app/book_admin_proxy_views.py"
+      - "p0_app/wallet_lookup_views.py"
+      - "p0_app/review_views.py"
       - "p0_app/urls.py"
       - "platform_app/admin_aware_login.py"
       - "www/admin-mode.js"
@@ -25,7 +27,7 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify unified Book and A+ App administration
+      - name: Verify focused Book and A+ Wallet administration
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.HOST }}
@@ -37,7 +39,7 @@ jobs:
             ROOT=/opt/a-esthetic-mobile
             BASE=https://esthetic.smarbiz.sbs
             BOOK=https://book.a-esthetic.de
-            PREFIX="book-admin-smoke-$(date +%s)-$$"
+            PREFIX="focused-admin-smoke-$(date +%s)-$$"
             export PREFIX
             cd "$ROOT"
             set -a
@@ -52,9 +54,18 @@ jobs:
             import django
             django.setup()
             from django.contrib.auth.models import User
-            User.objects.filter(username=os.environ.get('PREFIX', '')).delete()
+            User.objects.filter(username__startswith=os.environ.get('PREFIX', '')).delete()
             PY
-              rm -f /tmp/aesthetic-book-admin-smoke.env /tmp/book-admin.cookies /tmp/book-admin-calendar.html /tmp/book-app-club.html /tmp/book-app-modules.html
+              rm -f \
+                /tmp/aesthetic-focused-admin-smoke.env \
+                /tmp/book-admin.cookies \
+                /tmp/book-admin-sso.json \
+                /tmp/book-admin-calendar.html \
+                /tmp/book-app-wallet.html \
+                /tmp/book-app-patients.html \
+                /tmp/book-app-reviews.html \
+                /tmp/book-app-referrals.html \
+                /tmp/wallet-lookup.json
             }
             trap cleanup EXIT
 
@@ -65,22 +76,55 @@ jobs:
             django.setup()
             from django.contrib.auth.models import User
             from platform_app.mobile_api import _token_for
-            from platform_app.models import UserProfile
+            from platform_app.models import MemberAccount, UserProfile, WalletAccount, WalletTransaction
 
-            username = os.environ['PREFIX']
-            user = User.objects.create(username=username, email=f'{username}@example.invalid', is_staff=True)
-            user.set_unusable_password()
-            user.save(update_fields=['password'])
-            profile, _ = UserProfile.objects.get_or_create(user=user)
-            profile.role = 'admin'
-            profile.save(update_fields=['role'])
-            token = _token_for(user)
-            with open('/tmp/aesthetic-book-admin-smoke.env', 'w') as handle:
-                handle.write(f'ADMIN_TOKEN={shlex.quote(token)}\n')
+            prefix = os.environ['PREFIX']
+
+            admin = User.objects.create(
+                username=f'{prefix}-admin',
+                email=f'{prefix}-admin@example.invalid',
+                is_staff=True,
+            )
+            admin.set_unusable_password()
+            admin.save(update_fields=['password'])
+            admin_profile, _ = UserProfile.objects.get_or_create(user=admin)
+            admin_profile.role = 'admin'
+            admin_profile.save(update_fields=['role'])
+
+            customer = User.objects.create(
+                username=f'{prefix}-member',
+                email=f'{prefix}-member@example.invalid',
+                first_name='Smoke',
+                last_name='Wallet',
+            )
+            customer.set_unusable_password()
+            customer.save(update_fields=['password'])
+            customer_profile, _ = UserProfile.objects.get_or_create(user=customer)
+            customer_profile.role = 'customer'
+            customer_profile.save(update_fields=['role'])
+            member, _ = MemberAccount.objects.get_or_create(user=customer)
+            wallet, _ = WalletAccount.objects.get_or_create(user=customer)
+            wallet.balance_cents = 4200
+            wallet.save(update_fields=['balance_cents', 'updated_at'])
+            WalletTransaction.objects.create(
+                user=customer,
+                kind='credit',
+                direction='in',
+                amount_cents=4200,
+                description='Production smoke credit',
+                reference=prefix,
+            )
+
+            with open('/tmp/aesthetic-focused-admin-smoke.env', 'w') as handle:
+                handle.write(f'ADMIN_TOKEN={shlex.quote(_token_for(admin))}\n')
+                handle.write(f'QR_TOKEN={shlex.quote(member.qr_token)}\n')
+                handle.write(f'CUSTOMER_EMAIL={shlex.quote(customer.email)}\n')
+                handle.write(f'CUSTOMER_ID={customer.pk}\n')
             PY
-            . /tmp/aesthetic-book-admin-smoke.env
+            . /tmp/aesthetic-focused-admin-smoke.env
 
-            # Canonical Book JSON bridge remains healthy.
+            # Canonical Book JSON bridge remains healthy. This is the booking source
+            # of truth used by the A+ patient app as well as the detailed admin calendar.
             for endpoint in overview calendar bookings customers services settings; do
               url="$BASE/api/mobile/admin/book/$endpoint/"
               if [ "$endpoint" = calendar ]; then
@@ -91,52 +135,116 @@ jobs:
               echo "PASS Book admin API: $endpoint"
             done
 
-            # A+ management API endpoints required by the unified Book panel.
-            for endpoint in '' customers/ packages/ referrals/ rewards/ devices/ notifications/history/; do
+            # Only the focused A+ management APIs are part of the current contract.
+            for endpoint in customers/ referrals/ reviews/; do
               body="$(curl -fsS --max-time 30 -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE/api/mobile/admin/$endpoint")"
               printf '%s' "$body" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True, d'
-              echo "PASS A+ management API: ${endpoint:-overview}"
+              echo "PASS focused A+ API: $endpoint"
             done
 
-            # Exchange the A+ bearer for a first-party Book staff session.
-            sso="$(curl -fsS --max-time 30 -c /tmp/book-admin.cookies -b /tmp/book-admin.cookies \
-              -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Accept: application/json' \
-              "$BOOK/verwaltung/app-sso/")"
-            printf '%s' "$sso" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True, d; assert d.get("redirect")=="/verwaltung/kalender/", d'
+            # Verify the SAMS-style QR contract end-to-end without exposing QR tokens
+            # through customer-list responses.
+            status="$(curl -sS --max-time 30 -o /tmp/wallet-lookup.json -w '%{http_code}' \
+              -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+              --data "{\"qr_token\":\"$QR_TOKEN\"}" \
+              "$BASE/api/mobile/admin/wallet/lookup/")"
+            test "$status" = 200
+            CUSTOMER_ID="$CUSTOMER_ID" CUSTOMER_EMAIL="$CUSTOMER_EMAIL" python3 - <<'PY'
+            import json, os
+            with open('/tmp/wallet-lookup.json') as handle:
+                payload = json.load(handle)
+            assert payload.get('ok') is True, payload
+            assert payload.get('resolved_by') == 'wallet_qr', payload
+            customer = payload.get('customer') or {}
+            assert str(customer.get('id')) == os.environ['CUSTOMER_ID'], customer
+            assert customer.get('email') == os.environ['CUSTOMER_EMAIL'], customer
+            assert 'qr_token' not in customer, customer
+            PY
+            echo 'PASS A+ Wallet QR lookup: exact customer resolved securely.'
 
-            # The real Book calendar must stay the exact Book UI, now with the A+ APP group
-            # injected into the same hamburger drawer.
+            # Cross-repo deploys can race on the same push. Retry SSO briefly so a
+            # healthy Book deploy is not reported as a false negative while restarting.
+            rm -f /tmp/book-admin.cookies
+            sso_ok=0
+            for attempt in $(seq 1 12); do
+              status="$(curl -sS --max-time 30 -o /tmp/book-admin-sso.json -w '%{http_code}' \
+                -c /tmp/book-admin.cookies -b /tmp/book-admin.cookies \
+                -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Accept: application/json' \
+                "$BOOK/verwaltung/app-sso/" || true)"
+              if [ "$status" = 200 ] && python3 - <<'PY'
+            import json
+            with open('/tmp/book-admin-sso.json') as handle:
+                data = json.load(handle)
+            assert data.get('ok') is True, data
+            assert data.get('redirect') == '/verwaltung/kalender/', data
+            PY
+              then
+                sso_ok=1
+                break
+              fi
+              echo "Waiting for Book A+ SSO: attempt $attempt/12, status=$status"
+              sleep 5
+            done
+            test "$sso_ok" = 1
+            echo 'PASS A+ bearer -> first-party Book staff session.'
+
+            # The detailed Book calendar stays the primary Termine surface. A+ app
+            # admins receive only the focused Wallet/Reviews/Referrals additions;
+            # Book's customer list is relabelled as Patientenakten.
             curl -fsS --max-time 30 -c /tmp/book-admin.cookies -b /tmp/book-admin.cookies \
               "$BOOK/verwaltung/kalender/" > /tmp/book-admin-calendar.html
             grep -q 'class="sb-mobile-bar"' /tmp/book-admin-calendar.html
             grep -q 'data-drawer-open' /tmp/book-admin-calendar.html
             grep -q 'class="sb-drawer"' /tmp/book-admin-calendar.html
             grep -q 'Kalender (Tagesansicht)' /tmp/book-admin-calendar.html
-            grep -q 'href="/verwaltung/app/club/"' /tmp/book-admin-calendar.html
-            grep -q 'Push & Mitteilungen' /tmp/book-admin-calendar.html
+            grep -q 'Patientenakten' /tmp/book-admin-calendar.html
+            grep -q 'href="/verwaltung/app/wallet/"' /tmp/book-admin-calendar.html
+            grep -q 'href="/verwaltung/app/reviews/"' /tmp/book-admin-calendar.html
+            grep -q 'href="/verwaltung/app/referrals/"' /tmp/book-admin-calendar.html
+            for removed in club packages rewards notifications modules; do
+              if grep -q "href=\"/verwaltung/app/$removed/\"" /tmp/book-admin-calendar.html; then
+                echo "FAIL: removed A+ management module leaked into Book calendar: $removed" >&2
+                exit 1
+              fi
+            done
             if grep -q 'nav-center-disc' /tmp/book-admin-calendar.html; then
-              echo 'FAIL: Customer Club bottom navigation leaked into Book admin.' >&2
+              echo 'FAIL: Customer bottom navigation leaked into Book admin.' >&2
               exit 1
             fi
-            echo 'PASS Book calendar: exact Book UI plus unified A+ APP drawer group.'
+            echo 'PASS Book calendar: detailed Book UI with focused A+ navigation only.'
 
-            # A+ management itself must render inside the same Book administration,
-            # not redirect back to the customer application or legacy secure-admin.
+            # Verify all four non-calendar focused management pages. Wallet is queried
+            # for the temporary member so QR-resolved identity/balance rendering is checked.
+            encoded_email="$(python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["CUSTOMER_EMAIL"]))')"
             curl -fsS --max-time 30 -c /tmp/book-admin.cookies -b /tmp/book-admin.cookies \
-              "$BOOK/verwaltung/app/club/" > /tmp/book-app-club.html
-            grep -q 'Customer Club' /tmp/book-app-club.html
-            grep -q 'A+ APP' /tmp/book-app-club.html
-            grep -q 'href="/verwaltung/kalender/"' /tmp/book-app-club.html
-            grep -q 'href="/verwaltung/app/packages/"' /tmp/book-app-club.html
-            grep -q 'href="/verwaltung/app/rewards/"' /tmp/book-app-club.html
-            grep -q 'href="/verwaltung/app/notifications/"' /tmp/book-app-club.html
-            if grep -q 'nav-center-disc' /tmp/book-app-club.html; then
-              echo 'FAIL: Customer UI footer leaked into A+ App management.' >&2
-              exit 1
-            fi
+              "$BOOK/verwaltung/app/wallet/?q=$encoded_email&scan=1" > /tmp/book-app-wallet.html
+            grep -q 'A+ Wallet' /tmp/book-app-wallet.html
+            grep -q 'QR-Code scannen' /tmp/book-app-wallet.html
+            grep -q 'data-wallet-scan-open' /tmp/book-app-wallet.html
+            grep -q 'app-wallet-scanner.js' /tmp/book-app-wallet.html
+            grep -q "$CUSTOMER_EMAIL" /tmp/book-app-wallet.html
+            grep -q '42,00 €' /tmp/book-app-wallet.html
 
             curl -fsS --max-time 30 -c /tmp/book-admin.cookies -b /tmp/book-admin.cookies \
-              "$BOOK/verwaltung/app/modules/" > /tmp/book-app-modules.html
-            grep -q 'App-Module' /tmp/book-app-modules.html
-            grep -q 'Für Kunden sichtbar' /tmp/book-app-modules.html
-            echo 'PASS unified A+ management: Customer Club and App Modules render inside Book UI.'
+              "$BOOK/verwaltung/app/patients/" > /tmp/book-app-patients.html
+            grep -q 'Patientenakten' /tmp/book-app-patients.html
+
+            curl -fsS --max-time 30 -c /tmp/book-admin.cookies -b /tmp/book-admin.cookies \
+              "$BOOK/verwaltung/app/reviews/" > /tmp/book-app-reviews.html
+            grep -q 'Google Bewertungen' /tmp/book-app-reviews.html
+
+            curl -fsS --max-time 30 -c /tmp/book-admin.cookies -b /tmp/book-admin.cookies \
+              "$BOOK/verwaltung/app/referrals/" > /tmp/book-app-referrals.html
+            grep -q 'Empfehlungen' /tmp/book-app-referrals.html
+
+            for file in /tmp/book-app-wallet.html /tmp/book-app-patients.html /tmp/book-app-reviews.html /tmp/book-app-referrals.html; do
+              if grep -Eq '/verwaltung/app/(club|packages|rewards|notifications|modules)/' "$file"; then
+                echo "FAIL: removed management module leaked into focused A+ UI: $file" >&2
+                exit 1
+              fi
+              if grep -q 'nav-center-disc' "$file"; then
+                echo "FAIL: customer footer leaked into focused A+ management: $file" >&2
+                exit 1
+              fi
+            done
+            echo 'PASS focused A+ management: Termine + Patientenakten + Reviews + Wallet/QR + Empfehlungen.'
