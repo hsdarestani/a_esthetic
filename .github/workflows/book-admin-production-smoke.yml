@@ -122,6 +122,7 @@ jobs:
                 handle.write(f'CUSTOMER_ID={customer.pk}\n')
             PY
             . /tmp/aesthetic-focused-admin-smoke.env
+            export ADMIN_TOKEN QR_TOKEN CUSTOMER_EMAIL CUSTOMER_ID
 
             # Canonical Book JSON bridge remains healthy. This is the booking source
             # of truth used by the A+ patient app as well as the detailed admin calendar.
