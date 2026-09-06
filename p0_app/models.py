@@ -138,3 +138,33 @@ class PackageBookingRedemption(models.Model):
 
     def __str__(self):
         return f"{self.booking_public_id} – {self.member_package} – {self.status}"
+
+
+class GoogleReviewActivity(models.Model):
+    STATUS = [
+        ("opened", "Google geöffnet"),
+        ("submitted", "Als abgegeben markiert"),
+        ("verified", "Verifiziert"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="google_review_activities",
+    )
+    place_id = models.CharField(max_length=128, default="ChIJadEwN8QPvUcRyczqX4YoWxY")
+    status = models.CharField(max_length=16, choices=STATUS, default="opened")
+    rating = models.PositiveSmallIntegerField(null=True, blank=True)
+    review_text = models.TextField(blank=True)
+    google_review_url = models.URLField(blank=True)
+    opened_at = models.DateTimeField(default=timezone.now)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.get_username()} – {self.get_status_display()}"
