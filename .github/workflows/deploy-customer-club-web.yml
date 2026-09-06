@@ -24,7 +24,7 @@ jobs:
       - name: Validate focused A+ patient app
         run: |
           set -euo pipefail
-          for FILE in index.html core-app.css core-app.js booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css assets/logo.svg; do
+          for FILE in index.html core-app.css core-app.js booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css native-interactions.js native-interactions.css assets/logo.svg; do
             test -s "www/$FILE"
           done
           grep -q 'core-app.css?v=20260906-sams-v1' www/index.html
@@ -38,6 +38,8 @@ jobs:
           grep -q 'focused-upgrade.js?v=20260906-sams-v1' www/index.html
           grep -q 'native-push.js?v=20260906-focused-push-v1' www/index.html
           grep -q 'apple-wallet-only.css?v=20260906-apple-only-v1' www/index.html
+          grep -q 'native-interactions.css?v=20260906-native-actions-v1' www/index.html
+          grep -q 'native-interactions.js?v=20260906-native-actions-v1' www/index.html
           grep -q './assets/logo.svg' www/focused-upgrade.js
           python - <<'PY'
           import pathlib
@@ -59,7 +61,7 @@ jobs:
           required = {
               'booking-direct-api.js', 'admin-mode.js', 'core-app.js',
               'booking-consent-bridge.js', 'booking-book-flow.js',
-              'focused-upgrade.js', 'native-push.js',
+              'focused-upgrade.js', 'native-push.js', 'native-interactions.js',
           }
           names = {source.split('?', 1)[0].rsplit('/', 1)[-1] for source in sources}
           missing = sorted(required - names)
@@ -74,6 +76,7 @@ jobs:
           node --check www/booking-book-flow.js
           node --check www/focused-upgrade.js
           node --check www/native-push.js
+          node --check www/native-interactions.js
           tar -C www -czf customer-club-web.tar.gz .
 
       - name: Upload focused web bundle
@@ -104,7 +107,7 @@ jobs:
             mkdir -p "$RELEASE_DIR" "$WEBROOT"
             tar -xzf "$PACKAGE" -C "$RELEASE_DIR"
 
-            for FILE in index.html core-app.css core-app.js booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css assets/logo.svg; do
+            for FILE in index.html core-app.css core-app.js booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css native-interactions.js native-interactions.css assets/logo.svg; do
               test -s "$RELEASE_DIR/$FILE"
             done
             grep -q 'core-app.js?v=20260906-sams-v1' "$RELEASE_DIR/index.html"
@@ -113,6 +116,8 @@ jobs:
             grep -q 'focused-upgrade.js?v=20260906-sams-v1' "$RELEASE_DIR/index.html"
             grep -q 'native-push.js?v=20260906-focused-push-v1' "$RELEASE_DIR/index.html"
             grep -q 'apple-wallet-only.css?v=20260906-apple-only-v1' "$RELEASE_DIR/index.html"
+            grep -q 'native-interactions.js?v=20260906-native-actions-v1' "$RELEASE_DIR/index.html"
+            grep -q 'native-interactions.css?v=20260906-native-actions-v1' "$RELEASE_DIR/index.html"
 
             rm -rf "$WEBROOT"/*
             cp -a "$RELEASE_DIR"/. "$WEBROOT"/
@@ -131,7 +136,9 @@ jobs:
             grep -q 'focused-upgrade.js?v=20260906-sams-v1' /tmp/aesthetic-focused-index.html
             grep -q 'native-push.js?v=20260906-focused-push-v1' /tmp/aesthetic-focused-index.html
             grep -q 'apple-wallet-only.css?v=20260906-apple-only-v1' /tmp/aesthetic-focused-index.html
-            for FILE in core-app.css core-app.js booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css assets/logo.svg; do
+            grep -q 'native-interactions.js?v=20260906-native-actions-v1' /tmp/aesthetic-focused-index.html
+            grep -q 'native-interactions.css?v=20260906-native-actions-v1' /tmp/aesthetic-focused-index.html
+            for FILE in core-app.css core-app.js booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css native-interactions.js native-interactions.css assets/logo.svg; do
               SAFE_NAME="$(printf '%s' "$FILE" | tr '/' '-')"
               curl -fsS --max-time 20 "https://$DOMAIN/$FILE?release=20260906-focused-final" -o "/tmp/$SAFE_NAME"
               test -s "/tmp/$SAFE_NAME"
