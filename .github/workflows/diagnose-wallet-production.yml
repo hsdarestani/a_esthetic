@@ -126,17 +126,14 @@ jobs:
           test -s "$APPLE_WWDR_CERT_PATH"
           echo 'APPLE_WALLET_READY=1'
 
-          PY=""
-          for candidate in "$BASE/venv/bin/python" "$BASE/.venv/bin/python" /usr/bin/python3; do
-            if [ -x "$candidate" ] && "$candidate" -c 'import django' >/dev/null 2>&1; then PY="$candidate"; break; fi
-          done
-          test -n "$PY"
+          export PYTHONPATH="$BASE/vendor"
           cd "$BASE"
-          "$PY" manage.py shell -c "from platform_app.models import MemberAccount; from p2_app.passes import build_apple_pass; m=MemberAccount.objects.filter(status='active').select_related('user').first(); assert m is not None, 'no_active_member_for_wallet_test'; b=build_apple_pass(m.user).getvalue(); assert b[:2] == b'PK' and len(b) > 1000; print('APPLE_PKPASS_GENERATION=success')"
+          python3 -c 'import django, jwt, PIL, qrcode; print("WALLET_RUNTIME_IMPORTS=success")'
+          python3 manage.py shell -c "from platform_app.models import MemberAccount; from p2_app.passes import build_apple_pass; m=MemberAccount.objects.filter(status='active').select_related('user').first(); assert m is not None, 'no_active_member_for_wallet_test'; b=build_apple_pass(m.user).getvalue(); assert b[:2] == b'PK' and len(b) > 1000; print('APPLE_PKPASS_GENERATION=success')"
+          REMOTE
 
           if [ -n "${GOOGLE_WALLET_ISSUER_ID:-}" ] && [ -n "${GOOGLE_WALLET_SERVICE_ACCOUNT_JSON:-}" ]; then
             echo 'GOOGLE_WALLET_REPOSITORY_SECRETS=present'
           else
             echo 'GOOGLE_WALLET_REPOSITORY_SECRETS=missing'
           fi
-          REMOTE
