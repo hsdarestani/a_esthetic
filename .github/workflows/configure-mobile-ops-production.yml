@@ -1,4 +1,4 @@
-# Credential verification refresh: 2026-09-06
+# Credential verification refresh: 2026-09-06-fcm
 name: Configure A+ Esthetic mobile operations production
 
 on:
@@ -67,7 +67,7 @@ jobs:
           MOBILE_ENV=/opt/a-esthetic-mobile/mobile.env
           test -s "$MOBILE_ENV"
           if [ -s /tmp/aesthetic-push-secrets.env ]; then
-            sed -i '/^FIREBASE_SERVICE_ACCOUNT_JSON=/d;/^FIREBASE_SERVICE_ACCOUNT_B64=/d;/^APNS_KEY_ID=/d;/^APNS_TEAM_ID=/d;/^APNS_PRIVATE_KEY=/d;/^APNS_PRIVATE_KEY_B64=/d;/^APNS_USE_SANDBOX=/d' "$MOBILE_ENV"
+            sed -i '/^FIREBASE_SERVICE_ACCOUNT_JSON=/d;/^FIREBASE_SERVICE_ACCOUNT_B64=/d;/^APNS_KEY_ID=/d;/^APNS_TEAM_ID=/d;/^APNS_PRIVATE_KEY=/d;/^APNS_PRIVATE_KEY_BASE64=/d;/^APNS_PRIVATE_KEY_B64=/d;/^APNS_USE_SANDBOX=/d' "$MOBILE_ENV"
             cat /tmp/aesthetic-push-secrets.env >> "$MOBILE_ENV"
             rm -f /tmp/aesthetic-push-secrets.env
             chmod 600 "$MOBILE_ENV"
