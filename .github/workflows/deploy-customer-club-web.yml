@@ -30,7 +30,7 @@ jobs:
           grep -q 'core-app.css?v=20260906-focus-v1' www/index.html
           grep -q 'core-app.js?v=20260906-focus-v1' www/index.html
           grep -q 'booking-direct-api.js?v=20260906-focus-v1' www/index.html
-          grep -q 'admin-mode.js?v=20260906-focus-v1' www/index.html
+          grep -q 'admin-mode.js?v=20260906-admin-logout-v2' www/index.html
           python - <<'PY'
           import pathlib
           import re
@@ -88,6 +88,7 @@ jobs:
             done
             grep -q 'core-app.js?v=20260906-focus-v1' "$RELEASE_DIR/index.html"
             grep -q 'core-app.css?v=20260906-focus-v1' "$RELEASE_DIR/index.html"
+            grep -q 'admin-mode.js?v=20260906-admin-logout-v2' "$RELEASE_DIR/index.html"
 
             rm -rf "$WEBROOT"/*
             cp -a "$RELEASE_DIR"/. "$WEBROOT"/
@@ -99,11 +100,12 @@ jobs:
             systemctl reload nginx
             sleep 2
 
-            curl -fsS --max-time 20 "https://$DOMAIN/?release=20260906-focus-v1" -o /tmp/aesthetic-focused-index.html
+            curl -fsS --max-time 20 "https://$DOMAIN/?release=20260906-admin-logout-v2" -o /tmp/aesthetic-focused-index.html
             grep -q 'core-app.js?v=20260906-focus-v1' /tmp/aesthetic-focused-index.html
             grep -q 'core-app.css?v=20260906-focus-v1' /tmp/aesthetic-focused-index.html
+            grep -q 'admin-mode.js?v=20260906-admin-logout-v2' /tmp/aesthetic-focused-index.html
             for FILE in core-app.css core-app.js booking-direct-api.js admin-mode.js; do
-              curl -fsS --max-time 20 "https://$DOMAIN/$FILE?release=20260906-focus-v1" -o "/tmp/$FILE"
+              curl -fsS --max-time 20 "https://$DOMAIN/$FILE?release=20260906-admin-logout-v2" -o "/tmp/$FILE"
               test -s "/tmp/$FILE"
             done
             curl -fsS --max-time 20 "https://$DOMAIN/api/mobile/status/" | grep -qi 'customer club'
