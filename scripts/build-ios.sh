@@ -21,8 +21,10 @@ fi
 npx cap sync ios
 
 # When Publisher has provisioned the production Push Notifications capability,
-# explicitly request the entitlement in the signed target. A provisioning
-# profile alone is not enough; the archive itself must contain aps-environment.
+# explicitly request the entitlement on the *App target only*. Passing
+# CODE_SIGN_ENTITLEMENTS on the xcodebuild command line leaks the setting into
+# Swift Package dependencies (Camera / Barcode libraries), where the relative
+# App/App.entitlements path does not exist and Xcode 26 aborts the archive.
 PUSH_ENTITLEMENTS=""
 if [ "${REQUIRE_NATIVE_PUSH:-0}" = "1" ]; then
   PUSH_ENTITLEMENTS="$ROOT/ios/App/App/App.entitlements"
@@ -36,6 +38,30 @@ if [ "${REQUIRE_NATIVE_PUSH:-0}" = "1" ]; then
 </dict>
 </plist>
 PLIST
+
+  PROJECT_FILE="$ROOT/ios/App/App.xcodeproj/project.pbxproj"
+  if [ ! -f "$PROJECT_FILE" ]; then
+    echo "Missing generated Xcode project while configuring push entitlement." >&2
+    exit 8
+  fi
+  python3 - "$PROJECT_FILE" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+if "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;" not in text:
+    needle = "INFOPLIST_FILE = App/Info.plist;"
+    count = text.count(needle)
+    if count < 1:
+        raise SystemExit("Could not locate the App target build settings in project.pbxproj")
+    # Capacitor's generated project has this Info.plist setting only on the App
+    # target configurations. Injecting here keeps the entitlement away from SPM
+    # dependency targets.
+    text = text.replace(needle, "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;\n\t\t\t\t" + needle)
+    path.write_text(text, encoding="utf-8")
+print("Scoped CODE_SIGN_ENTITLEMENTS to the generated App target.")
+PY
   echo "Enabled production aps-environment entitlement for A+ Esthetic."
 fi
 
@@ -108,10 +134,6 @@ XCODE_ARGS=(
   PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"
 )
 
-if [ -n "$PUSH_ENTITLEMENTS" ]; then
-  XCODE_ARGS+=(CODE_SIGN_ENTITLEMENTS="App/App.entitlements")
-fi
-
 if [ -n "$TEAM_ID" ]; then
   XCODE_ARGS+=(DEVELOPMENT_TEAM="$TEAM_ID")
 fi
@@ -150,7 +172,7 @@ else
   if [ "$SIGNING_STYLE" = "Manual" ]; then
     cat > "$EXPORT_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0.dtd">
 <plist version="1.0"><dict>
 <key>method</key><string>app-store-connect</string>
 <key>signingStyle</key><string>manual</string>
@@ -166,7 +188,7 @@ PLIST
   else
     cat > "$EXPORT_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0.dtd">
 <plist version="1.0"><dict>
 <key>method</key><string>app-store-connect</string>
 <key>signingStyle</key><string>automatic</string>
