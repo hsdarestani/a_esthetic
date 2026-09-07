@@ -1,3 +1,4 @@
+# Wallet verification trigger: 2026-09-07 QR sizing and platform-correct customer UI
 name: Configure and verify A+ Esthetic Wallet providers
 
 on:
