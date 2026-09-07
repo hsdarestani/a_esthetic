@@ -115,6 +115,80 @@ else
   exit 4
 fi
 
+# Never pass manual provisioning settings on the xcodebuild command line.
+# Xcode propagates those settings to Swift Package targets as well, and camera /
+# barcode package targets cannot consume an app provisioning profile. Instead,
+# write signing settings only into the generated App target configurations.
+PROJECT_FILE="$ROOT/ios/App/App.xcodeproj/project.pbxproj"
+if [ ! -f "$PROJECT_FILE" ]; then
+  echo "Missing generated Xcode project while configuring signing." >&2
+  exit 8
+fi
+
+if [ "$SIGNING_STYLE" = "Manual" ]; then
+  if [ -z "$PROFILE_SPECIFIER" ] || [ -z "$SIGNING_KEYCHAIN" ]; then
+    echo "Manual iOS signing requires IOS_PROVISIONING_PROFILE_SPECIFIER and IOS_SIGNING_KEYCHAIN." >&2
+    exit 5
+  fi
+fi
+
+python3 - "$PROJECT_FILE" "$SIGNING_STYLE" "$PROFILE_SPECIFIER" "$CODE_SIGN_IDENTITY" "$TEAM_ID" "$BUNDLE_ID" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+style, profile, identity, team, bundle_id = sys.argv[2:]
+text = path.read_text(encoding="utf-8")
+
+keys = (
+    "CODE_SIGN_STYLE",
+    "DEVELOPMENT_TEAM",
+    "PROVISIONING_PROFILE_SPECIFIER",
+    "CODE_SIGN_IDENTITY",
+    "PRODUCT_BUNDLE_IDENTIFIER",
+)
+
+def pbx_value(value: str) -> str:
+    if re.fullmatch(r"[A-Za-z0-9._+-]+", value or ""):
+        return value
+    return '"' + (value or "").replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+def rewrite(match):
+    body = match.group(1)
+    if "INFOPLIST_FILE = App/Info.plist;" not in body:
+        return match.group(0)
+
+    # Remove generated/default copies inside this App configuration so each key
+    # has exactly one authoritative value.
+    for key in keys:
+        body = re.sub(rf"\n[ \t]*{re.escape(key)} = [^;\n]*;", "", body)
+
+    settings = [f"CODE_SIGN_STYLE = {pbx_value(style)};"]
+    if team:
+        settings.append(f"DEVELOPMENT_TEAM = {pbx_value(team)};")
+    if style == "Manual":
+        settings.append(f"PROVISIONING_PROFILE_SPECIFIER = {pbx_value(profile)};")
+        settings.append(f"CODE_SIGN_IDENTITY = {pbx_value(identity)};")
+    settings.append(f"PRODUCT_BUNDLE_IDENTIFIER = {pbx_value(bundle_id)};")
+
+    needle = re.search(r"(?m)^([ \t]*)INFOPLIST_FILE = App/Info\.plist;", body)
+    if not needle:
+        raise SystemExit("Could not locate App Info.plist setting while scoping iOS signing")
+    indent = needle.group(1)
+    insertion = "\n".join(indent + line for line in settings) + "\n"
+    body = body[:needle.start()] + insertion + body[needle.start():]
+    return "buildSettings = {" + body + "\n\t\t\t};"
+
+pattern = re.compile(r"buildSettings = \{(.*?)\n\t\t\t\};", re.S)
+updated, count = pattern.subn(rewrite, text)
+app_config_count = updated.count("INFOPLIST_FILE = App/Info.plist;")
+if app_config_count < 1:
+    raise SystemExit("No App target configurations were found while scoping iOS signing")
+path.write_text(updated, encoding="utf-8")
+print(f"Scoped {style} signing to {app_config_count} generated App target configuration(s).")
+PY
+
 XCODE_ARGS=(
   "${XCODE_CONTAINER[@]}"
   -scheme App
@@ -123,25 +197,11 @@ XCODE_ARGS=(
   -archivePath "$ARCHIVE"
   MARKETING_VERSION="$VERSION"
   CURRENT_PROJECT_VERSION="$BUILD"
-  CODE_SIGN_STYLE="$SIGNING_STYLE"
   TARGETED_DEVICE_FAMILY=1
-  PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"
 )
 
-if [ -n "$TEAM_ID" ]; then
-  XCODE_ARGS+=(DEVELOPMENT_TEAM="$TEAM_ID")
-fi
-
 if [ "$SIGNING_STYLE" = "Manual" ]; then
-  if [ -z "$PROFILE_SPECIFIER" ] || [ -z "$SIGNING_KEYCHAIN" ]; then
-    echo "Manual iOS signing requires IOS_PROVISIONING_PROFILE_SPECIFIER and IOS_SIGNING_KEYCHAIN." >&2
-    exit 5
-  fi
-  XCODE_ARGS+=(
-    CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY"
-    PROVISIONING_PROFILE_SPECIFIER="$PROFILE_SPECIFIER"
-    "OTHER_CODE_SIGN_FLAGS=--keychain $SIGNING_KEYCHAIN"
-  )
+  XCODE_ARGS+=("OTHER_CODE_SIGN_FLAGS=--keychain $SIGNING_KEYCHAIN")
 elif [ -n "$AUTH_KEY_PATH" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_ISSUER_ID:-}" ]; then
   XCODE_ARGS+=(
     -allowProvisioningUpdates
