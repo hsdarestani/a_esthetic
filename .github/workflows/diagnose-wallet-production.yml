@@ -19,6 +19,7 @@ jobs:
         env:
           HOST: ${{ secrets.HOST }}
           PASS: ${{ secrets.PASS }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
           APPLE_PASS_TYPE_ID: ${{ secrets.APPLE_PASS_TYPE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_P12_B64: ${{ secrets.APPLE_WALLET_P12_BASE64 }}
@@ -28,6 +29,7 @@ jobs:
           GOOGLE_WALLET_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_WALLET_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
+          PORT="${SSH_PORT:-22}"
           sudo apt-get update -qq && sudo apt-get install -y -qq sshpass openssl
 
           missing=0
@@ -68,12 +70,12 @@ jobs:
           fi
           echo 'APPLE_WWDR_CERT_VALID=1'
 
-          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no root@"$HOST" 'rm -rf /tmp/aesthetic-wallet-install && mkdir -m 700 /tmp/aesthetic-wallet-install'
-          sshpass -p "$PASS" scp -q -o StrictHostKeyChecking=no \
-            "$TMP/pass.p12" "$TMP/wwdr.cer" "$TMP/p12.password" "$TMP/pass-type-id" "$TMP/team-id" \
-            root@"$HOST":/tmp/aesthetic-wallet-install/
+          SSH=(sshpass -p "$PASS" ssh -p "$PORT" -o StrictHostKeyChecking=no root@"$HOST")
+          "${SSH[@]}" 'rm -rf /tmp/aesthetic-wallet-install && mkdir -m 700 /tmp/aesthetic-wallet-install'
+          tar -C "$TMP" -cf - pass.p12 wwdr.cer p12.password pass-type-id team-id | \
+            "${SSH[@]}" 'tar -C /tmp/aesthetic-wallet-install -xf - && chmod 600 /tmp/aesthetic-wallet-install/*'
 
-          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no root@"$HOST" 'bash -se' <<'REMOTE'
+          "${SSH[@]}" 'bash -se' <<'REMOTE'
           set -euo pipefail
           SRC=/tmp/aesthetic-wallet-install
           BASE=/opt/a-esthetic-mobile
