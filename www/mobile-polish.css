@@ -1,0 +1,361 @@
+/* A+ Esthetic mobile shell + Patientenakte polish — 2026-09-07 */
+
+/* Android already receives system-bar insets from MainActivity. Do not apply them a second time in CSS. */
+html.aplus-android .core-shell{
+  padding-top:0;
+  padding-bottom:82px;
+}
+html.aplus-android .core-nav{
+  padding-bottom:7px;
+}
+html.aplus-android .settings-card{
+  padding-bottom:20px;
+}
+html.aplus-android .login-shell{
+  padding-bottom:32px;
+}
+
+/* Slightly denser, more app-like chrome without allowing content under system UI. */
+.core-header{
+  height:68px;
+  padding-left:14px;
+  padding-right:14px;
+}
+.core-main{
+  padding-top:18px;
+}
+.core-nav{
+  padding-top:6px;
+}
+.nav-btn{
+  min-height:48px;
+}
+
+/* Patientenakte */
+.records-page-head{
+  margin-bottom:17px;
+}
+.records-page-head h1{
+  margin-bottom:6px;
+}
+
+.upload-box.record-composer{
+  position:relative;
+  overflow:hidden;
+  border:1px solid #e5dccd;
+  border-radius:24px;
+  padding:0;
+  background:linear-gradient(180deg,#fff 0%,#fffdf9 100%);
+  box-shadow:0 18px 50px rgba(45,35,19,.07);
+}
+.upload-box.record-composer:before{
+  content:"";
+  position:absolute;
+  right:-78px;
+  top:-92px;
+  width:205px;
+  height:205px;
+  border-radius:50%;
+  border:1px solid rgba(199,151,47,.16);
+  box-shadow:0 0 0 27px rgba(199,151,47,.025),0 0 0 55px rgba(199,151,47,.018);
+  pointer-events:none;
+}
+.record-composer-head{
+  position:relative;
+  display:grid;
+  grid-template-columns:42px 1fr;
+  gap:12px;
+  align-items:center;
+  padding:18px 18px 16px;
+  border-bottom:1px solid #eee7dc;
+  background:linear-gradient(135deg,#fffdf8,#fbf6eb);
+}
+.record-composer-mark{
+  width:42px;
+  height:42px;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  background:#24211c;
+  color:#e8c66e;
+  font:500 24px Georgia,serif;
+  box-shadow:0 8px 18px rgba(36,33,28,.14);
+}
+.record-composer-copy{
+  min-width:0;
+}
+.record-composer-copy span{
+  display:block;
+  color:var(--gold-dark);
+  font-size:9px;
+  font-weight:850;
+  letter-spacing:.15em;
+  text-transform:uppercase;
+  margin-bottom:3px;
+}
+.record-composer-copy strong{
+  display:block;
+  font:500 20px Georgia,serif;
+  letter-spacing:-.015em;
+}
+.record-composer-copy small{
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.4;
+}
+.record-composer form{
+  position:relative;
+  padding:17px 18px 18px;
+}
+.record-composer .field{
+  gap:7px;
+  margin-bottom:14px;
+}
+.record-composer .field>span{
+  color:#5b554c;
+  font-size:10px;
+  letter-spacing:.025em;
+}
+.record-composer .field input:not([type="file"]),
+.record-composer .field select,
+.record-composer .field textarea{
+  border-color:#ded6c9;
+  border-radius:15px;
+  background:#fff;
+  min-height:50px;
+  padding:13px 14px;
+  box-shadow:0 1px 0 rgba(40,32,20,.02);
+}
+.record-composer .field textarea{
+  min-height:96px;
+}
+.record-composer .field input:not([type="file"]):focus,
+.record-composer .field select:focus,
+.record-composer .field textarea:focus{
+  border-color:#c69a3e;
+  box-shadow:0 0 0 3px rgba(199,151,47,.09);
+}
+
+.record-file-field>span:first-child{
+  margin-bottom:1px;
+}
+.record-file-picker{
+  position:relative;
+  min-height:82px;
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) 26px;
+  gap:12px;
+  align-items:center;
+  border:1px dashed #ccb984;
+  border-radius:17px;
+  padding:13px 14px;
+  background:#fdfaf3;
+  transition:border-color .16s,background .16s,transform .16s;
+  overflow:hidden;
+}
+.record-file-picker:active{
+  transform:scale(.995);
+  background:#fbf5e7;
+}
+.record-file-picker input[type="file"]{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  opacity:0;
+  cursor:pointer;
+  z-index:3;
+}
+.record-file-icon{
+  width:42px;
+  height:42px;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  background:#fff;
+  border:1px solid #e6dcc9;
+  color:var(--gold-dark);
+  font-size:20px;
+  box-shadow:0 5px 14px rgba(49,38,19,.05);
+}
+.record-file-copy{
+  min-width:0;
+}
+.record-file-copy strong{
+  display:block;
+  font-size:12px;
+  margin-bottom:3px;
+}
+.record-file-copy span{
+  display:block;
+  color:var(--muted);
+  font-size:9px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.record-file-plus{
+  color:#a28d62;
+  font:400 24px Georgia,serif;
+  text-align:center;
+}
+
+.record-composer .consent{
+  margin:4px 0 15px;
+  padding:11px 12px;
+  border:1px solid #e6dfd1;
+  border-radius:14px;
+  background:#faf8f3;
+  color:#6d665d;
+  font-size:10px;
+  line-height:1.45;
+}
+.record-composer .consent input{
+  width:19px;
+  height:19px;
+  accent-color:#b9851c;
+  flex:none;
+  margin-top:0;
+}
+.record-composer .primary{
+  min-height:52px;
+  border-radius:15px;
+  font-size:13px;
+  letter-spacing:.01em;
+  box-shadow:0 10px 24px rgba(178,130,29,.20);
+}
+
+.records-history-title{
+  margin-top:27px;
+  margin-bottom:11px;
+}
+.records-history-title h2{
+  font-size:25px;
+}
+.records-history-title small{
+  min-width:28px;
+  height:28px;
+  display:grid;
+  place-items:center;
+  border:1px solid #e1d9cc;
+  border-radius:999px;
+  background:#fff;
+  font-size:10px;
+}
+.records-empty{
+  display:grid;
+  justify-items:center;
+  gap:7px;
+  padding:29px 18px 34px;
+  border:1px solid #e7dfd3;
+  border-radius:20px;
+  background:rgba(255,255,255,.62);
+}
+.records-empty-icon{
+  width:48px;
+  height:48px;
+  border-radius:16px;
+  display:grid;
+  place-items:center;
+  border:1px solid #e4dbcb;
+  background:#fff;
+  color:#b28a32;
+  font-size:22px;
+  box-shadow:0 8px 20px rgba(42,33,20,.05);
+}
+.records-empty strong{
+  font:500 17px Georgia,serif;
+  color:var(--ink);
+}
+.records-empty span{
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.45;
+  text-align:center;
+  max-width:280px;
+}
+
+.record-row.record-polished{
+  grid-template-columns:44px minmax(0,1fr);
+  gap:12px;
+  padding:15px;
+  border-radius:19px;
+  border-color:#e4ddd2;
+  box-shadow:0 8px 24px rgba(42,33,20,.035);
+}
+.record-type-icon{
+  width:44px;
+  height:44px;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  background:#faf6ed;
+  border:1px solid #e8ddc6;
+  color:#a37c28;
+  font-size:18px;
+}
+.record-row-body{
+  min-width:0;
+  display:grid;
+  gap:5px;
+}
+.record-polished .record-row-head{
+  align-items:flex-start;
+}
+.record-polished .record-source{
+  display:flex;
+  gap:5px;
+  align-items:center;
+  margin-bottom:5px;
+  letter-spacing:0;
+}
+.record-origin-badge,.record-kind-badge{
+  display:inline-flex;
+  align-items:center;
+  min-height:20px;
+  padding:3px 7px;
+  border-radius:999px;
+  font-size:8px;
+  font-weight:850;
+  letter-spacing:.035em;
+}
+.record-origin-badge{
+  background:#f3eee4;
+  color:#715d37;
+}
+.record-kind-badge{
+  background:#f2f4f1;
+  color:#526153;
+}
+.record-polished .record-row-head strong{
+  display:block;
+  font-size:14px;
+  line-height:1.3;
+}
+.record-polished .record-row-head>small{
+  flex:none;
+  margin-top:1px;
+  white-space:nowrap;
+  font-size:9px;
+}
+.record-polished .record-actions{
+  margin-top:8px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+}
+.record-polished .record-actions button{
+  border-radius:12px;
+  min-height:38px;
+}
+
+@media(max-width:540px){
+  .record-composer .grid-2{grid-template-columns:.82fr 1.18fr;gap:9px}
+  .record-composer-head{padding:16px 15px 14px}
+  .record-composer form{padding:15px}
+}
+@media(max-width:370px){
+  .record-composer .grid-2{grid-template-columns:1fr}
+  .record-polished .record-row-head{display:grid;gap:4px}
+}
