@@ -1,0 +1,52 @@
+/* A+ Esthetic native iPhone shell hardening — 2026-09-08.
+   Keep the premium floating look, but put the system safe-area INSIDE the
+   header instead of leaving a visible blank strip above it. */
+
+html.aplus-ios .core-shell{
+  padding-top:0!important;
+}
+
+html.aplus-ios .core-header{
+  top:0!important;
+  width:100%!important;
+  min-height:calc(66px + env(safe-area-inset-top))!important;
+  height:calc(66px + env(safe-area-inset-top))!important;
+  margin:0!important;
+  padding-top:env(safe-area-inset-top)!important;
+  padding-left:14px!important;
+  padding-right:14px!important;
+  border-radius:0 0 22px 22px!important;
+  border-top:0!important;
+  box-sizing:border-box!important;
+  background:rgba(255,255,255,.94)!important;
+  box-shadow:0 12px 32px rgba(42,33,20,.08)!important;
+  -webkit-backdrop-filter:blur(24px) saturate(145%)!important;
+  backdrop-filter:blur(24px) saturate(145%)!important;
+}
+
+html.aplus-ios .core-main{
+  padding-top:20px!important;
+}
+
+/* The settings/logout sheet must disappear immediately after logout is tapped.
+   A stale translated sheet in WKWebView used to remain visually stuck above
+   the login view even though the logout itself had already run. */
+.settings-overlay[data-native-closing="1"]{
+  opacity:0!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+  transition:none!important;
+  -webkit-transition:none!important;
+}
+.settings-overlay[data-native-closing="1"] .settings-card{
+  transform:none!important;
+  transition:none!important;
+  -webkit-transition:none!important;
+}
+
+html.aplus-ios.native-sheet-reset,
+html.aplus-ios.native-sheet-reset body{
+  overflow-y:auto!important;
+  height:auto!important;
+  min-height:100%!important;
+}
