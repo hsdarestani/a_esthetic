@@ -1,0 +1,91 @@
+name: Full A+ Esthetic functional regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "platform_app/**"
+      - "p0_app/**"
+      - "p1_app/**"
+      - "p2_app/**"
+      - "p3_app/**"
+      - "config/**"
+      - "www/**"
+      - "templates/**"
+      - "requirements.txt"
+      - ".github/workflows/full-app-functional-regression.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "platform_app/**"
+      - "p0_app/**"
+      - "p1_app/**"
+      - "p2_app/**"
+      - "p3_app/**"
+      - "config/**"
+      - "www/**"
+      - "templates/**"
+      - "requirements.txt"
+      - ".github/workflows/full-app-functional-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-full-functional-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  customer-and-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DJANGO_DEBUG: "1"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
+      DATABASE_URL: "sqlite:///functional-ci.sqlite3"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Static and migration safety
+        run: |
+          python -m compileall -q config platform_app p0_app p1_app p2_app p3_app
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+          rm -f functional-ci.sqlite3
+          python manage.py migrate --noinput
+
+      - name: Validate packaged customer JavaScript
+        run: |
+          set -e
+          for file in \
+            www/booking-direct-api.js \
+            www/admin-mode.js \
+            www/core-app.js \
+            www/booking-consent-bridge.js \
+            www/booking-book-flow.js \
+            www/focused-upgrade.js \
+            www/native-push.js \
+            www/native-interactions.js \
+            www/mobile-polish.js \
+            www/customer-luxury.js; do
+            node --check "$file"
+          done
+
+      - name: Run complete Django functional suite
+        run: python manage.py test platform_app p0_app p1_app p2_app p3_app --verbosity 2
+
+      - name: Verify focused customer runtime contract
+        run: python manage.py test p0_app.test_full_client_surface --verbosity 2
