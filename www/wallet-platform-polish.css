@@ -1,0 +1,69 @@
+/* A+ Wallet scanability + platform-correct Wallet presentation — 2026-09-07 */
+
+/* Keep the personal QR comfortably scannable on a phone without making the card feel bulky. */
+.wallet-qr-wrap{
+  --wallet-qr-size:clamp(124px,35vw,140px);
+  grid-template-columns:var(--wallet-qr-size) minmax(0,1fr) !important;
+  gap:15px !important;
+  align-items:center;
+}
+.wallet-qr-frame{
+  width:var(--wallet-qr-size) !important;
+  height:var(--wallet-qr-size) !important;
+  padding:6px !important;
+  border-radius:20px;
+}
+.wallet-qr-frame img{
+  width:100% !important;
+  height:100% !important;
+  border-radius:9px !important;
+  image-rendering:auto;
+}
+
+/* The Apple private-use glyph is only guaranteed on Apple system fonts. */
+.wallet-provider[data-wallet-provider="apple"] .wallet-provider-icon{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;
+  font-weight:600;
+}
+
+/* Apple Wallet cannot be added from Android. Never show a broken/misleading Apple CTA there. */
+html.aplus-android .wallet-provider[data-wallet-provider="apple"]{
+  display:none !important;
+}
+html.aplus-android .wallet-provider-grid{
+  padding-top:13px;
+}
+html.aplus-android .wallet-provider-grid::after{
+  content:"Apple Wallet ist nur auf dem iPhone verfügbar. Der persönliche QR-Code funktioniert auf Android weiterhin.";
+  display:block;
+  padding:11px 13px;
+  border:1px solid #e5ded0;
+  border-radius:14px;
+  background:#faf8f3;
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.45;
+}
+
+@media(max-width:520px){
+  .wallet-qr-wrap{
+    --wallet-qr-size:clamp(122px,34vw,132px);
+    gap:13px !important;
+  }
+  .wallet-qr-wrap strong{
+    font-size:18px;
+  }
+}
+
+@media(max-width:355px){
+  .wallet-qr-wrap{
+    --wallet-qr-size:116px;
+    gap:11px !important;
+  }
+  .wallet-qr-wrap strong{
+    font-size:16px;
+  }
+  .wallet-qr-wrap small{
+    font-size:9px;
+  }
+}
