@@ -101,3 +101,28 @@ class AppNotification(models.Model):
 
     def __str__(self):
         return f"{self.user} – {self.title}"
+
+
+class DashboardBanner(models.Model):
+    """Admin-managed campaign banner shown on the patient dashboard."""
+
+    title = models.CharField(max_length=160)
+    text = models.TextField(blank=True)
+    image_url = models.URLField(max_length=500, blank=True)
+    cta_label = models.CharField(max_length=80, blank=True)
+    cta_url = models.URLField(max_length=500, blank=True)
+    active = models.BooleanField(default=True)
+    starts_at = models.DateTimeField(default=timezone.now)
+    ends_at = models.DateTimeField(null=True, blank=True)
+    sort_order = models.PositiveIntegerField(default=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "p0_app"
+        ordering = ["sort_order", "-created_at"]
+        verbose_name = "Dashboard-Kampagne"
+        verbose_name_plural = "Dashboard-Kampagnen"
+
+    def __str__(self):
+        return self.title

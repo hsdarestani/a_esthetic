@@ -1,17 +1,19 @@
 import json
 
+from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from platform_app import mobile_api as legacy_mobile_api
-from platform_app.models import AuditLog, UserProfile
+from platform_app.models import AuditLog, UserProfile, WalletAccount, WalletTransaction
 
 from .models import GoogleReviewActivity
 
 GOOGLE_PLACE_ID = "ChIJadEwN8QPvUcRyczqX4YoWxY"
 GOOGLE_REVIEW_URL = f"https://search.google.com/local/writereview?placeid={GOOGLE_PLACE_ID}"
+VERIFIED_REVIEW_POINTS = 250
 
 
 def _json(request):
@@ -48,8 +50,29 @@ def _payload(item):
         "opened_at": item.opened_at.isoformat() if item.opened_at else None,
         "submitted_at": item.submitted_at.isoformat() if item.submitted_at else None,
         "verified_at": item.verified_at.isoformat() if item.verified_at else None,
+        "points_awarded": WalletTransaction.objects.filter(user=user, kind="coin", reference=f"google-review:{item.pk}").exists(),
+        "points_value": VERIFIED_REVIEW_POINTS,
         "created_at": item.created_at.isoformat(),
     }
+
+
+def _award_verified_review_points(item):
+    reference = f"google-review:{item.pk}"
+    with transaction.atomic():
+        wallet, _ = WalletAccount.objects.select_for_update().get_or_create(user=item.user)
+        if WalletTransaction.objects.filter(user=item.user, kind="coin", reference=reference).exists():
+            return False, wallet.coin_balance
+        wallet.coin_balance += VERIFIED_REVIEW_POINTS
+        wallet.save(update_fields=["coin_balance", "updated_at"])
+        WalletTransaction.objects.create(
+            user=item.user,
+            kind="coin",
+            direction="in",
+            coin_amount=VERIFIED_REVIEW_POINTS,
+            description="Google Bewertung verifiziert",
+            reference=reference,
+        )
+        return True, wallet.coin_balance
 
 
 @csrf_exempt
@@ -64,14 +87,7 @@ def mobile_reviews(request):
         action = str(data.get("action") or "").strip().lower()
         if action == "opened":
             item = GoogleReviewActivity.objects.create(user=user, place_id=GOOGLE_PLACE_ID, status="opened")
-            AuditLog.objects.create(
-                actor=user,
-                action="Google Bewertung geöffnet",
-                entity_type="GoogleReviewActivity",
-                entity_id=str(item.pk),
-                metadata={"place_id": GOOGLE_PLACE_ID},
-                ip_address=request.META.get("REMOTE_ADDR"),
-            )
+            AuditLog.objects.create(actor=user, action="Google Bewertung geöffnet", entity_type="GoogleReviewActivity", entity_id=str(item.pk), metadata={"place_id": GOOGLE_PLACE_ID}, ip_address=request.META.get("REMOTE_ADDR"))
         elif action == "submitted":
             raw_rating = data.get("rating")
             rating = None
@@ -90,14 +106,7 @@ def mobile_reviews(request):
             item.review_text = str(data.get("review_text") or "").strip()[:4000]
             item.submitted_at = timezone.now()
             item.save()
-            AuditLog.objects.create(
-                actor=user,
-                action="Google Bewertung als abgegeben markiert",
-                entity_type="GoogleReviewActivity",
-                entity_id=str(item.pk),
-                metadata={"rating": rating},
-                ip_address=request.META.get("REMOTE_ADDR"),
-            )
+            AuditLog.objects.create(actor=user, action="Google Bewertung als abgegeben markiert", entity_type="GoogleReviewActivity", entity_id=str(item.pk), metadata={"rating": rating}, ip_address=request.META.get("REMOTE_ADDR"))
         else:
             return JsonResponse({"ok": False, "error": "invalid_action"}, status=400)
 
@@ -106,6 +115,7 @@ def mobile_reviews(request):
         "ok": True,
         "review_url": GOOGLE_REVIEW_URL,
         "place_id": GOOGLE_PLACE_ID,
+        "verified_review_points": VERIFIED_REVIEW_POINTS,
         "activities": [_payload(item) for item in items],
     })
 
@@ -146,14 +156,16 @@ def mobile_admin_review(request, review_id):
     if external_url:
         item.google_review_url = external_url[:200]
     item.status = "verified"
-    item.verified_at = timezone.now()
+    if not item.verified_at:
+        item.verified_at = timezone.now()
     item.save()
+    awarded, points_balance = _award_verified_review_points(item)
     AuditLog.objects.create(
         actor=actor,
         action="Google Bewertung verifiziert",
         entity_type="GoogleReviewActivity",
         entity_id=str(item.pk),
-        metadata={"customer_id": item.user_id, "rating": item.rating},
+        metadata={"customer_id": item.user_id, "rating": item.rating, "points_awarded": VERIFIED_REVIEW_POINTS if awarded else 0},
         ip_address=request.META.get("REMOTE_ADDR"),
     )
-    return JsonResponse({"ok": True, "review": _payload(item)})
+    return JsonResponse({"ok": True, "review": _payload(item), "points_awarded": VERIFIED_REVIEW_POINTS if awarded else 0, "points_balance": points_balance})

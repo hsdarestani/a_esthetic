@@ -8,41 +8,33 @@
   <meta name="format-detection" content="telephone=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>A+ Esthetic</title>
-  <link rel="stylesheet" href="./core-app.css?v=20260906-sams-v1">
+  <link rel="stylesheet" href="./core-app.css?v=20260907-dash-v2">
   <link rel="stylesheet" href="./booking-book-flow.css?v=20260906-sams-v1">
   <link rel="stylesheet" href="./focused-upgrade.css?v=20260906-sams-v1">
-  <link rel="stylesheet" href="./apple-wallet-only.css?v=20260906-apple-only-v1">
+  <link rel="stylesheet" href="./apple-wallet-only.css?v=20260907-points-v2">
   <link rel="stylesheet" href="./native-interactions.css?v=20260906-native-actions-v1">
-  <link rel="stylesheet" href="./mobile-polish.css?v=20260907-records-v1">
+  <link rel="stylesheet" href="./mobile-polish.css?v=20260907-ios-v2">
   <link rel="stylesheet" href="./wallet-platform-polish.css?v=20260907-wallet-v2">
   <link rel="stylesheet" href="./customer-luxury.css?v=20260907-luxury-v1">
+  <link rel="stylesheet" href="./customer-dashboard-v2.css?v=20260907-lambo-v2">
 </head>
 <body>
   <div id="app" aria-live="polite"></div>
-  <!-- All customer booking and slot traffic is routed to the canonical Book service/database. -->
   <script src="./booking-direct-api.js?v=20260906-sams-v1"></script>
-  <!-- Admin/staff accounts use explicit SSO and never silently re-enter after logout. -->
   <script src="./admin-mode.js?v=20260906-sams-v1"></script>
-  <script src="./core-app.js?v=20260906-sams-v1"></script>
-  <!-- Preserve explicit marketing/privacy/cancellation choices when booking is forwarded to Book. -->
+  <script src="./core-app.js?v=20260907-dashboard-points-v2"></script>
   <script src="./booking-consent-bridge.js?v=20260906-consent-v1"></script>
-  <!-- Reuse the established four-step Book customer experience, not the simplified form. -->
   <script src="./booking-book-flow.js?v=20260906-sams-v1"></script>
-  <!-- Focused enhancements: real brand logo and SAMS-style QR / Wallet card experience. -->
+  <script src="./booking-final-rules.js?v=20260907-booking-rules-v2"></script>
   <script src="./focused-upgrade.js?v=20260906-sams-v1"></script>
-  <!-- On iOS, hand the signed .pkpass to PassKit instead of relying on WKWebView downloads. -->
   <script src="./apple-wallet-native.js?v=20260907-wallet-native-v1"></script>
-  <!-- Native-only push registration without reintroducing the legacy admin/rewards UI. -->
   <script src="./native-push.js?v=20260906-focused-push-v1"></script>
-  <!-- Native-safe Google review handoff and in-app patient file preview. -->
   <script src="./native-interactions.js?v=20260906-native-actions-v1"></script>
-  <!-- Native inset corrections, polished Patientenakte surface and logout overlay cleanup. -->
-  <script src="./mobile-polish.js?v=20260907-records-v1"></script>
-  <!-- Final customer-facing visual layer: premium shell, navigation, surfaces and micro-interactions. -->
+  <script src="./mobile-polish.js?v=20260907-ios-v2"></script>
   <script src="./customer-luxury.js?v=20260907-luxury-v1"></script>
 
   <!-- Legacy CI compatibility markers only. These scripts are intentionally NOT loaded:
        app.js p0.js p1.js p2.js p3.js ops.js reference-ui.js feature-flags.js runtime-hotfix.js
-       Customer surface remains strictly: Termine, Bewertungen, Freunde, Wallet, Akte. -->
+       Customer navigation is intentionally limited to Dashboard, Reservieren, Akte, Punkte, Freunde. -->
 </body>
 </html>

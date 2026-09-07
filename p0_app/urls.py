@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import (
+    admin_content_views,
     admin_mobile_views,
     admin_wallet_history_views,
     book_admin_proxy_views,
@@ -36,6 +37,7 @@ urlpatterns = [
     path("api/mobile/admin/referrals/", admin_mobile_views.mobile_admin_referrals, name="p0_mobile_admin_referrals"),
     path("api/mobile/admin/reviews/", review_views.mobile_admin_reviews, name="p0_mobile_admin_reviews"),
     path("api/mobile/admin/reviews/<int:review_id>/", review_views.mobile_admin_review, name="p0_mobile_admin_review"),
+    path("api/mobile/admin/dashboard-banners/", admin_content_views.mobile_admin_dashboard_banners, name="p0_mobile_admin_dashboard_banners"),
 
     path("api/mobile/admin/book/overview/", book_admin_proxy_views.overview, name="p0_mobile_book_admin_overview"),
     path("api/mobile/admin/book/calendar/", book_admin_proxy_views.calendar, name="p0_mobile_book_admin_calendar"),
@@ -49,8 +51,6 @@ urlpatterns = [
     path("api/mobile/admin/book/services/<int:service_id>/", book_admin_proxy_views.service_action, name="p0_mobile_book_admin_service"),
     path("api/mobile/admin/book/day-override/", book_admin_proxy_views.day_override_action, name="p0_mobile_book_admin_override"),
 
-    # Legacy endpoints remain addressable for backwards compatibility, but the new
-    # minimal client/admin surfaces no longer expose packages/rewards/push/modules/devices.
     path("api/mobile/admin/packages/", admin_mobile_views.mobile_admin_packages, name="p0_mobile_admin_packages"),
     path("api/mobile/admin/rewards/", admin_mobile_views.mobile_admin_rewards, name="p0_mobile_admin_rewards"),
     path("api/mobile/admin/devices/", admin_mobile_views.mobile_admin_devices, name="p0_mobile_admin_devices"),

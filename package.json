@@ -1,19 +1,19 @@
 {
-  "name": "a-esthetic-mobile",
+  "name": "a-plus-esthetic-capacitor",
   "version": "1.0.0",
   "private": true,
-  "description": "Native mobile wrapper for the A+ Esthetic customer club.",
+  "description": "Native Android/iOS shell for the A+ Esthetic customer app.",
   "scripts": {
-    "native:sync": "npx cap sync",
-    "native:assets": "npx @capacitor/assets generate --iconBackgroundColor '#000000' --iconBackgroundColorDark '#000000' --splashBackgroundColor '#000000' --splashBackgroundColorDark '#000000' --logoSplashScale 0.34",
-    "native:android": "bash scripts/build-android.sh",
-    "native:ios": "bash scripts/build-ios.sh",
-    "store:check": "python3 scripts/store_positioning_check.py",
-    "capacitor:sync:after": "node scripts/install-google-services.js && python3 scripts/configure_native_camera_permissions.py"
+    "capacitor:sync:after": "node scripts/install-google-services.js && python3 scripts/configure_native_camera_permissions.py",
+    "cap:sync": "npx cap sync",
+    "build:android": "bash scripts/build-android.sh",
+    "build:ios": "bash scripts/build-ios.sh"
   },
   "dependencies": {
     "@belongnet/capacitor-pass-to-wallet": "8.0.4",
     "@capacitor/android": "^8.0.0",
+    "@capacitor/barcode-scanner": "3.1.2",
+    "@capacitor/camera": "8.2.4",
     "@capacitor/core": "^8.0.0",
     "@capacitor/ios": "^8.0.0",
     "@capacitor/push-notifications": "^8.0.0"
