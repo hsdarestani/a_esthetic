@@ -56,7 +56,8 @@ jobs:
             User.objects.filter(username__startswith=os.environ.get('PREFIX', '')).delete()
             PY
               rm -f /tmp/aplus-smoke.env /tmp/book.cookies /tmp/sso.json /tmp/wallet.json \
-                /tmp/dashboard.html /tmp/calendar.html /tmp/points.html /tmp/patients.html /tmp/reviews.html /tmp/referrals.html
+                /tmp/dashboard.html /tmp/calendar.html /tmp/points.html /tmp/patients.html /tmp/reviews.html /tmp/referrals.html \
+                /tmp/admin-luxury-v2.js
             }
             trap cleanup EXIT
 
@@ -160,12 +161,18 @@ jobs:
 
             curl -fsS --max-time 30 -c /tmp/book.cookies -b /tmp/book.cookies "$BOOK/verwaltung/kalender/" > /tmp/calendar.html
             require_marker /tmp/calendar.html 'Kalender (Tagesansicht)' 'Book calendar'
-            require_marker /tmp/calendar.html 'Patientenakten' 'patient records navigation'
-            require_marker /tmp/calendar.html 'href="/verwaltung/app/wallet/"' 'points navigation'
-            require_marker /tmp/calendar.html 'href="/verwaltung/app/reviews/"' 'reviews navigation'
-            require_marker /tmp/calendar.html 'href="/verwaltung/app/referrals/"' 'referrals navigation'
-            if grep -Eq '/verwaltung/app/(club|packages|rewards|notifications|modules)/' /tmp/calendar.html; then
-              echo 'FAIL: removed legacy A+ management route leaked into calendar.' >&2
+            require_marker /tmp/calendar.html 'admin-luxury-v2.js' 'dynamic admin navigation asset'
+
+            # The management drawer is intentionally assembled by deferred JS.
+            # Validate the real navigation source instead of expecting browser-generated
+            # nodes to exist in raw curl HTML.
+            curl -fsS --max-time 30 "$BOOK/static/booking/admin-luxury-v2.js?v=20260907-v2" > /tmp/admin-luxury-v2.js
+            require_marker /tmp/admin-luxury-v2.js 'Patientenakten' 'patient records navigation source'
+            require_marker /tmp/admin-luxury-v2.js '/verwaltung/app/wallet/' 'points navigation source'
+            require_marker /tmp/admin-luxury-v2.js '/verwaltung/app/reviews/' 'reviews navigation source'
+            require_marker /tmp/admin-luxury-v2.js '/verwaltung/app/referrals/' 'referrals navigation source'
+            if grep -Eq '/verwaltung/app/(club|packages|rewards|notifications|modules)/' /tmp/admin-luxury-v2.js; then
+              echo 'FAIL: removed legacy A+ management route leaked into dynamic navigation.' >&2
               exit 1
             fi
 
