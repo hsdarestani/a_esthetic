@@ -55,9 +55,6 @@ if "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;" not in text:
     count = text.count(needle)
     if count < 1:
         raise SystemExit("Could not locate the App target build settings in project.pbxproj")
-    # Capacitor's generated project has this Info.plist setting only on the App
-    # target configurations. Injecting here keeps the entitlement away from SPM
-    # dependency targets.
     text = text.replace(needle, "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;\n\t\t\t\t" + needle)
     path.write_text(text, encoding="utf-8")
 print("Scoped CODE_SIGN_ENTITLEMENTS to the generated App target.")
@@ -87,7 +84,6 @@ npx @capacitor/assets generate --ios \
   --splashBackgroundColorDark '#000000' \
   --logoSplashScale 0.34
 
-# Fail early if the generator did not actually create an iOS AppIcon catalog.
 APPICON_SET="$ROOT/ios/App/App/Assets.xcassets/AppIcon.appiconset"
 if [ ! -d "$APPICON_SET" ] || [ ! -f "$APPICON_SET/Contents.json" ]; then
   echo "iOS AppIcon asset catalog was not generated." >&2
@@ -109,8 +105,6 @@ CODE_SIGN_IDENTITY="${IOS_CODE_SIGN_IDENTITY:-Apple Distribution}"
 SIGNING_KEYCHAIN="${IOS_SIGNING_KEYCHAIN:-}"
 BUNDLE_ID="${IOS_BUNDLE_ID:-de.aplusesthetic.app}"
 
-# Capacitor 8 may generate a Swift Package Manager project without an
-# .xcworkspace. Support both SPM (.xcodeproj) and CocoaPods (.xcworkspace).
 if [ -d ios/App/App.xcworkspace ]; then
   XCODE_CONTAINER=(-workspace ios/App/App.xcworkspace)
 elif [ -d ios/App/App.xcodeproj ]; then
@@ -172,7 +166,7 @@ else
   if [ "$SIGNING_STYLE" = "Manual" ]; then
     cat > "$EXPORT_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>method</key><string>app-store-connect</string>
 <key>signingStyle</key><string>manual</string>
@@ -188,7 +182,7 @@ PLIST
   else
     cat > "$EXPORT_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>method</key><string>app-store-connect</string>
 <key>signingStyle</key><string>automatic</string>
