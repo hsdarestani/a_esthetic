@@ -9,7 +9,7 @@
     "native:android": "bash scripts/build-android.sh",
     "native:ios": "bash scripts/build-ios.sh",
     "store:check": "python3 scripts/store_positioning_check.py",
-    "capacitor:sync:after": "node scripts/install-google-services.js"
+    "capacitor:sync:after": "node scripts/install-google-services.js && python3 scripts/configure_native_camera_permissions.py"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
