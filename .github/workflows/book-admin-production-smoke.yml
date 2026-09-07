@@ -25,7 +25,7 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify focused Book and A+ Wallet administration
+      - name: Verify focused Book and A+ points administration
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.HOST }}
@@ -56,7 +56,7 @@ jobs:
             User.objects.filter(username__startswith=os.environ.get('PREFIX', '')).delete()
             PY
               rm -f /tmp/aplus-smoke.env /tmp/book.cookies /tmp/sso.json /tmp/wallet.json \
-                /tmp/calendar.html /tmp/wallet.html /tmp/patients.html /tmp/reviews.html /tmp/referrals.html
+                /tmp/dashboard.html /tmp/calendar.html /tmp/points.html /tmp/patients.html /tmp/reviews.html /tmp/referrals.html
             }
             trap cleanup EXIT
 
@@ -77,17 +77,17 @@ jobs:
 
             customer = User.objects.create(
                 username=f'{prefix}-member', email=f'{prefix}-member@example.invalid',
-                first_name='Smoke', last_name='Wallet'
+                first_name='Smoke', last_name='Points'
             )
             customer.set_unusable_password(); customer.save(update_fields=['password'])
             profile, _ = UserProfile.objects.get_or_create(user=customer)
             profile.role = 'customer'; profile.save(update_fields=['role'])
             member, _ = MemberAccount.objects.get_or_create(user=customer)
             wallet, _ = WalletAccount.objects.get_or_create(user=customer)
-            wallet.balance_cents = 4200; wallet.save(update_fields=['balance_cents', 'updated_at'])
+            wallet.coin_balance = 420; wallet.save(update_fields=['coin_balance', 'updated_at'])
             WalletTransaction.objects.create(
-                user=customer, kind='credit', direction='in', amount_cents=4200,
-                description='Production smoke credit', reference=prefix
+                user=customer, kind='coin', direction='in', coin_amount=420,
+                description='Production smoke points', reference=prefix
             )
 
             with open('/tmp/aplus-smoke.env', 'w') as fh:
@@ -113,19 +113,16 @@ jobs:
               echo "PASS marker: $label"
             }
 
-            # Book is still the canonical booking API/database.
             require_json_ok "$BASE/api/mobile/admin/book/overview/"
             require_json_ok "$BASE/api/mobile/admin/book/calendar/?date=$(date +%F)"
             require_json_ok "$BASE/api/mobile/admin/book/bookings/"
             echo 'PASS canonical Book bridge.'
 
-            # Current focused A+ management contract.
-            for endpoint in customers/ referrals/ reviews/; do
+            for endpoint in customers/ referrals/ reviews/ dashboard-banners/; do
               require_json_ok "$BASE/api/mobile/admin/$endpoint"
             done
             echo 'PASS focused A+ APIs.'
 
-            # QR -> exact customer, without exposing the QR token in the response.
             http="$(curl -sS --max-time 30 -o /tmp/wallet.json -w '%{http_code}' \
               -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
               --data "{\"qr_token\":\"$QR_TOKEN\"}" "$BASE/api/mobile/admin/wallet/lookup/")"
@@ -139,9 +136,8 @@ jobs:
             assert customer.get('email') == os.environ['CUSTOMER_EMAIL'], customer
             assert 'qr_token' not in customer, customer
             PY
-            echo 'PASS secure A+ Wallet QR lookup.'
+            echo 'PASS secure A+ QR lookup.'
 
-            # Establish Book staff session. Retry briefly for cross-repo restart races.
             rm -f /tmp/book.cookies
             sso_ok=0
             for attempt in $(seq 1 12); do
@@ -149,7 +145,7 @@ jobs:
                 -c /tmp/book.cookies -b /tmp/book.cookies -X POST \
                 -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Accept: application/json' \
                 "$BOOK/verwaltung/app-sso/" || true)"
-              if [ "$http" = 200 ] && python3 -c 'import json; d=json.load(open("/tmp/sso.json")); assert d.get("ok") is True and d.get("redirect")=="/verwaltung/kalender/"'; then
+              if [ "$http" = 200 ] && python3 -c 'import json; d=json.load(open("/tmp/sso.json")); assert d.get("ok") is True and d.get("redirect")=="/verwaltung/dashboard/"'; then
                 sso_ok=1; break
               fi
               echo "Waiting for Book SSO ($attempt/12, HTTP $http)"
@@ -157,10 +153,15 @@ jobs:
             done
             test "$sso_ok" = 1
 
+            curl -fsS --max-time 30 -c /tmp/book.cookies -b /tmp/book.cookies "$BOOK/verwaltung/dashboard/" > /tmp/dashboard.html
+            require_marker /tmp/dashboard.html 'Patient suchen' 'admin dashboard patient search'
+            require_marker /tmp/dashboard.html 'Kampagnen & Banner' 'campaign editor'
+            require_marker /tmp/dashboard.html 'Nachrichten-Vorlagen' 'WhatsApp templates'
+
             curl -fsS --max-time 30 -c /tmp/book.cookies -b /tmp/book.cookies "$BOOK/verwaltung/kalender/" > /tmp/calendar.html
             require_marker /tmp/calendar.html 'Kalender (Tagesansicht)' 'Book calendar'
             require_marker /tmp/calendar.html 'Patientenakten' 'patient records navigation'
-            require_marker /tmp/calendar.html 'href="/verwaltung/app/wallet/"' 'Wallet navigation'
+            require_marker /tmp/calendar.html 'href="/verwaltung/app/wallet/"' 'points navigation'
             require_marker /tmp/calendar.html 'href="/verwaltung/app/reviews/"' 'reviews navigation'
             require_marker /tmp/calendar.html 'href="/verwaltung/app/referrals/"' 'referrals navigation'
             if grep -Eq '/verwaltung/app/(club|packages|rewards|notifications|modules)/' /tmp/calendar.html; then
@@ -170,14 +171,18 @@ jobs:
 
             encoded_email="$(python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["CUSTOMER_EMAIL"]))')"
             curl -fsS --max-time 30 -c /tmp/book.cookies -b /tmp/book.cookies \
-              "$BOOK/verwaltung/app/wallet/?q=$encoded_email&scan=1" > /tmp/wallet.html
-            require_marker /tmp/wallet.html 'A+ Wallet' 'Wallet page'
-            require_marker /tmp/wallet.html 'QR-Code scannen' 'QR scanner action'
-            require_marker /tmp/wallet.html 'data-wallet-scan-open' 'scanner trigger'
-            require_marker /tmp/wallet.html 'data-wallet-camera' 'camera surface'
-            require_marker /tmp/wallet.html 'app-wallet-scanner' 'scanner static asset (manifest-safe)'
-            require_marker /tmp/wallet.html "$CUSTOMER_EMAIL" 'resolved patient'
-            require_marker /tmp/wallet.html '42,00' 'resolved balance'
+              "$BOOK/verwaltung/app/wallet/?q=$encoded_email&scan=1" > /tmp/points.html
+            require_marker /tmp/points.html 'A+ Punkte' 'points page'
+            require_marker /tmp/points.html 'QR-Code scannen' 'QR scanner action'
+            require_marker /tmp/points.html 'data-wallet-scan-open' 'scanner trigger'
+            require_marker /tmp/points.html 'data-wallet-camera' 'camera surface'
+            require_marker /tmp/points.html 'app-wallet-scanner' 'scanner static asset'
+            require_marker /tmp/points.html "$CUSTOMER_EMAIL" 'resolved patient'
+            require_marker /tmp/points.html '420' 'resolved points'
+            if grep -Fq 'Guthaben' /tmp/points.html; then
+              echo 'FAIL: money wording leaked into points admin.' >&2
+              exit 1
+            fi
 
             curl -fsS --max-time 30 -c /tmp/book.cookies -b /tmp/book.cookies "$BOOK/verwaltung/app/patients/" > /tmp/patients.html
             curl -fsS --max-time 30 -c /tmp/book.cookies -b /tmp/book.cookies "$BOOK/verwaltung/app/reviews/" > /tmp/reviews.html
@@ -186,10 +191,10 @@ jobs:
             require_marker /tmp/reviews.html 'Google Bewertungen' 'reviews page'
             require_marker /tmp/referrals.html 'Empfehlungen' 'referrals page'
 
-            for file in /tmp/wallet.html /tmp/patients.html /tmp/reviews.html /tmp/referrals.html; do
+            for file in /tmp/points.html /tmp/patients.html /tmp/reviews.html /tmp/referrals.html; do
               if grep -Eq '/verwaltung/app/(club|packages|rewards|notifications|modules)/' "$file"; then
                 echo "FAIL: removed management module leaked into $file" >&2
                 exit 1
               fi
             done
-            echo 'PASS focused A+ production management: Termine + Patientenakten + Reviews + Wallet/QR + Empfehlungen.'
+            echo 'PASS focused A+ production management: Dashboard + Termine + Patientenakten + Reviews + Punkte/QR + Empfehlungen.'
