@@ -12,6 +12,7 @@
     "capacitor:sync:after": "node scripts/install-google-services.js && python3 scripts/configure_native_camera_permissions.py"
   },
   "dependencies": {
+    "@belongnet/capacitor-pass-to-wallet": "8.0.4",
     "@capacitor/android": "^8.0.0",
     "@capacitor/core": "^8.0.0",
     "@capacitor/ios": "^8.0.0",
