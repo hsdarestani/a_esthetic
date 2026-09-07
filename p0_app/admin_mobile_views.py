@@ -119,7 +119,7 @@ def mobile_admin_customers(request):
     if error:
         return error
     query = str(request.GET.get("q") or "").strip()
-    users = User.objects.filter(is_active=True, is_superuser=False, profile__role="customer").order_by("-date_joined")
+    users = User.objects.filter(is_active=True, is_superuser=False, profile__role="customer").order_by("last_name", "first_name", "pk")
     if query:
         users = users.filter(
             Q(email__icontains=query)
