@@ -35,6 +35,14 @@ def _admin_auth(request):
     return user, None
 
 
+def _user_has_review_reward(user):
+    return WalletTransaction.objects.filter(
+        user=user,
+        kind="coin",
+        reference__startswith="google-review:",
+    ).exists()
+
+
 def _payload(item):
     user = item.user
     return {
@@ -50,7 +58,7 @@ def _payload(item):
         "opened_at": item.opened_at.isoformat() if item.opened_at else None,
         "submitted_at": item.submitted_at.isoformat() if item.submitted_at else None,
         "verified_at": item.verified_at.isoformat() if item.verified_at else None,
-        "points_awarded": WalletTransaction.objects.filter(user=user, kind="coin", reference=f"google-review:{item.pk}").exists(),
+        "points_awarded": _user_has_review_reward(user),
         "points_value": VERIFIED_REVIEW_POINTS,
         "created_at": item.created_at.isoformat(),
     }
@@ -60,7 +68,14 @@ def _award_verified_review_points(item):
     reference = f"google-review:{item.pk}"
     with transaction.atomic():
         wallet, _ = WalletAccount.objects.select_for_update().get_or_create(user=item.user)
-        if WalletTransaction.objects.filter(user=item.user, kind="coin", reference=reference).exists():
+        # Google review reward is intentionally one-time per customer. Older builds
+        # used the activity id as the reference, so we also guard against any prior
+        # google-review:* transaction for this user.
+        if WalletTransaction.objects.filter(
+            user=item.user,
+            kind="coin",
+            reference__startswith="google-review:",
+        ).exists():
             return False, wallet.coin_balance
         wallet.coin_balance += VERIFIED_REVIEW_POINTS
         wallet.save(update_fields=["coin_balance", "updated_at"])
@@ -75,6 +90,18 @@ def _award_verified_review_points(item):
         return True, wallet.coin_balance
 
 
+def _current_review_activity(user):
+    """Return one canonical activity so repeated Google taps never spam the queue."""
+    latest = GoogleReviewActivity.objects.filter(user=user).order_by("-created_at").first()
+    if latest and _user_has_review_reward(user):
+        return latest
+    pending = GoogleReviewActivity.objects.filter(
+        user=user,
+        status__in=["opened", "submitted"],
+    ).order_by("-created_at").first()
+    return pending
+
+
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def mobile_reviews(request):
@@ -86,8 +113,17 @@ def mobile_reviews(request):
         data = _json(request)
         action = str(data.get("action") or "").strip().lower()
         if action == "opened":
-            item = GoogleReviewActivity.objects.create(user=user, place_id=GOOGLE_PLACE_ID, status="opened")
-            AuditLog.objects.create(actor=user, action="Google Bewertung geöffnet", entity_type="GoogleReviewActivity", entity_id=str(item.pk), metadata={"place_id": GOOGLE_PLACE_ID}, ip_address=request.META.get("REMOTE_ADDR"))
+            item = _current_review_activity(user)
+            if not item:
+                item = GoogleReviewActivity.objects.create(user=user, place_id=GOOGLE_PLACE_ID, status="opened")
+                AuditLog.objects.create(
+                    actor=user,
+                    action="Google Bewertung geöffnet",
+                    entity_type="GoogleReviewActivity",
+                    entity_id=str(item.pk),
+                    metadata={"place_id": GOOGLE_PLACE_ID},
+                    ip_address=request.META.get("REMOTE_ADDR"),
+                )
         elif action == "submitted":
             raw_rating = data.get("rating")
             rating = None
@@ -98,15 +134,26 @@ def mobile_reviews(request):
                     return JsonResponse({"ok": False, "error": "invalid_rating"}, status=400)
                 if rating < 1 or rating > 5:
                     return JsonResponse({"ok": False, "error": "invalid_rating"}, status=400)
-            item = GoogleReviewActivity.objects.filter(user=user, status="opened").order_by("-created_at").first()
-            if not item:
-                item = GoogleReviewActivity(user=user, place_id=GOOGLE_PLACE_ID)
-            item.status = "submitted"
-            item.rating = rating
-            item.review_text = str(data.get("review_text") or "").strip()[:4000]
-            item.submitted_at = timezone.now()
-            item.save()
-            AuditLog.objects.create(actor=user, action="Google Bewertung als abgegeben markiert", entity_type="GoogleReviewActivity", entity_id=str(item.pk), metadata={"rating": rating}, ip_address=request.META.get("REMOTE_ADDR"))
+            item = _current_review_activity(user)
+            if item and item.status == "verified":
+                # Already verified/rewarded: do not create another reward candidate.
+                pass
+            else:
+                if not item:
+                    item = GoogleReviewActivity(user=user, place_id=GOOGLE_PLACE_ID)
+                item.status = "submitted"
+                item.rating = rating
+                item.review_text = str(data.get("review_text") or "").strip()[:4000]
+                item.submitted_at = timezone.now()
+                item.save()
+                AuditLog.objects.create(
+                    actor=user,
+                    action="Google Bewertung als abgegeben markiert",
+                    entity_type="GoogleReviewActivity",
+                    entity_id=str(item.pk),
+                    metadata={"rating": rating},
+                    ip_address=request.META.get("REMOTE_ADDR"),
+                )
         else:
             return JsonResponse({"ok": False, "error": "invalid_action"}, status=400)
 
@@ -126,8 +173,24 @@ def mobile_admin_reviews(request):
     actor, error = _admin_auth(request)
     if error:
         return error
-    items = GoogleReviewActivity.objects.select_related("user").order_by("-created_at")[:300]
-    return JsonResponse({"ok": True, "reviews": [_payload(item) for item in items]})
+
+    # The admin needs one verification row per customer, not one row per tap on
+    # the Google button. Keep the newest activity for each customer.
+    items = []
+    seen_users = set()
+    for item in GoogleReviewActivity.objects.select_related("user").order_by("-created_at")[:1000]:
+        if item.user_id in seen_users:
+            continue
+        seen_users.add(item.user_id)
+        items.append(item)
+        if len(items) >= 300:
+            break
+    return JsonResponse({
+        "ok": True,
+        "review_url": GOOGLE_REVIEW_URL,
+        "verified_review_points": VERIFIED_REVIEW_POINTS,
+        "reviews": [_payload(item) for item in items],
+    })
 
 
 @csrf_exempt
@@ -168,4 +231,9 @@ def mobile_admin_review(request, review_id):
         metadata={"customer_id": item.user_id, "rating": item.rating, "points_awarded": VERIFIED_REVIEW_POINTS if awarded else 0},
         ip_address=request.META.get("REMOTE_ADDR"),
     )
-    return JsonResponse({"ok": True, "review": _payload(item), "points_awarded": VERIFIED_REVIEW_POINTS if awarded else 0, "points_balance": points_balance})
+    return JsonResponse({
+        "ok": True,
+        "review": _payload(item),
+        "points_awarded": VERIFIED_REVIEW_POINTS if awarded else 0,
+        "points_balance": points_balance,
+    })
