@@ -8,6 +8,15 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 ALLOWED_HOSTS = [x.strip() for x in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if x.strip()]
 CSRF_TRUSTED_ORIGINS = [x.strip() for x in os.environ.get("CSRF_TRUSTED_ORIGINS", "https://esthetic.smarbiz.sbs").split(",") if x.strip()]
 
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+APPLE_CLIENT_ID = os.environ.get("APPLE_CLIENT_ID", "")
+APPLE_PRIVATE_KEY = os.environ.get("APPLE_PRIVATE_KEY", "")
+APPLE_KEY_ID = os.environ.get("APPLE_KEY_ID", "")
+APPLE_TEAM_ID = os.environ.get("APPLE_TEAM_ID", "")
+GOOGLE_SOCIAL_LOGIN_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+APPLE_SOCIAL_LOGIN_ENABLED = bool(APPLE_CLIENT_ID and APPLE_PRIVATE_KEY and APPLE_KEY_ID and APPLE_TEAM_ID)
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -19,8 +28,6 @@ INSTALLED_APPS = [
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
-    "allauth.socialaccount.providers.google",
-    "allauth.socialaccount.providers.apple",
     "allauth.mfa",
     "allauth.usersessions",
     "platform_app",
@@ -29,6 +36,10 @@ INSTALLED_APPS = [
     "p2_app",
     "p3_app",
 ]
+if GOOGLE_SOCIAL_LOGIN_ENABLED:
+    INSTALLED_APPS.append("allauth.socialaccount.providers.google")
+if APPLE_SOCIAL_LOGIN_ENABLED:
+    INSTALLED_APPS.append("allauth.socialaccount.providers.apple")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -144,22 +155,15 @@ MFA_PASSKEY_SIGNUP_ENABLED = False
 MFA_RECOVERY_CODES_SHOW_ONCE = True
 MFA_TRUST_ENABLED = True
 
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-APPLE_CLIENT_ID = os.environ.get("APPLE_CLIENT_ID", "")
-APPLE_PRIVATE_KEY = os.environ.get("APPLE_PRIVATE_KEY", "")
-APPLE_KEY_ID = os.environ.get("APPLE_KEY_ID", "")
-APPLE_TEAM_ID = os.environ.get("APPLE_TEAM_ID", "")
-
 SOCIALACCOUNT_PROVIDERS = {}
-if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET:
+if GOOGLE_SOCIAL_LOGIN_ENABLED:
     SOCIALACCOUNT_PROVIDERS["google"] = {
         "APPS": [{"client_id": GOOGLE_CLIENT_ID, "secret": GOOGLE_CLIENT_SECRET, "key": ""}],
         "SCOPE": ["profile", "email"],
         "AUTH_PARAMS": {"access_type": "online"},
         "VERIFIED_EMAIL": True,
     }
-if APPLE_CLIENT_ID and APPLE_PRIVATE_KEY and APPLE_KEY_ID and APPLE_TEAM_ID:
+if APPLE_SOCIAL_LOGIN_ENABLED:
     SOCIALACCOUNT_PROVIDERS["apple"] = {
         "APPS": [{
             "client_id": APPLE_CLIENT_ID,
