@@ -68,15 +68,12 @@ jobs:
             CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
 
             for attempt in $(seq 1 120); do
-              if ! pgrep -x apt-get >/dev/null && ! pgrep -x apt >/dev/null && ! pgrep -x dpkg >/dev/null && ! pgrep -f unattended-upgrade >/dev/null; then
-                break
-              fi
+              if ! pgrep -x apt-get >/dev/null && ! pgrep -x apt >/dev/null && ! pgrep -x dpkg >/dev/null; then break; fi
               echo "Waiting for another package operation ($attempt/120)..."
               sleep 5
             done
-            if pgrep -x apt-get >/dev/null || pgrep -x apt >/dev/null || pgrep -x dpkg >/dev/null || pgrep -f unattended-upgrade >/dev/null; then
-              echo "Package manager remained busy for 10 minutes"
-              exit 1
+            if pgrep -x apt-get >/dev/null || pgrep -x apt >/dev/null || pgrep -x dpkg >/dev/null; then
+              echo "Package manager remained busy for 10 minutes"; exit 1
             fi
 
             apt-get update -y
@@ -90,9 +87,7 @@ jobs:
             install -m 0644 "$RELEASE/manage.py" "$ROOT/manage.py"
             install -m 0644 "$RELEASE/requirements.txt" "$ROOT/requirements.txt"
 
-            if [ ! -x "$VENV/bin/python" ]; then
-              python3 -m venv "$VENV"
-            fi
+            if [ ! -x "$VENV/bin/python" ]; then python3 -m venv "$VENV"; fi
             "$VENV/bin/pip" install --upgrade pip
             "$VENV/bin/pip" install -r "$ROOT/requirements.txt"
 
@@ -116,7 +111,6 @@ jobs:
             . "$ENV_FILE"
             set +a
             cd "$ROOT"
-
             "$VENV/bin/python" manage.py migrate platform_app --fake-initial --noinput
             "$VENV/bin/python" manage.py migrate --noinput
             "$VENV/bin/python" manage.py seed_platform
@@ -166,12 +160,10 @@ jobs:
             from pathlib import Path
             p=Path('/etc/nginx/sites-available/a-esthetic-connected.conf')
             s=p.read_text()
-            begin='    # BEGIN CUSTOMER_CLUB_DJANGO'
-            end='    # END CUSTOMER_CLUB_DJANGO'
+            begin='    # BEGIN CUSTOMER_CLUB_DJANGO'; end='    # END CUSTOMER_CLUB_DJANGO'
             a=s.find(begin); b=s.find(end,a)
             if a >= 0 and b >= 0:
-                nl=s.find('\n',b)
-                s=s[:a]+s[(nl+1 if nl>=0 else len(s)):]
+                nl=s.find('\n',b); s=s[:a]+s[(nl+1 if nl>=0 else len(s)):]
             marker='''    # BEGIN CUSTOMER_CLUB_DJANGO
                 location ^~ /api/mobile/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location ^~ /accounts/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
@@ -194,41 +186,27 @@ jobs:
             nginx -t
             systemctl enable --now nginx
             systemctl reload nginx
-
             sleep 3
             systemctl is-active --quiet a-esthetic-mobile.service
 
             python3 - <<'PY'
             from urllib.error import HTTPError, URLError
             from urllib.request import Request, urlopen
-
             def fetch(url, host=None):
-                headers={'User-Agent': 'A-Esthetic-Deploy-Smoke/1.0'}
+                headers={'User-Agent':'A-Esthetic-Deploy-Smoke/1.0'}
                 if host: headers['Host']=host
-                request = Request(url, headers=headers)
                 try:
-                    with urlopen(request, timeout=15) as response:
-                        return response.status, response.read().decode('utf-8', 'replace')
-                except HTTPError as exc:
-                    return exc.code, exc.read().decode('utf-8', 'replace')
-                except URLError as exc:
-                    raise SystemExit(f'Smoke request failed for {url}: {exc}')
-
-            checks = [
-                ('http://127.0.0.1:8770/api/mobile/status/', None, 200, 'customer club'),
-                ('http://127.0.0.1/api/mobile/status/', 'esthetic.smarbiz.sbs', 200, 'customer club'),
-                ('http://127.0.0.1/datenschutz/', 'esthetic.smarbiz.sbs', 200, 'Kundenclub'),
-            ]
-            for url, host, expected, needle in checks:
-                status, body = fetch(url, host=host)
-                if status != expected or needle.lower() not in body.lower():
-                    raise SystemExit(f'Smoke check failed: {url} returned {status}')
-
-            for path in ('progress', 'wallet-pass', 'cabinet', 'shop', 'gamification', 'events', 'concierge', 'conversations'):
-                status, _ = fetch(f'http://127.0.0.1:8770/api/mobile/{path}/')
-                if status != 401:
-                    raise SystemExit(f'Auth smoke failed for {path}: expected 401, got {status}')
-
+                    with urlopen(Request(url,headers=headers),timeout=15) as response:
+                        return response.status,response.read().decode('utf-8','replace')
+                except HTTPError as exc: return exc.code,exc.read().decode('utf-8','replace')
+                except URLError as exc: raise SystemExit(f'Smoke request failed for {url}: {exc}')
+            checks=[('http://127.0.0.1:8770/api/mobile/status/',None,200,'customer club'),('http://127.0.0.1/api/mobile/status/','esthetic.smarbiz.sbs',200,'customer club'),('http://127.0.0.1/datenschutz/','esthetic.smarbiz.sbs',200,'Kundenclub')]
+            for url,host,expected,needle in checks:
+                status,body=fetch(url,host)
+                if status!=expected or needle.lower() not in body.lower(): raise SystemExit(f'Smoke check failed: {url} returned {status}')
+            for path in ('progress','wallet-pass','cabinet','shop','gamification','events','concierge','conversations'):
+                status,_=fetch(f'http://127.0.0.1:8770/api/mobile/{path}/')
+                if status!=401: raise SystemExit(f'Auth smoke failed for {path}: expected 401, got {status}')
             print('All A+ Esthetic new-origin mobile API smoke checks passed.')
             PY
 
