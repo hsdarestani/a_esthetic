@@ -1,0 +1,62 @@
+/* A+ Esthetic final mobile web polish v5
+   More deliberate side breathing room without changing the visual system. */
+
+html,
+body,
+#app,
+.core-shell,
+.core-main{
+  min-width:0;
+  max-width:100%;
+}
+
+html,
+body{
+  overflow-x:hidden;
+}
+
+body{
+  min-height:100dvh;
+  -webkit-overflow-scrolling:touch;
+}
+
+@media (max-width:760px){
+  .core-main{
+    padding-left:max(20px,env(safe-area-inset-left))!important;
+    padding-right:max(20px,env(safe-area-inset-right))!important;
+  }
+
+  .core-header{
+    width:calc(100% - 32px)!important;
+    max-width:calc(100vw - 32px)!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+
+  .core-nav{
+    left:max(16px,env(safe-area-inset-left))!important;
+    right:max(16px,env(safe-area-inset-right))!important;
+    width:auto!important;
+    max-width:calc(100vw - 32px)!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+}
+
+@media (max-width:520px){
+  .core-main{
+    padding-left:max(18px,env(safe-area-inset-left))!important;
+    padding-right:max(18px,env(safe-area-inset-right))!important;
+  }
+
+  .core-header{
+    width:calc(100% - 28px)!important;
+    max-width:calc(100vw - 28px)!important;
+  }
+
+  .core-nav{
+    left:max(14px,env(safe-area-inset-left))!important;
+    right:max(14px,env(safe-area-inset-right))!important;
+    max-width:calc(100vw - 28px)!important;
+  }
+}
