@@ -37,7 +37,9 @@ jobs:
             . "$ENV_FILE"
             set +a
             "$VENV/bin/python" manage.py check
-            "$VENV/bin/python" manage.py shell -c "from p0_app.push import push_configuration; from p2_app.passes import wallet_provider_status; import json,os; print('PUSH_CONFIGURATION='+json.dumps(push_configuration(),sort_keys=True)); print('WALLET_CONFIGURATION='+json.dumps(wallet_provider_status(),sort_keys=True)); print('GOOGLE_LOGIN_CONFIGURED='+str(bool(os.environ.get('GOOGLE_CLIENT_ID') and os.environ.get('GOOGLE_CLIENT_SECRET')))); print('APPLE_LOGIN_CONFIGURED='+str(bool(os.environ.get('APPLE_CLIENT_ID') and os.environ.get('APPLE_PRIVATE_KEY') and os.environ.get('APPLE_KEY_ID') and os.environ.get('APPLE_TEAM_ID'))))"
+
+            echo '=== provider configuration ==='
+            "$VENV/bin/python" manage.py shell -c "from django.conf import settings; from p0_app.push import push_configuration; from p2_app.passes import wallet_provider_status; import json; apps=set(settings.INSTALLED_APPS); assert ('allauth.socialaccount.providers.google' in apps)==settings.GOOGLE_SOCIAL_LOGIN_ENABLED; assert ('allauth.socialaccount.providers.apple' in apps)==settings.APPLE_SOCIAL_LOGIN_ENABLED; print('PUSH_CONFIGURATION='+json.dumps(push_configuration(),sort_keys=True)); print('WALLET_CONFIGURATION='+json.dumps(wallet_provider_status(),sort_keys=True)); print('GOOGLE_LOGIN_CONFIGURED='+str(settings.GOOGLE_SOCIAL_LOGIN_ENABLED)); print('APPLE_LOGIN_CONFIGURED='+str(settings.APPLE_SOCIAL_LOGIN_ENABLED))"
             "$VENV/bin/python" - <<'PY'
             import json, os
             from pathlib import Path
@@ -60,6 +62,73 @@ jobs:
             else:
                 print('GOOGLE_WALLET_CONFIG=not_configured')
             PY
+
+            GOOGLE_LOGIN="$($VENV/bin/python manage.py shell -c "from django.conf import settings; print('1' if settings.GOOGLE_SOCIAL_LOGIN_ENABLED else '0')" | tail -n 1)"
+            APPLE_LOGIN="$($VENV/bin/python manage.py shell -c "from django.conf import settings; print('1' if settings.APPLE_SOCIAL_LOGIN_ENABLED else '0')" | tail -n 1)"
+            if [ "$GOOGLE_LOGIN" = 0 ]; then
+              test "$(curl -sS -o /dev/null -w '%{http_code}' https://esthetic.smarbiz.sbs/accounts/google/login/)" = 404
+              echo 'GOOGLE_SOCIAL_LOGIN=hidden'
+            fi
+            if [ "$APPLE_LOGIN" = 0 ]; then
+              test "$(curl -sS -o /dev/null -w '%{http_code}' https://esthetic.smarbiz.sbs/accounts/apple/login/)" = 404
+              echo 'APPLE_SOCIAL_LOGIN=hidden'
+            fi
+
+            # The customer surface intentionally contains no Google Wallet control while
+            # that provider is unconfigured. Apple Wallet stays visible only when ready.
+            grep -q "booking-direct-api.js" "$ROOT/www/index.html"
+            grep -q "BOOKING_API_BASE = 'https://book.a-esthetic.de/api/mobile'" "$ROOT/www/booking-direct-api.js"
+            if [ -z "${GOOGLE_WALLET_ISSUER_ID:-}" ] || [ -z "${GOOGLE_WALLET_SERVICE_ACCOUNT_JSON:-}" ]; then
+              if grep -q 'data-wallet-provider="google"' "$ROOT/www/core-app.js"; then
+                echo 'Unconfigured Google Wallet control is visible' >&2
+                exit 21
+              fi
+              echo 'GOOGLE_WALLET_UI=hidden'
+            fi
+
+            echo '=== authenticated visible-feature smoke ==='
+            TOKEN="$($VENV/bin/python manage.py shell -c "from django.contrib.auth import get_user_model; from platform_app.mobile_api import _token_for; U=get_user_model(); u=U.objects.filter(is_active=True,is_staff=False,member_account__status='active').order_by('pk').first(); assert u is not None, 'No active customer account for smoke test'; print(_token_for(u))" | tail -n 1)"
+            test -n "$TOKEN"
+
+            check_json() {
+              URL="$1"
+              BODY="$(curl -fsS --max-time 25 -H "Authorization: Bearer $TOKEN" -H 'Accept: application/json' "$URL")"
+              printf '%s' "$BODY" | "$VENV/bin/python" -c "import json,sys; d=json.load(sys.stdin); assert d.get('ok') is True, d"
+            }
+
+            check_json https://esthetic.smarbiz.sbs/api/mobile/me/
+            check_json https://esthetic.smarbiz.sbs/api/mobile/dashboard/
+            check_json https://esthetic.smarbiz.sbs/api/mobile/patient-records/
+            check_json https://esthetic.smarbiz.sbs/api/mobile/wallet/
+            check_json https://esthetic.smarbiz.sbs/api/mobile/reviews/
+            check_json https://esthetic.smarbiz.sbs/api/mobile/wallet-pass/
+            check_json https://esthetic.smarbiz.sbs/api/mobile/club/
+            check_json https://esthetic.smarbiz.sbs/api/mobile/notifications/
+            # The shipped JS rewrites booking/slots to this canonical Book service.
+            check_json https://book.a-esthetic.de/api/mobile/booking/
+            echo 'CUSTOMER_VISIBLE_APIS=success'
+
+            curl -fsS --max-time 25 -H "Authorization: Bearer $TOKEN" https://esthetic.smarbiz.sbs/api/mobile/wallet-pass/qr/ -o /tmp/aplus-member-qr.png
+            test -s /tmp/aplus-member-qr.png
+            file /tmp/aplus-member-qr.png | grep -qi 'PNG image'
+            echo 'MEMBER_QR=success'
+
+            APPLE_WALLET="$($VENV/bin/python manage.py shell -c "from p2_app.passes import wallet_provider_status; print('1' if wallet_provider_status()['apple'] else '0')" | tail -n 1)"
+            if [ "$APPLE_WALLET" = 1 ]; then
+              curl -fsS --max-time 30 -D /tmp/aplus-apple.headers -H "Authorization: Bearer $TOKEN" https://esthetic.smarbiz.sbs/api/mobile/wallet-pass/apple/ -o /tmp/aplus.pkpass
+              test -s /tmp/aplus.pkpass
+              grep -qi '^content-type: application/vnd.apple.pkpass' /tmp/aplus-apple.headers
+              echo 'APPLE_WALLET_PASS=success'
+            fi
+
+            for URL in \
+              https://esthetic.smarbiz.sbs/datenschutz/ \
+              https://esthetic.smarbiz.sbs/nutzungsbedingungen/ \
+              https://esthetic.smarbiz.sbs/impressum/ \
+              https://esthetic.smarbiz.sbs/konto-loeschen/; do
+              curl -fsSL --max-time 20 -o /dev/null "$URL"
+            done
+            echo 'LEGAL_LINKS=success'
 
             # Provider credential verification uses deliberately invalid device tokens,
             # so no real customer device receives a notification.
