@@ -1,0 +1,113 @@
+name: Verify recovered A+ Esthetic Book integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/recovered-book-integration-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recovered-aesthetic-book-integration-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify App to Book bridge, SSO and admin pages
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            ROOT=/opt/a-esthetic-mobile
+            BASE=https://esthetic.smarbiz.sbs
+            BOOK=https://book.a-esthetic.de
+            PREFIX="recovered-book-smoke-$(date +%s)-$$"
+            export PREFIX
+
+            systemctl is-active --quiet a-esthetic-api.service
+            systemctl is-active --quiet a-esthetic-mobile.service
+            systemctl is-active --quiet aesthetic-book.service
+            curl -fsS --max-time 20 "$BOOK/api/health/" | grep -q '"ok": true'
+
+            cd "$ROOT"
+            set -a
+            . "$ROOT/mobile.env"
+            set +a
+            export PYTHONPATH="$ROOT/vendor"
+
+            cleanup() {
+              python3 - <<'PY' || true
+            import os
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+            import django
+            django.setup()
+            from django.contrib.auth.models import User
+            User.objects.filter(username__startswith=os.environ.get('PREFIX', '')).delete()
+            PY
+              rm -f /tmp/recovered-book-smoke.env /tmp/recovered-book.cookies /tmp/recovered-book-sso.json /tmp/recovered-dashboard.html /tmp/recovered-calendar.html
+            }
+            trap cleanup EXIT
+
+            python3 - <<'PY'
+            import os, shlex
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+            import django
+            django.setup()
+            from django.contrib.auth.models import User
+            from platform_app.mobile_api import _token_for
+            from platform_app.models import UserProfile
+
+            prefix = os.environ['PREFIX']
+            admin = User.objects.create(username=f'{prefix}-admin', email=f'{prefix}-admin@example.invalid', is_staff=True)
+            admin.set_unusable_password(); admin.save(update_fields=['password'])
+            profile, _ = UserProfile.objects.get_or_create(user=admin)
+            profile.role = 'admin'; profile.save(update_fields=['role'])
+            with open('/tmp/recovered-book-smoke.env', 'w') as fh:
+                fh.write(f'ADMIN_TOKEN={shlex.quote(_token_for(admin))}\n')
+            PY
+            . /tmp/recovered-book-smoke.env
+            export ADMIN_TOKEN
+
+            require_json_ok() {
+              body="$(curl -fsS --max-time 30 -H "Authorization: Bearer $ADMIN_TOKEN" "$1")"
+              printf '%s' "$body" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True, d'
+            }
+
+            require_json_ok "$BASE/api/mobile/admin/book/overview/"
+            require_json_ok "$BASE/api/mobile/admin/book/calendar/?date=$(date +%F)"
+            require_json_ok "$BASE/api/mobile/admin/book/bookings/"
+            echo 'PASS_APP_TO_BOOK_BRIDGE'
+
+            http="$(curl -sS --max-time 30 -o /tmp/recovered-book-sso.json -w '%{http_code}' \
+              -c /tmp/recovered-book.cookies -b /tmp/recovered-book.cookies -X POST \
+              -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Accept: application/json' \
+              "$BOOK/verwaltung/app-sso/)"
+            test "$http" = 200
+            python3 - <<'PY'
+            import json
+            d=json.load(open('/tmp/recovered-book-sso.json'))
+            assert d.get('ok') is True, d
+            assert d.get('redirect') == '/verwaltung/dashboard/', d
+            PY
+            echo 'PASS_BOOK_SSO'
+
+            curl -fsS --max-time 30 -c /tmp/recovered-book.cookies -b /tmp/recovered-book.cookies "$BOOK/verwaltung/dashboard/" > /tmp/recovered-dashboard.html
+            grep -Fq 'Patient suchen' /tmp/recovered-dashboard.html
+            grep -Fq 'Kampagnen & Banner' /tmp/recovered-dashboard.html
+            curl -fsS --max-time 30 -c /tmp/recovered-book.cookies -b /tmp/recovered-book.cookies "$BOOK/verwaltung/kalender/" > /tmp/recovered-calendar.html
+            grep -Fq 'Kalender (Tagesansicht)' /tmp/recovered-calendar.html
+            echo 'PASS_BOOK_ADMIN_UI'
+
+            systemctl is-active --quiet a-esthetic-api.service
+            systemctl is-active --quiet a-esthetic-mobile.service
+            systemctl is-active --quiet aesthetic-book.service
+            echo 'RECOVERED_BOOK_INTEGRATION_OK'
