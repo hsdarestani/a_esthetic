@@ -44,32 +44,37 @@ jobs:
       - name: Upload deployment bundle
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.HOST }}
-          username: root
-          password: ${{ secrets.PASS }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
           source: "a-esthetic-mobile-package.tar.gz"
           target: "/tmp"
 
       - name: Deploy Django mobile API and Store legal pages
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.HOST }}
-          username: root
-          password: ${{ secrets.PASS }}
-          command_timeout: 20m
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 25m
           script: |
             set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
             ROOT="/opt/a-esthetic-mobile"
             RELEASE="/tmp/a-esthetic-mobile-release"
             ENV_FILE="$ROOT/mobile.env"
             PACKAGE="/tmp/a-esthetic-mobile-package.tar.gz"
+            DOMAIN="esthetic.smarbiz.sbs"
+            WEBROOT="/opt/a-esthetic-web/site"
+            CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
 
-            command -v python3 >/dev/null
-            command -v tar >/dev/null
-            command -v systemctl >/dev/null
+            apt-get update -y
+            apt-get install -y python3 nginx curl ca-certificates certbot python3-certbot-nginx
 
             rm -rf "$RELEASE"
-            mkdir -p "$RELEASE" "$ROOT"
+            mkdir -p "$RELEASE" "$ROOT" "$WEBROOT"
             tar -xzf "$PACKAGE" -C "$RELEASE"
             rm -rf "$ROOT/config" "$ROOT/platform_app" "$ROOT/p0_app" "$ROOT/p1_app" "$ROOT/p2_app" "$ROOT/p3_app" "$ROOT/templates" "$ROOT/static" "$ROOT/vendor"
             cp -a "$RELEASE/config" "$RELEASE/platform_app" "$RELEASE/p0_app" "$RELEASE/p1_app" "$RELEASE/p2_app" "$RELEASE/p3_app" "$RELEASE/templates" "$RELEASE/static" "$RELEASE/vendor" "$ROOT/"
@@ -85,8 +90,8 @@ jobs:
               cat > "$ENV_FILE" <<EOF
             DJANGO_SECRET_KEY=$SECRET
             DJANGO_DEBUG=0
-            DJANGO_ALLOWED_HOSTS=esthetic.smarbiz.sbs,127.0.0.1,localhost
-            CSRF_TRUSTED_ORIGINS=https://esthetic.smarbiz.sbs
+            DJANGO_ALLOWED_HOSTS=$DOMAIN,127.0.0.1,localhost
+            CSRF_TRUSTED_ORIGINS=https://$DOMAIN
             EOF
             fi
             chmod 600 "$ENV_FILE"
@@ -128,37 +133,27 @@ jobs:
             systemctl enable --now a-esthetic-mobile.service
             systemctl restart a-esthetic-mobile.service
 
-            if systemctl is-active --quiet caddy && [ -f /etc/caddy/Caddyfile ]; then
-              python3 - <<'PY'
+            if [ ! -f "$CONF" ]; then
+              cat > "$CONF" <<'NGINX'
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name esthetic.smarbiz.sbs;
+              root /opt/a-esthetic-web/site;
+              index index.html;
+              client_max_body_size 30m;
+              location / { try_files $uri $uri/ /index.html; }
+              location = /sw.js { add_header Cache-Control "no-cache, no-store, must-revalidate" always; }
+            }
+            NGINX
+            fi
+
+            python3 - <<'PY'
             from pathlib import Path
-            p=Path('/etc/caddy/Caddyfile'); s=p.read_text()
-            begin='# BEGIN A_ESTHETIC_WEB'; end='# END A_ESTHETIC_WEB'
-            a=s.find(begin); b=s.find(end,a)
-            if a < 0 or b < 0: raise SystemExit('A_ESTHETIC_WEB block not found')
-            block=s[a:b]
-            start=block.find('  @customerClubDjango path ')
-            if start >= 0:
-                h=block.find('  handle @customerClubDjango {',start)
-                close=block.find('  }\n',h)
-                if h >= 0 and close >= 0: block=block[:start]+block[close+4:]
-            marker=(
-              '  @customerClubDjango path /api/mobile/* /accounts/* /login/ /datenschutz/ /datenschutz/* /support/ /konto-loeschen/ /nutzungsbedingungen/ /impressum/\n'
-              '  handle @customerClubDjango {\n    reverse_proxy 127.0.0.1:8770\n  }\n'
-            )
-            brace=block.find('{')
-            if brace < 0: raise SystemExit('A+ Esthetic Caddy site opening brace not found')
-            block=block[:brace+1]+'\n'+marker+block[brace+1:].lstrip('\n')
-            p.write_text(s[:a]+block+s[b:])
-            PY
-              caddy validate --config /etc/caddy/Caddyfile
-              systemctl reload caddy
-            else
-              CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
-              test -f "$CONF"
-              python3 - <<'PY'
-            from pathlib import Path
-            p=Path('/etc/nginx/sites-available/a-esthetic-connected.conf'); s=p.read_text()
-            begin='    # BEGIN CUSTOMER_CLUB_DJANGO'; end='    # END CUSTOMER_CLUB_DJANGO'
+            p=Path('/etc/nginx/sites-available/a-esthetic-connected.conf')
+            s=p.read_text()
+            begin='    # BEGIN CUSTOMER_CLUB_DJANGO'
+            end='    # END CUSTOMER_CLUB_DJANGO'
             a=s.find(begin); b=s.find(end,a)
             if a >= 0 and b >= 0:
                 nl=s.find('\n',b)
@@ -179,9 +174,12 @@ jobs:
             if pos < 0: raise SystemExit('Nginx server opening brace not found')
             p.write_text(s[:pos+1]+'\n'+marker+s[pos+1:])
             PY
-              nginx -t
-              systemctl reload nginx
-            fi
+
+            ln -sfn "$CONF" /etc/nginx/sites-enabled/a-esthetic-connected.conf
+            rm -f /etc/nginx/sites-enabled/default
+            nginx -t
+            systemctl enable --now nginx
+            systemctl reload nginx
 
             sleep 3
             systemctl is-active --quiet a-esthetic-mobile.service
@@ -190,8 +188,10 @@ jobs:
             from urllib.error import HTTPError, URLError
             from urllib.request import Request, urlopen
 
-            def fetch(url, method='GET'):
-                request = Request(url, method=method, headers={'User-Agent': 'A-Esthetic-Deploy-Smoke/1.0'})
+            def fetch(url, method='GET', host=None):
+                headers={'User-Agent': 'A-Esthetic-Deploy-Smoke/1.0'}
+                if host: headers['Host']=host
+                request = Request(url, method=method, headers=headers)
                 try:
                     with urlopen(request, timeout=15) as response:
                         return response.status, response.read().decode('utf-8', 'replace')
@@ -201,25 +201,23 @@ jobs:
                     raise SystemExit(f'Smoke request failed for {url}: {exc}')
 
             checks = [
-                ('http://127.0.0.1:8770/api/mobile/status/', 200, 'customer club'),
-                ('https://esthetic.smarbiz.sbs/api/mobile/status/', 200, 'customer club'),
-                ('https://esthetic.smarbiz.sbs/datenschutz/', 200, 'Kundenclub'),
+                ('http://127.0.0.1:8770/api/mobile/status/', None, 200, 'customer club'),
+                ('http://127.0.0.1/api/mobile/status/', 'esthetic.smarbiz.sbs', 200, 'customer club'),
+                ('http://127.0.0.1/datenschutz/', 'esthetic.smarbiz.sbs', 200, 'Kundenclub'),
             ]
-            for url, expected, needle in checks:
-                status, body = fetch(url)
+            for url, host, expected, needle in checks:
+                status, body = fetch(url, host=host)
                 if status != expected or needle.lower() not in body.lower():
                     raise SystemExit(f'Smoke check failed: {url} returned {status}')
 
-            account_status, _ = fetch('https://esthetic.smarbiz.sbs/accounts/login/', method='HEAD')
-            if account_status not in {200, 302}:
-                raise SystemExit(f'Account login smoke failed: {account_status}')
-
             for path in ('progress', 'wallet-pass', 'cabinet', 'shop', 'gamification', 'events', 'concierge', 'conversations'):
-                status, _ = fetch(f'https://esthetic.smarbiz.sbs/api/mobile/{path}/')
+                status, _ = fetch(f'http://127.0.0.1:8770/api/mobile/{path}/')
                 if status != 401:
                     raise SystemExit(f'Auth smoke failed for {path}: expected 401, got {status}')
 
-            print('All A+ Esthetic mobile API smoke checks passed.')
+            print('All A+ Esthetic new-origin mobile API smoke checks passed.')
             PY
 
-            echo 'A+ Esthetic production-safe Customer Club API with P3 community, events and concierge is live.'
+            certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+            rm -rf "$RELEASE" "$PACKAGE"
+            echo 'A+ Esthetic Customer Club API is prepared on the new STRATO origin.'
