@@ -1,0 +1,167 @@
+name: Provision SSL for recovered A+ Esthetic Book
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-book-ssl.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-book-ssl
+  cancel-in-progress: false
+
+jobs:
+  ssl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Issue Book certificate without touching A+ app services
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 20m
+          script: |
+            set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
+
+            DOMAIN="book.a-esthetic.de"
+            APP_DIR="/opt/aesthetic-book/app"
+            WEBROOT="/var/www/aesthetic-book-acme"
+            CONF="/etc/nginx/sites-available/aesthetic-book.conf"
+            BACKUP_DIR="/root/aesthetic-book-recovery-backups"
+
+            echo "=== PRECHECK ==="
+            systemctl is-active --quiet aesthetic-book.service
+            systemctl is-active --quiet a-esthetic-api.service
+            systemctl is-active --quiet a-esthetic-mobile.service
+            nginx -t
+
+            locals=" $(hostname -I) "
+            a_match=no
+            aaaa_exists=no
+            aaaa_match=no
+            while read -r ip; do
+              [ -z "$ip" ] && continue
+              if [[ "$locals" == *" $ip "* ]]; then a_match=yes; fi
+            done < <(getent ahostsv4 "$DOMAIN" | awk '{print $1}' | sort -u)
+            while read -r ip; do
+              [ -z "$ip" ] && continue
+              aaaa_exists=yes
+              if [[ "$locals" == *" $ip "* ]]; then aaaa_match=yes; fi
+            done < <(getent ahostsv6 "$DOMAIN" | awk '{print $1}' | sort -u)
+            echo "A_POINTS_HERE=$a_match"
+            echo "AAAA_EXISTS=$aaaa_exists"
+            echo "AAAA_POINTS_HERE=$aaaa_match"
+            test "$a_match" = yes
+            if [ "$aaaa_exists" = yes ] && [ "$aaaa_match" != yes ]; then
+              echo "Refusing certificate issuance: AAAA exists but does not point to this server." >&2
+              exit 42
+            fi
+
+            mkdir -p "$WEBROOT/.well-known/acme-challenge" "$BACKUP_DIR"
+            cp -a "$CONF" "$BACKUP_DIR/aesthetic-book.conf.pre-ssl.$(date +%s)"
+
+            cat > "$CONF" <<EOF
+            server {
+                listen 80;
+                listen [::]:80;
+                server_name $DOMAIN;
+                client_max_body_size 30m;
+
+                location ^~ /.well-known/acme-challenge/ {
+                    root $WEBROOT;
+                    default_type text/plain;
+                    try_files \$uri =404;
+                }
+                location / {
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                    proxy_pass http://127.0.0.1:8017;
+                }
+            }
+            EOF
+            ln -sfn "$CONF" /etc/nginx/sites-enabled/aesthetic-book.conf
+            nginx -t
+            systemctl reload nginx
+
+            echo "=== CERTBOT ==="
+            if ! command -v certbot >/dev/null 2>&1; then
+              for i in $(seq 1 24); do
+                if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/dpkg/lock >/dev/null 2>&1; then
+                  break
+                fi
+                echo "Waiting for apt lock ($i/24)"
+                sleep 5
+              done
+              apt-get update -y >/dev/null
+              apt-get install -y certbot >/dev/null
+            fi
+
+            certbot certonly --webroot -w "$WEBROOT" -d "$DOMAIN" \
+              --non-interactive --agree-tos --register-unsafely-without-email \
+              --keep-until-expiring
+
+            test -s "/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+            test -s "/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+
+            cat > "$CONF" <<EOF
+            server {
+                listen 80;
+                listen [::]:80;
+                server_name $DOMAIN;
+                location ^~ /.well-known/acme-challenge/ {
+                    root $WEBROOT;
+                    default_type text/plain;
+                    try_files \$uri =404;
+                }
+                location / { return 301 https://\$host\$request_uri; }
+            }
+
+            server {
+                listen 443 ssl;
+                listen [::]:443 ssl;
+                server_name $DOMAIN;
+                client_max_body_size 30m;
+
+                ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+                ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+                ssl_protocols TLSv1.2 TLSv1.3;
+
+                location /media/ {
+                    alias $APP_DIR/media/;
+                    access_log off;
+                    expires 1d;
+                }
+                location / {
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto https;
+                    proxy_pass http://127.0.0.1:8017;
+                }
+            }
+            EOF
+
+            nginx -t
+            systemctl reload nginx
+
+            echo "=== HTTPS SMOKE ==="
+            sleep 2
+            curl -fsS --max-time 20 "https://$DOMAIN/api/health/" | tee /tmp/book-https-health.json
+            grep -q '"ok": true' /tmp/book-https-health.json
+            curl -fsSI --max-time 20 "https://$DOMAIN/" >/tmp/book-head.txt
+
+            echo "=== EXISTING A+ APP SAFETY CHECK ==="
+            systemctl is-active --quiet a-esthetic-api.service
+            curl -fsS --max-time 15 http://127.0.0.1:8765/api/health >/tmp/aesthetic-api-health-after-book-ssl.json
+            systemctl is-active --quiet a-esthetic-mobile.service
+            curl -fsS --max-time 15 http://127.0.0.1:8770/api/mobile/status/ >/tmp/aesthetic-mobile-health-after-book-ssl.json
+
+            echo "BOOK_SSL_OK"
