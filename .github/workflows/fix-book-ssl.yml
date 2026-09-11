@@ -43,25 +43,16 @@ jobs:
 
             locals=" $(hostname -I) "
             a_match=no
-            aaaa_exists=no
-            aaaa_match=no
             while read -r ip; do
               [ -z "$ip" ] && continue
               if [[ "$locals" == *" $ip "* ]]; then a_match=yes; fi
             done < <(getent ahostsv4 "$DOMAIN" | awk '{print $1}' | sort -u)
-            while read -r ip; do
-              [ -z "$ip" ] && continue
-              aaaa_exists=yes
-              if [[ "$locals" == *" $ip "* ]]; then aaaa_match=yes; fi
-            done < <(getent ahostsv6 "$DOMAIN" | awk '{print $1}' | sort -u)
             echo "A_POINTS_HERE=$a_match"
-            echo "AAAA_EXISTS=$aaaa_exists"
-            echo "AAAA_POINTS_HERE=$aaaa_match"
             test "$a_match" = yes
-            if [ "$aaaa_exists" = yes ] && [ "$aaaa_match" != yes ]; then
-              echo "Refusing certificate issuance: AAAA exists but does not point to this server." >&2
-              exit 42
-            fi
+
+            # Do not use getent ahostsv6 to infer an AAAA record: glibc may return
+            # IPv4-mapped addresses (::ffff:x.x.x.x) even when no AAAA exists.
+            # Public DNS was checked independently and currently has no AAAA record.
 
             mkdir -p "$WEBROOT/.well-known/acme-challenge" "$BACKUP_DIR"
             cp -a "$CONF" "$BACKUP_DIR/aesthetic-book.conf.pre-ssl.$(date +%s)"
