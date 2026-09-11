@@ -1,0 +1,285 @@
+/* A+ Esthetic mobile layout v4 — global viewport/spacing normalization.
+   Loaded last so visual themes stay intact while every customer surface obeys
+   the same mobile width contract. */
+
+html,
+body,
+#app,
+.core-shell{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+}
+
+html,
+body{
+  overflow-x:hidden;
+}
+
+#app,
+.core-shell{
+  overflow-x:clip;
+}
+
+#app *,
+.core-shell *{
+  box-sizing:border-box;
+  min-width:0;
+}
+
+#app img,
+#app svg,
+#app video,
+#app canvas{
+  max-width:100%;
+}
+
+.core-header{
+  width:calc(100% - 24px)!important;
+  max-width:calc(100vw - 24px)!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+  padding-left:12px!important;
+  padding-right:12px!important;
+}
+
+.core-main{
+  width:100%!important;
+  max-width:760px!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+  padding-left:max(16px,env(safe-area-inset-left))!important;
+  padding-right:max(16px,env(safe-area-inset-right))!important;
+}
+
+.core-main > *,
+.page-head,
+.card,
+.review-cta,
+.appointment-feature,
+.appointment-row,
+.review-row,
+.referral-row,
+.record-row,
+.wallet-row,
+.wallet-hero,
+.wallet-identity-panel,
+.book-my-appointments,
+.book-flow,
+.book-embedded-canonical,
+.upload-box,
+.settings-card{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+}
+
+.grid-2,
+.slot-grid,
+.appointment-row,
+.review-row,
+.referral-row,
+.record-row,
+.wallet-row,
+.book-flow,
+.book-treatment-grid,
+.book-staff-list,
+.book-date-rail,
+.book-time-grid,
+.book-form-grid,
+.book-summary,
+.book-my-appointments,
+.record-actions,
+.section-title,
+.review-row-head,
+.record-row-head{
+  min-width:0;
+  max-width:100%;
+}
+
+.field,
+.field > *,
+.field input,
+.field select,
+.field textarea,
+input,
+select,
+textarea{
+  max-width:100%;
+  min-width:0;
+}
+
+.field input,
+.field select,
+.field textarea{
+  width:100%;
+}
+
+.page-head h1,
+.page-head p,
+.card h2,
+.card h3,
+.row-title,
+.row-sub,
+.settings-link,
+.settings-user,
+.book-step-head,
+.book-step-head h2,
+.book-step-head p,
+.book-choice-card,
+.book-choice-card *,
+.appointment-row *,
+.review-row *,
+.referral-row *,
+.record-row *{
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+
+.core-nav{
+  left:max(12px,env(safe-area-inset-left))!important;
+  right:max(12px,env(safe-area-inset-right))!important;
+  width:auto!important;
+  max-width:calc(100vw - 24px)!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+}
+
+.settings-overlay{
+  width:100vw!important;
+  max-width:100vw!important;
+  overflow-x:hidden!important;
+}
+
+.settings-card{
+  margin-left:0!important;
+  margin-right:0!important;
+  padding-left:max(18px,env(safe-area-inset-left))!important;
+  padding-right:max(18px,env(safe-area-inset-right))!important;
+}
+
+@media (max-width:760px){
+  .core-header{
+    width:calc(100% - 20px)!important;
+    max-width:calc(100vw - 20px)!important;
+    margin-top:10px!important;
+    border-radius:20px!important;
+    grid-template-columns:42px minmax(0,1fr) 42px!important;
+  }
+
+  .core-brand{
+    max-width:100%;
+    overflow:hidden;
+  }
+
+  .core-brand strong,
+  .core-brand span{
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .core-main{
+    padding-top:20px!important;
+    padding-bottom:36px!important;
+    padding-left:max(14px,env(safe-area-inset-left))!important;
+    padding-right:max(14px,env(safe-area-inset-right))!important;
+  }
+
+  .card,
+  .review-cta,
+  .appointment-feature,
+  .wallet-hero,
+  .book-flow,
+  .book-embedded-canonical .book-flow{
+    max-width:100%!important;
+    margin-left:0!important;
+    margin-right:0!important;
+  }
+
+  .grid-2,
+  .book-form-grid{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+
+  .book-flow,
+  .book-embedded-canonical .book-flow{
+    padding-left:16px!important;
+    padding-right:16px!important;
+  }
+
+  .book-progress{
+    width:100%!important;
+    max-width:100%!important;
+  }
+
+  .book-choice-card,
+  .book-staff-card,
+  .book-time-panel,
+  .book-summary{
+    max-width:100%!important;
+  }
+
+  .record-actions,
+  .review-row-head,
+  .record-row-head,
+  .section-title{
+    flex-wrap:wrap;
+  }
+
+  .core-nav{
+    left:max(10px,env(safe-area-inset-left))!important;
+    right:max(10px,env(safe-area-inset-right))!important;
+    bottom:max(8px,env(safe-area-inset-bottom))!important;
+    max-width:calc(100vw - 20px)!important;
+    border-radius:22px!important;
+  }
+
+  .nav-btn{
+    min-width:0!important;
+    overflow:hidden;
+  }
+
+  .nav-btn > span:last-child{
+    max-width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+}
+
+@media (max-width:520px){
+  .core-main{
+    padding-left:max(12px,env(safe-area-inset-left))!important;
+    padding-right:max(12px,env(safe-area-inset-right))!important;
+  }
+
+  .core-header{
+    width:calc(100% - 16px)!important;
+    max-width:calc(100vw - 16px)!important;
+    grid-template-columns:40px minmax(0,1fr) 40px!important;
+    padding-left:8px!important;
+    padding-right:8px!important;
+  }
+
+  .card{
+    padding-left:15px!important;
+    padding-right:15px!important;
+  }
+
+  .appointment-row{
+    grid-template-columns:58px minmax(0,1fr)!important;
+  }
+
+  .slot-grid,
+  .book-time-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+
+  .core-nav{
+    left:max(8px,env(safe-area-inset-left))!important;
+    right:max(8px,env(safe-area-inset-right))!important;
+    max-width:calc(100vw - 16px)!important;
+    padding-left:5px!important;
+    padding-right:5px!important;
+  }
+}
