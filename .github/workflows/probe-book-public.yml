@@ -1,0 +1,47 @@
+name: Probe A+ Esthetic Book public routing
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/probe-book-public.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check DNS, TLS and app bridge without changes
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            DOMAIN=book.a-esthetic.de
+            resolved4="$(getent ahostsv4 "$DOMAIN" | awk 'NR==1{print $1}' || true)"
+            resolved6="$(getent ahostsv6 "$DOMAIN" | awk 'NR==1{print $1}' || true)"
+            locals=" $(hostname -I) "
+            echo "DNS_HAS_IPV4=$([ -n "$resolved4" ] && echo yes || echo no)"
+            echo "DNS_HAS_IPV6=$([ -n "$resolved6" ] && echo yes || echo no)"
+            if { [ -n "$resolved4" ] && [[ "$locals" == *" $resolved4 "* ]]; } || { [ -n "$resolved6" ] && [[ "$locals" == *" $resolved6 "* ]]; }; then
+              echo "DNS_POINTS_TO_THIS_SERVER=yes"
+            else
+              echo "DNS_POINTS_TO_THIS_SERVER=no"
+            fi
+            http="$(curl -sS --max-time 20 -o /tmp/book-public.json -w '%{http_code}' "https://$DOMAIN/api/health/" || true)"
+            echo "PUBLIC_HTTPS_STATUS=$http"
+            if [ "$http" = 200 ] && grep -q '"ok": true' /tmp/book-public.json; then
+              echo "PUBLIC_BOOK_OK=yes"
+            else
+              echo "PUBLIC_BOOK_OK=no"
+            fi
+            systemctl is-active --quiet aesthetic-book.service
+            systemctl is-active --quiet a-esthetic-api.service
+            systemctl is-active --quiet a-esthetic-mobile.service
+            echo "EXISTING_APP_SERVICES_OK=yes"
