@@ -94,7 +94,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           port: ${{ secrets.SERVER_PORT }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 15m
+          command_timeout: 20m
           script: |
             set -euo pipefail
             export DEBIAN_FRONTEND=noninteractive
@@ -103,6 +103,18 @@ jobs:
             PACKAGE="/tmp/customer-club-web.tar.gz"
             DOMAIN="esthetic.smarbiz.sbs"
             CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
+
+            for attempt in $(seq 1 120); do
+              if ! pgrep -x apt-get >/dev/null && ! pgrep -x apt >/dev/null && ! pgrep -x dpkg >/dev/null && ! pgrep -f unattended-upgrade >/dev/null; then
+                break
+              fi
+              echo "Waiting for another package operation ($attempt/120)..."
+              sleep 5
+            done
+            if pgrep -x apt-get >/dev/null || pgrep -x apt >/dev/null || pgrep -x dpkg >/dev/null || pgrep -f unattended-upgrade >/dev/null; then
+              echo "Package manager remained busy for 10 minutes"
+              exit 1
+            fi
 
             apt-get update -y
             apt-get install -y nginx curl ca-certificates certbot python3-certbot-nginx
@@ -157,9 +169,6 @@ jobs:
             grep -q 'mobile-polish.js' /tmp/aesthetic-focused-local-index.html
 
             certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
-
-            # If DNS still points at the old server these checks validate continuity there;
-            # the local Host-header checks above validate this new origin itself.
             curl -fsS --max-time 20 "https://$DOMAIN/?release=20260911-strato" -o /tmp/aesthetic-focused-index.html || true
 
             echo "Focused A+ patient app prepared on new STRATO origin for $DOMAIN"
