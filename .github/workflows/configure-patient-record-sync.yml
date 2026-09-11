@@ -24,23 +24,24 @@ jobs:
       - name: Configure secure cross-service patient record bridge
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.HOST }}
-          username: root
-          password: ${{ secrets.PASS }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 10m
           script: |
             set -euo pipefail
             ROOT="/opt/a-esthetic-mobile"
+            VENV="$ROOT/venv"
             ENV_FILE="$ROOT/mobile.env"
             TOKEN_FILE="/etc/aesthetic-patient-sync.token"
             SYNC_URL="https://book.a-esthetic.de/api/internal/patient-records/ingest/"
             PORTAL_URL="https://book.a-esthetic.de/api/internal/patient-records/portal/list/"
 
             test -f "$ENV_FILE"
+            test -x "$VENV/bin/python"
             test -f "$ROOT/manage.py"
 
-            # Book and Customer Club run as separate services on the production
-            # host. Use a server-only random token instead of depending on proxy IPs.
             if [ ! -s "$TOKEN_FILE" ]; then
               umask 0077
               openssl rand -hex 48 > "$TOKEN_FILE"
@@ -65,14 +66,13 @@ jobs:
             cat > /etc/systemd/system/a-esthetic-patient-record-sync.service <<EOF
             [Unit]
             Description=A+Esthetic consent to patient record synchronization
-            After=network.target a-esthetic-mobile.service
+            After=network.target a-esthetic-mobile.service aesthetic-book.service
 
             [Service]
             Type=oneshot
             WorkingDirectory=$ROOT
             EnvironmentFile=$ENV_FILE
-            Environment=PYTHONPATH=$ROOT/vendor
-            ExecStart=/usr/bin/python3 $ROOT/manage.py sync_patient_records --limit 1000
+            ExecStart=$VENV/bin/python $ROOT/manage.py sync_patient_records --limit 1000
             PrivateTmp=true
             NoNewPrivileges=true
             EOF
@@ -100,7 +100,7 @@ jobs:
 
             PORTAL_CODE="$(curl -sS -o /tmp/patient-portal-smoke.json -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-Aesthetic-Patient-Sync: $TOKEN" --data '{"email":"","phone":""}' "$PORTAL_URL")"
             test "$PORTAL_CODE" = "200"
-            python3 - <<'PY'
+            "$VENV/bin/python" - <<'PY'
             import json
             with open('/tmp/patient-portal-smoke.json', encoding='utf-8') as handle:
                 payload = json.load(handle)
@@ -108,12 +108,9 @@ jobs:
             assert payload.get('patient_found') is False, payload
             PY
 
-            set -a
-            . "$ENV_FILE"
-            set +a
-            export PYTHONPATH="$ROOT/vendor"
+            set -a; . "$ENV_FILE"; set +a
             cd "$ROOT"
-            python3 manage.py sync_patient_records --limit 1000
+            "$VENV/bin/python" manage.py sync_patient_records --limit 1000
             systemctl is-active --quiet a-esthetic-mobile.service
             systemctl is-active --quiet a-esthetic-patient-record-sync.timer
             echo "A+Esthetic patient record synchronization and customer portal bridge configured."
