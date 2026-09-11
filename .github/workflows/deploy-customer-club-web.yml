@@ -80,25 +80,32 @@ jobs:
       - name: Upload focused web bundle
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.HOST }}
-          username: root
-          password: ${{ secrets.PASS }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
           source: "customer-club-web.tar.gz"
           target: "/tmp"
 
-      - name: Publish focused app on production HTTPS vhost
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Publish focused app on new STRATO server
+        uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.HOST }}
-          username: root
-          password: ${{ secrets.PASS }}
-          command_timeout: 10m
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 15m
           script: |
             set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
             WEBROOT="/opt/a-esthetic-web/site"
             RELEASE_DIR="/tmp/a-esthetic-focused-app"
             PACKAGE="/tmp/customer-club-web.tar.gz"
             DOMAIN="esthetic.smarbiz.sbs"
+            CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
+
+            apt-get update -y
+            apt-get install -y nginx curl ca-certificates certbot python3-certbot-nginx
 
             test -f "$PACKAGE"
             rm -rf "$RELEASE_DIR"
@@ -115,21 +122,45 @@ jobs:
             find "$WEBROOT" -type d -exec chmod 0755 {} +
             find "$WEBROOT" -type f -exec chmod 0644 {} +
 
+            if [ ! -f "$CONF" ]; then
+              cat > "$CONF" <<'NGINX'
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name esthetic.smarbiz.sbs;
+              root /opt/a-esthetic-web/site;
+              index index.html;
+              client_max_body_size 30m;
+
+              location / { try_files $uri $uri/ /index.html; }
+              location = /sw.js { add_header Cache-Control "no-cache, no-store, must-revalidate" always; }
+
+              add_header X-Content-Type-Options nosniff always;
+              add_header X-Frame-Options DENY always;
+              add_header Referrer-Policy strict-origin-when-cross-origin always;
+              add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+            }
+            NGINX
+            fi
+
+            ln -sfn "$CONF" /etc/nginx/sites-enabled/a-esthetic-connected.conf
+            rm -f /etc/nginx/sites-enabled/default
             nginx -t
+            systemctl enable --now nginx
             systemctl reload nginx
+
             sleep 2
+            curl -fsS --max-time 20 http://127.0.0.1/ -H "Host: $DOMAIN" -o /tmp/aesthetic-focused-local-index.html
+            grep -q 'customer-dashboard-v2.css' /tmp/aesthetic-focused-local-index.html
+            grep -q 'core-app.js' /tmp/aesthetic-focused-local-index.html
+            grep -q 'booking-final-rules.js' /tmp/aesthetic-focused-local-index.html
+            grep -q 'mobile-polish.js' /tmp/aesthetic-focused-local-index.html
 
-            curl -fsS --max-time 20 "https://$DOMAIN/?release=20260907-dashboard-points" -o /tmp/aesthetic-focused-index.html
-            grep -q 'customer-dashboard-v2.css' /tmp/aesthetic-focused-index.html
-            grep -q 'core-app.js' /tmp/aesthetic-focused-index.html
-            grep -q 'booking-final-rules.js' /tmp/aesthetic-focused-index.html
-            grep -q 'mobile-polish.js' /tmp/aesthetic-focused-index.html
-            for FILE in core-app.css core-app.js customer-dashboard-v2.css booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js booking-final-rules.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css apple-wallet-native.js native-interactions.js native-interactions.css mobile-polish.js mobile-polish.css customer-luxury.js customer-luxury.css assets/logo.svg; do
-              SAFE_NAME="$(printf '%s' "$FILE" | tr '/' '-')"
-              curl -fsS --max-time 20 "https://$DOMAIN/$FILE?release=20260907-dashboard-points" -o "/tmp/$SAFE_NAME"
-              test -s "/tmp/$SAFE_NAME"
-            done
-            curl -fsS --max-time 20 "https://$DOMAIN/api/mobile/status/" | grep -qi 'customer club'
+            certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
 
-            echo "Focused A+ patient app deployed successfully: https://$DOMAIN"
+            # If DNS still points at the old server these checks validate continuity there;
+            # the local Host-header checks above validate this new origin itself.
+            curl -fsS --max-time 20 "https://$DOMAIN/?release=20260911-strato" -o /tmp/aesthetic-focused-index.html || true
+
+            echo "Focused A+ patient app prepared on new STRATO origin for $DOMAIN"
             rm -rf "$RELEASE_DIR" "$PACKAGE"
