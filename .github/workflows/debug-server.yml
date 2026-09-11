@@ -60,6 +60,23 @@ jobs:
             else:
                 print('GOOGLE_WALLET_CONFIG=not_configured')
             PY
+
+            # Provider credential verification uses deliberately invalid device tokens,
+            # so no real customer device receives a notification.
+            "$VENV/bin/python" manage.py shell -c "from p0_app.push import _android_push; import sys; 
+            try: _android_push('invalid-audit-token','Audit','Audit',{})
+            except Exception as exc:
+                msg=str(exc); print('FCM_PROVIDER_RESPONSE='+msg[:120]);
+                sys.exit(0 if ('fcm_http_400' in msg or 'fcm_http_404' in msg) else 1)
+            else: print('FCM_PROVIDER_RESPONSE=unexpected_success')"
+            "$VENV/bin/python" manage.py shell -c "from p0_app.push import _ios_push; import sys; 
+            try: _ios_push('0'*64,'Audit','Audit',{})
+            except Exception as exc:
+                msg=str(exc); print('APNS_PROVIDER_RESPONSE='+msg[:120]);
+                sys.exit(0 if ('apns_http_400' in msg or 'apns_http_410' in msg) else 1)
+            else: print('APNS_PROVIDER_RESPONSE=unexpected_success')"
+            echo 'PUSH_PROVIDER_AUTH=success'
+
             test -s /etc/aesthetic-patient-sync.token
             "$VENV/bin/python" manage.py sync_patient_records --limit 1000
             echo 'PATIENT_RECORD_SYNC=success'
