@@ -1,6 +1,6 @@
 Django==5.2.4
 gunicorn==23.0.0
-psycopg[binary]==3.2.9
+psycopg[binary]==3.2.13
 whitenoise==6.9.0
 qrcode[pil]==8.2
 django-allauth[socialaccount,mfa]==65.18.0
