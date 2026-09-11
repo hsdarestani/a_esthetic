@@ -1,0 +1,271 @@
+name: Recover A+ Esthetic Book on app server
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/recover-book-on-app-server.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-book-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recover booking service without touching app services
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: root
+          password: ${{ secrets.PASS }}
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
+
+            DOMAIN="book.a-esthetic.de"
+            APP_ROOT="/opt/aesthetic-book"
+            APP_DIR="$APP_ROOT/app"
+            VENV="$APP_ROOT/venv"
+            ENV_FILE="/etc/aesthetic-book.env"
+            SERVICE="aesthetic-book"
+            PATIENT_FILES="$APP_ROOT/private/patient-files"
+            BACKUP_DIR="/root/aesthetic-book-recovery-backups"
+
+            echo "=== PRE-FLIGHT: preserve existing A+ app ==="
+            mkdir -p "$BACKUP_DIR"
+            date -Is | tee "$BACKUP_DIR/recovery-started-at.txt"
+            hostname -I | tee "$BACKUP_DIR/server-ips.txt"
+            systemctl is-active a-esthetic-api.service 2>/dev/null || true
+            systemctl is-active a-esthetic-mobile.service 2>/dev/null || true
+            if [ -f /etc/caddy/Caddyfile ]; then
+              cp -a /etc/caddy/Caddyfile "$BACKUP_DIR/Caddyfile.before-book.$(date +%s)"
+            fi
+            if [ -d /etc/nginx ]; then
+              tar -czf "$BACKUP_DIR/nginx.before-book.$(date +%s).tar.gz" /etc/nginx 2>/dev/null || true
+            fi
+
+            echo "=== INSTALL BOOK DEPENDENCIES ==="
+            apt-get update -y >/dev/null
+            apt-get install -y git python3 python3-venv python3-pip postgresql postgresql-contrib curl openssl >/dev/null
+
+            if ! getent group aestheticbook >/dev/null 2>&1; then
+              groupadd --system aestheticbook
+            fi
+            if ! id aestheticbook >/dev/null 2>&1; then
+              useradd --system --gid aestheticbook --create-home --home-dir "$APP_ROOT" --shell /usr/sbin/nologin aestheticbook
+            fi
+
+            mkdir -p "$APP_ROOT" "$PATIENT_FILES"
+            if [ ! -d "$APP_DIR/.git" ]; then
+              rm -rf "$APP_DIR"
+              git clone https://github.com/hsdarestani/book.git "$APP_DIR"
+            else
+              git config --global --add safe.directory "$APP_DIR" || true
+              git -C "$APP_DIR" fetch origin main
+              git -C "$APP_DIR" reset --hard origin/main
+            fi
+
+            if [ ! -x "$VENV/bin/python" ]; then
+              python3 -m venv "$VENV"
+            fi
+            "$VENV/bin/pip" install --upgrade pip >/dev/null
+            "$VENV/bin/pip" install -r "$APP_DIR/requirements.txt" >/dev/null
+
+            echo "=== POSTGRESQL: isolated booking database ==="
+            systemctl enable --now postgresql >/dev/null 2>&1 || true
+            if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='aestheticbook'" | grep -q 1; then
+              runuser -u postgres -- createuser aestheticbook
+            fi
+            if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='aestheticbook'" | grep -q 1; then
+              runuser -u postgres -- createdb -O aestheticbook aestheticbook
+            fi
+
+            SECRET_KEY=""
+            if [ -f "$ENV_FILE" ]; then
+              cp -a "$ENV_FILE" "$BACKUP_DIR/aesthetic-book.env.before.$(date +%s)"
+              SECRET_KEY="$(sed -n 's/^DJANGO_SECRET_KEY=//p' "$ENV_FILE" | head -n1 | tr -d "'\"")"
+            fi
+            if [ -z "$SECRET_KEY" ]; then
+              SECRET_KEY="$(openssl rand -hex 32)"
+            fi
+
+            # Preserve any existing mail/sync settings if this server already had them.
+            EXISTING_EMAIL_HOST="$(test -f "$ENV_FILE" && sed -n 's/^EMAIL_HOST=//p' "$ENV_FILE" | head -n1 || true)"
+            EXISTING_EMAIL_PORT="$(test -f "$ENV_FILE" && sed -n 's/^EMAIL_PORT=//p' "$ENV_FILE" | head -n1 || true)"
+            EXISTING_EMAIL_USER="$(test -f "$ENV_FILE" && sed -n 's/^EMAIL_HOST_USER=//p' "$ENV_FILE" | head -n1 || true)"
+            EXISTING_EMAIL_PASS_B64="$(test -f "$ENV_FILE" && sed -n 's/^EMAIL_HOST_PASSWORD_B64=//p' "$ENV_FILE" | head -n1 || true)"
+            EXISTING_EMAIL_SSL="$(test -f "$ENV_FILE" && sed -n 's/^EMAIL_USE_SSL=//p' "$ENV_FILE" | head -n1 || true)"
+            EXISTING_EMAIL_TLS="$(test -f "$ENV_FILE" && sed -n 's/^EMAIL_USE_TLS=//p' "$ENV_FILE" | head -n1 || true)"
+            EXISTING_NOTIFY="$(test -f "$ENV_FILE" && sed -n 's/^BOOKING_NOTIFICATION_EMAIL=//p' "$ENV_FILE" | head -n1 || true)"
+            EXISTING_FROM="$(test -f "$ENV_FILE" && sed -n 's/^DEFAULT_FROM_EMAIL=//p' "$ENV_FILE" | head -n1 || true)"
+            EXISTING_SYNC_TOKEN="$(test -f "$ENV_FILE" && sed -n 's/^PATIENT_SYNC_TOKEN=//p' "$ENV_FILE" | head -n1 || true)"
+
+            cat > "$ENV_FILE" <<EOF
+            DJANGO_SECRET_KEY=$SECRET_KEY
+            DJANGO_DEBUG=0
+            DJANGO_ALLOWED_HOSTS=$DOMAIN,127.0.0.1,localhost
+            DJANGO_CSRF_TRUSTED_ORIGINS=https://$DOMAIN
+            DB_ENGINE=postgresql
+            DB_NAME=aestheticbook
+            DB_USER=aestheticbook
+            DB_PASSWORD=
+            DB_HOST=
+            DB_PORT=
+            PATIENT_FILES_ROOT=$PATIENT_FILES
+            PATIENT_FILE_MAX_BYTES=26214400
+            BOOKING_NOTIFICATION_EMAIL=$EXISTING_NOTIFY
+            DEFAULT_FROM_EMAIL=${EXISTING_FROM:-A+ Esthetic <termin@a-esthetic.de>}
+            EMAIL_HOST=$EXISTING_EMAIL_HOST
+            EMAIL_PORT=${EXISTING_EMAIL_PORT:-465}
+            EMAIL_HOST_USER=$EXISTING_EMAIL_USER
+            EMAIL_HOST_PASSWORD_B64=$EXISTING_EMAIL_PASS_B64
+            EMAIL_USE_SSL=${EXISTING_EMAIL_SSL:-1}
+            EMAIL_USE_TLS=${EXISTING_EMAIL_TLS:-0}
+            EMAIL_TIMEOUT=15
+            PATIENT_SYNC_TOKEN=$EXISTING_SYNC_TOKEN
+            PATIENT_SYNC_ALLOWED_HOSTS=esthetic.smarbiz.sbs
+            EOF
+            chown root:aestheticbook "$ENV_FILE"
+            chmod 0640 "$ENV_FILE"
+
+            chown -R aestheticbook:aestheticbook "$APP_ROOT"
+            chmod 0750 "$APP_ROOT/private" "$PATIENT_FILES"
+
+            echo "=== DJANGO MIGRATE + SAFE SEED ==="
+            cd "$APP_DIR"
+            runuser -u aestheticbook -- bash -c "set -a; source '$ENV_FILE'; set +a; '$VENV/bin/python' manage.py check"
+            runuser -u aestheticbook -- bash -c "set -a; source '$ENV_FILE'; set +a; '$VENV/bin/python' manage.py migrate --noinput"
+            runuser -u aestheticbook -- bash -c "set -a; source '$ENV_FILE'; set +a; '$VENV/bin/python' manage.py collectstatic --noinput"
+            runuser -u aestheticbook -- bash -c "set -a; source '$ENV_FILE'; set +a; '$VENV/bin/python' manage.py seed_booking"
+            mkdir -p "$APP_DIR/media"
+            chown -R aestheticbook:aestheticbook "$APP_DIR/media" "$APP_DIR/staticfiles" "$PATIENT_FILES"
+
+            if ! runuser -u aestheticbook -- bash -c "set -a; source '$ENV_FILE'; set +a; '$VENV/bin/python' manage.py shell -c \"from django.contrib.auth import get_user_model; U=get_user_model(); raise SystemExit(0 if U.objects.filter(username='admin').exists() else 1)\""; then
+              ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -d '=+/\n' | head -c 24)Aa9!"
+              export ADMIN_PASSWORD
+              runuser -u aestheticbook --preserve-environment -- bash -c "set -a; source '$ENV_FILE'; set +a; '$VENV/bin/python' manage.py shell -c \"import os; from django.contrib.auth import get_user_model; U=get_user_model(); u=U.objects.create_superuser('admin','admin@a-esthetic.de',os.environ['ADMIN_PASSWORD']); print('created local fallback admin')\""
+              printf 'Benutzer: admin\nPasswort: %s\nURL: https://%s/verwaltung/\n' "$ADMIN_PASSWORD" "$DOMAIN" > /root/aesthetic-book-admin.txt
+              chmod 0600 /root/aesthetic-book-admin.txt
+            fi
+
+            cat > /etc/systemd/system/${SERVICE}.service <<EOF
+            [Unit]
+            Description=A+ Esthetic Booking
+            After=network.target postgresql.service
+
+            [Service]
+            User=aestheticbook
+            Group=aestheticbook
+            WorkingDirectory=$APP_DIR
+            EnvironmentFile=$ENV_FILE
+            ExecStart=$VENV/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8017 --workers 3 --timeout 60 --access-logfile - --error-logfile -
+            Restart=always
+            RestartSec=3
+            PrivateTmp=true
+            NoNewPrivileges=true
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+            systemctl daemon-reload
+            systemctl enable "$SERVICE" >/dev/null
+            systemctl restart "$SERVICE"
+
+            echo "=== REVERSE PROXY: add BOOK block only ==="
+            if command -v caddy >/dev/null 2>&1 && systemctl is-active --quiet caddy; then
+              CADDYFILE="/etc/caddy/Caddyfile"
+              awk '
+                /^# BEGIN AESTHETIC_BOOK$/ {skip=1; next}
+                /^# END AESTHETIC_BOOK$/ {skip=0; next}
+                !skip {print}
+              ' "$CADDYFILE" > /tmp/Caddyfile.aesthetic-book
+              cat >> /tmp/Caddyfile.aesthetic-book <<EOF
+            # BEGIN AESTHETIC_BOOK
+            $DOMAIN {
+                encode zstd gzip
+                handle_path /media/* {
+                    root * $APP_DIR/media
+                    file_server
+                }
+                reverse_proxy 127.0.0.1:8017
+                header {
+                    X-Content-Type-Options nosniff
+                    X-Frame-Options DENY
+                    Referrer-Policy strict-origin-when-cross-origin
+                }
+            }
+            # END AESTHETIC_BOOK
+            EOF
+              caddy validate --config /tmp/Caddyfile.aesthetic-book
+              mv /tmp/Caddyfile.aesthetic-book "$CADDYFILE"
+              systemctl reload caddy
+            else
+              apt-get install -y nginx >/dev/null
+              cat > /etc/nginx/sites-available/aesthetic-book.conf <<EOF
+            server {
+                listen 80;
+                listen [::]:80;
+                server_name $DOMAIN;
+                client_max_body_size 30m;
+
+                location /media/ {
+                    alias $APP_DIR/media/;
+                    access_log off;
+                    expires 1d;
+                }
+                location / {
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                    proxy_pass http://127.0.0.1:8017;
+                }
+            }
+            EOF
+              ln -sfn /etc/nginx/sites-available/aesthetic-book.conf /etc/nginx/sites-enabled/aesthetic-book.conf
+              nginx -t
+              systemctl reload nginx
+            fi
+
+            echo "=== OPTIONAL SIMPLYBOOK RESTORE ==="
+            SIMPLY_ENV=""
+            for candidate in /etc/aesthetic-book-simplybook.env /root/aesthetic-book-simplybook.env "$APP_ROOT/private/simplybook.env"; do
+              if [ -f "$candidate" ]; then SIMPLY_ENV="$candidate"; break; fi
+            done
+            if [ -n "$SIMPLY_ENV" ]; then
+              echo "Found existing SimplyBook credentials on server; importing."
+              BACKUP="$APP_ROOT/private/simplybook-backup-$(date +%Y%m%d-%H%M%S).json"
+              runuser -u aestheticbook -- bash -c "set -a; source '$ENV_FILE'; source '$SIMPLY_ENV'; set +a; '$VENV/bin/python' manage.py simplybook_import --backup '$BACKUP'; '$VENV/bin/python' manage.py fix_simplybook_owner; '$VENV/bin/python' manage.py sync_simplybook_notes; '$VENV/bin/python' manage.py list_simplybook_note_dates"
+              chmod 0600 "$BACKUP" || true
+            else
+              echo "SIMPLYBOOK_IMPORT_SKIPPED=no_credentials_on_current_server"
+            fi
+
+            echo "=== LOCAL BOOK SMOKE ==="
+            sleep 4
+            systemctl is-active --quiet "$SERVICE"
+            curl -fsS --max-time 15 http://127.0.0.1:8017/api/health/ | tee /tmp/aesthetic-book-health.json
+            grep -q '"ok": true' /tmp/aesthetic-book-health.json
+            curl -fsS --max-time 15 -H "Host: $DOMAIN" http://127.0.0.1/api/health/ >/tmp/aesthetic-book-proxy-health.json || true
+
+            echo "=== VERIFY EXISTING A+ SERVICES WERE NOT BROKEN ==="
+            if systemctl list-unit-files | grep -q '^a-esthetic-api.service'; then
+              systemctl is-active --quiet a-esthetic-api.service
+              curl -fsS --max-time 15 http://127.0.0.1:8765/api/health >/tmp/aesthetic-api-health.json
+            fi
+            if systemctl list-unit-files | grep -q '^a-esthetic-mobile.service'; then
+              systemctl is-active --quiet a-esthetic-mobile.service
+              curl -fsS --max-time 15 http://127.0.0.1:8770/api/mobile/status/ >/tmp/aesthetic-mobile-health.json
+            fi
+
+            echo "BOOK_RECOVERY_OK"
+            echo "Server IPs: $(hostname -I)"
+            echo "Book local: http://127.0.0.1:8017/api/health/"
+            echo "Public target: https://$DOMAIN/"
