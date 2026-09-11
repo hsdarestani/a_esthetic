@@ -74,17 +74,20 @@ jobs:
               echo 'APPLE_SOCIAL_LOGIN=hidden'
             fi
 
-            # The customer surface intentionally contains no Google Wallet control while
-            # that provider is unconfigured. Apple Wallet stays visible only when ready.
-            grep -q "booking-direct-api.js" "$ROOT/www/index.html"
-            grep -q "BOOKING_API_BASE = 'https://book.a-esthetic.de/api/mobile'" "$ROOT/www/booking-direct-api.js"
+            # Audit the actual web bundle customers receive, not the backend checkout.
+            curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/ -o /tmp/aplus-index.html
+            curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/booking-direct-api.js -o /tmp/aplus-booking-direct-api.js
+            curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/core-app.js -o /tmp/aplus-core-app.js
+            grep -q "booking-direct-api.js" /tmp/aplus-index.html
+            grep -q "BOOKING_API_BASE = 'https://book.a-esthetic.de/api/mobile'" /tmp/aplus-booking-direct-api.js
             if [ -z "${GOOGLE_WALLET_ISSUER_ID:-}" ] || [ -z "${GOOGLE_WALLET_SERVICE_ACCOUNT_JSON:-}" ]; then
-              if grep -q 'data-wallet-provider="google"' "$ROOT/www/core-app.js"; then
+              if grep -q 'data-wallet-provider="google"' /tmp/aplus-core-app.js; then
                 echo 'Unconfigured Google Wallet control is visible' >&2
                 exit 21
               fi
               echo 'GOOGLE_WALLET_UI=hidden'
             fi
+            echo 'LIVE_CUSTOMER_WEB_BUNDLE=success'
 
             echo '=== authenticated visible-feature smoke ==='
             TOKEN="$($VENV/bin/python manage.py shell -c "from django.contrib.auth import get_user_model; from platform_app.mobile_api import _token_for; U=get_user_model(); u=U.objects.filter(is_active=True,is_staff=False,member_account__status='active').order_by('pk').first(); assert u is not None, 'No active customer account for smoke test'; print(_token_for(u))" | tail -n 1)"
