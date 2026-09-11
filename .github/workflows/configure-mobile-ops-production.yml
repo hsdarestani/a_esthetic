@@ -25,7 +25,6 @@ jobs:
           APNS_PRIVATE_KEY_B64: ${{ secrets.APNS_PRIVATE_KEY_B64 }}
         run: |
           set -euo pipefail
-          umask 077
           : > aesthetic-push-secrets.env
 
           if [ -n "${FCM_B64:-}" ]; then
@@ -54,6 +53,10 @@ jobs:
             echo 'REPOSITORY_APNS_SECRET=missing'
           fi
 
+          # scp-action runs inside a container, so the ephemeral bundle must be
+          # readable by that container. It is deleted from the server after install.
+          chmod 0644 aesthetic-push-secrets.env
+
       - name: Upload push provider secrets to new STRATO server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -79,6 +82,7 @@ jobs:
             test -s "$MOBILE_ENV"
 
             if [ -s "$BUNDLE" ]; then
+              chmod 0600 "$BUNDLE"
               sed -i '/^FIREBASE_SERVICE_ACCOUNT_JSON=/d;/^FIREBASE_SERVICE_ACCOUNT_B64=/d;/^APNS_KEY_ID=/d;/^APNS_TEAM_ID=/d;/^APNS_PRIVATE_KEY=/d;/^APNS_PRIVATE_KEY_BASE64=/d;/^APNS_PRIVATE_KEY_B64=/d;/^APNS_USE_SANDBOX=/d;/^APNS_ENV=/d;/^APNS_BUNDLE_ID=/d' "$MOBILE_ENV"
               cat "$BUNDLE" >> "$MOBILE_ENV"
               chmod 600 "$MOBILE_ENV"
