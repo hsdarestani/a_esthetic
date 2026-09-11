@@ -90,7 +90,7 @@ jobs:
             http="$(curl -sS --max-time 30 -o /tmp/recovered-book-sso.json -w '%{http_code}' \
               -c /tmp/recovered-book.cookies -b /tmp/recovered-book.cookies -X POST \
               -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Accept: application/json' \
-              "$BOOK/verwaltung/app-sso/)"
+              "$BOOK/verwaltung/app-sso/" || true)"
             test "$http" = 200
             python3 - <<'PY'
             import json
