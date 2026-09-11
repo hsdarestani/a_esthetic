@@ -8,42 +8,62 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Test SSH and inspect server
-        id: ssh
-        continue-on-error: true
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Audit new STRATO runtime
+        uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.HOST }}
-          username: root
-          password: ${{ secrets.PASS }}
-          command_timeout: 5m
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 10m
           script: |
-            set -eu
-            echo "SSH_OK"
-            uname -a
-            printf 'caddy='; command -v caddy || true
-            printf 'nginx='; command -v nginx || true
-            printf 'apache='; command -v apache2 || true
-            mkdir -p /opt/a-esthetic-web/site
-            test -w /opt/a-esthetic-web/site
-
-      - name: Record diagnostic result
-        if: always()
-        env:
-          SSH_OUTCOME: ${{ steps.ssh.outcome }}
-          RUN_SHA: ${{ github.sha }}
-        run: |
-          printf '{\n  "ssh": "%s",\n  "commit": "%s",\n  "recorded_at": "%s"\n}\n' "$SSH_OUTCOME" "$RUN_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > server-diagnostic.json
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server-diagnostic.json
-          git commit -m "chore: record server diagnostic" || exit 0
-          git push
+            set -euo pipefail
+            ROOT=/opt/a-esthetic-mobile
+            VENV="$ROOT/venv"
+            ENV_FILE="$ROOT/mobile.env"
+            test -x "$VENV/bin/python"
+            test -s "$ENV_FILE"
+            systemctl is-active --quiet a-esthetic-mobile.service
+            systemctl is-active --quiet a-esthetic-patient-record-sync.timer
+            nginx -t
+            cd "$ROOT"
+            set -a
+            . "$ENV_FILE"
+            set +a
+            "$VENV/bin/python" manage.py check
+            "$VENV/bin/python" manage.py shell -c "from p0_app.push import push_configuration; from p2_app.passes import wallet_provider_status; import json,os; print('PUSH_CONFIGURATION='+json.dumps(push_configuration(),sort_keys=True)); print('WALLET_CONFIGURATION='+json.dumps(wallet_provider_status(),sort_keys=True)); print('GOOGLE_LOGIN_CONFIGURED='+str(bool(os.environ.get('GOOGLE_CLIENT_ID') and os.environ.get('GOOGLE_CLIENT_SECRET')))); print('APPLE_LOGIN_CONFIGURED='+str(bool(os.environ.get('APPLE_CLIENT_ID') and os.environ.get('APPLE_PRIVATE_KEY') and os.environ.get('APPLE_KEY_ID') and os.environ.get('APPLE_TEAM_ID'))))"
+            "$VENV/bin/python" - <<'PY'
+            import json, os
+            from pathlib import Path
+            path_keys=['APPLE_PASS_CERT_PATH','APPLE_PASS_KEY_PATH','APPLE_WWDR_CERT_PATH']
+            apple_required=['APPLE_PASS_TYPE_ID','APPLE_TEAM_ID',*path_keys]
+            if all((os.environ.get(k) or '').strip() for k in apple_required):
+                missing=[k for k in path_keys if not Path(os.environ[k]).is_file()]
+                if missing:
+                    raise SystemExit('APPLE_WALLET_FILES_MISSING='+','.join(missing))
+                print('APPLE_WALLET_FILES=present')
+            else:
+                print('APPLE_WALLET_FILES=not_configured')
+            raw=(os.environ.get('GOOGLE_WALLET_SERVICE_ACCOUNT_JSON') or '').strip()
+            issuer=(os.environ.get('GOOGLE_WALLET_ISSUER_ID') or '').strip()
+            if raw and issuer:
+                info=json.loads(raw)
+                if not info.get('client_email') or not info.get('private_key'):
+                    raise SystemExit('GOOGLE_WALLET_CONFIG=invalid')
+                print('GOOGLE_WALLET_CONFIG=valid')
+            else:
+                print('GOOGLE_WALLET_CONFIG=not_configured')
+            PY
+            test -s /etc/aesthetic-patient-sync.token
+            "$VENV/bin/python" manage.py sync_patient_records --limit 1000
+            echo 'PATIENT_RECORD_SYNC=success'
+            curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ | grep -qi 'customer club'
+            curl -fsS --max-time 20 https://book.a-esthetic.de/api/health/ | grep -q '"ok"'
+            echo 'PUBLIC_ENDPOINTS=success'
+            echo 'AESTHETIC_RUNTIME_AUDIT=PASS'
