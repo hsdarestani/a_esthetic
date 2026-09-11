@@ -27,18 +27,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
-      - name: Build self-contained deployment bundle
+      - name: Build deployment bundle
         run: |
           set -euo pipefail
           rm -rf /tmp/aesthetic-mobile-package
-          mkdir -p /tmp/aesthetic-mobile-package/vendor
-          python -m pip install --quiet --target /tmp/aesthetic-mobile-package/vendor -r requirements.txt
+          mkdir -p /tmp/aesthetic-mobile-package
           cp -a config platform_app p0_app p1_app p2_app p3_app templates static /tmp/aesthetic-mobile-package/
-          cp manage.py /tmp/aesthetic-mobile-package/
+          cp manage.py requirements.txt /tmp/aesthetic-mobile-package/
           tar -C /tmp/aesthetic-mobile-package -czf a-esthetic-mobile-package.tar.gz .
 
       - name: Upload deployment bundle
@@ -63,6 +59,7 @@ jobs:
             set -euo pipefail
             export DEBIAN_FRONTEND=noninteractive
             ROOT="/opt/a-esthetic-mobile"
+            VENV="$ROOT/venv"
             RELEASE="/tmp/a-esthetic-mobile-release"
             ENV_FILE="$ROOT/mobile.env"
             PACKAGE="/tmp/a-esthetic-mobile-package.tar.gz"
@@ -70,15 +67,34 @@ jobs:
             WEBROOT="/opt/a-esthetic-web/site"
             CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
 
+            for attempt in $(seq 1 120); do
+              if ! pgrep -x apt-get >/dev/null && ! pgrep -x apt >/dev/null && ! pgrep -x dpkg >/dev/null && ! pgrep -f unattended-upgrade >/dev/null; then
+                break
+              fi
+              echo "Waiting for another package operation ($attempt/120)..."
+              sleep 5
+            done
+            if pgrep -x apt-get >/dev/null || pgrep -x apt >/dev/null || pgrep -x dpkg >/dev/null || pgrep -f unattended-upgrade >/dev/null; then
+              echo "Package manager remained busy for 10 minutes"
+              exit 1
+            fi
+
             apt-get update -y
-            apt-get install -y python3 nginx curl ca-certificates certbot python3-certbot-nginx
+            apt-get install -y python3 python3-venv python3-pip build-essential libjpeg-dev zlib1g-dev nginx curl ca-certificates certbot python3-certbot-nginx
 
             rm -rf "$RELEASE"
             mkdir -p "$RELEASE" "$ROOT" "$WEBROOT"
             tar -xzf "$PACKAGE" -C "$RELEASE"
-            rm -rf "$ROOT/config" "$ROOT/platform_app" "$ROOT/p0_app" "$ROOT/p1_app" "$ROOT/p2_app" "$ROOT/p3_app" "$ROOT/templates" "$ROOT/static" "$ROOT/vendor"
-            cp -a "$RELEASE/config" "$RELEASE/platform_app" "$RELEASE/p0_app" "$RELEASE/p1_app" "$RELEASE/p2_app" "$RELEASE/p3_app" "$RELEASE/templates" "$RELEASE/static" "$RELEASE/vendor" "$ROOT/"
+            rm -rf "$ROOT/config" "$ROOT/platform_app" "$ROOT/p0_app" "$ROOT/p1_app" "$ROOT/p2_app" "$ROOT/p3_app" "$ROOT/templates" "$ROOT/static"
+            cp -a "$RELEASE/config" "$RELEASE/platform_app" "$RELEASE/p0_app" "$RELEASE/p1_app" "$RELEASE/p2_app" "$RELEASE/p3_app" "$RELEASE/templates" "$RELEASE/static" "$ROOT/"
             install -m 0644 "$RELEASE/manage.py" "$ROOT/manage.py"
+            install -m 0644 "$RELEASE/requirements.txt" "$ROOT/requirements.txt"
+
+            if [ ! -x "$VENV/bin/python" ]; then
+              python3 -m venv "$VENV"
+            fi
+            "$VENV/bin/pip" install --upgrade pip
+            "$VENV/bin/pip" install -r "$ROOT/requirements.txt"
 
             if [ ! -f "$ENV_FILE" ]; then
               umask 077
@@ -99,17 +115,16 @@ jobs:
             set -a
             . "$ENV_FILE"
             set +a
-            export PYTHONPATH="$ROOT/vendor"
             cd "$ROOT"
 
-            python3 manage.py migrate platform_app --fake-initial --noinput
-            python3 manage.py migrate --noinput
-            python3 manage.py seed_platform
-            python3 manage.py seed_p1
-            python3 manage.py seed_p2
-            python3 manage.py seed_p3
-            python3 manage.py collectstatic --noinput
-            python3 manage.py check
+            "$VENV/bin/python" manage.py migrate platform_app --fake-initial --noinput
+            "$VENV/bin/python" manage.py migrate --noinput
+            "$VENV/bin/python" manage.py seed_platform
+            "$VENV/bin/python" manage.py seed_p1
+            "$VENV/bin/python" manage.py seed_p2
+            "$VENV/bin/python" manage.py seed_p3
+            "$VENV/bin/python" manage.py collectstatic --noinput
+            "$VENV/bin/python" manage.py check
 
             cat > /etc/systemd/system/a-esthetic-mobile.service <<SERVICE
             [Unit]
@@ -119,8 +134,7 @@ jobs:
             Type=simple
             WorkingDirectory=$ROOT
             EnvironmentFile=$ENV_FILE
-            Environment=PYTHONPATH=$ROOT/vendor
-            ExecStart=/usr/bin/python3 -m gunicorn config.wsgi:application --bind 127.0.0.1:8770 --workers 2 --timeout 60 --access-logfile - --error-logfile -
+            ExecStart=$VENV/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8770 --workers 2 --timeout 60 --access-logfile - --error-logfile -
             Restart=on-failure
             RestartSec=3
             UMask=0077
@@ -188,10 +202,10 @@ jobs:
             from urllib.error import HTTPError, URLError
             from urllib.request import Request, urlopen
 
-            def fetch(url, method='GET', host=None):
+            def fetch(url, host=None):
                 headers={'User-Agent': 'A-Esthetic-Deploy-Smoke/1.0'}
                 if host: headers['Host']=host
-                request = Request(url, method=method, headers=headers)
+                request = Request(url, headers=headers)
                 try:
                     with urlopen(request, timeout=15) as response:
                         return response.status, response.read().decode('utf-8', 'replace')
