@@ -27,6 +27,8 @@ jobs:
             resolved4="$(getent ahostsv4 "$DOMAIN" | awk 'NR==1{print $1}' || true)"
             resolved6="$(getent ahostsv6 "$DOMAIN" | awk 'NR==1{print $1}' || true)"
             locals=" $(hostname -I) "
+            echo "LOCAL_RESOLVER_A=$resolved4"
+            echo "LOCAL_RESOLVER_AAAA=$resolved6"
             echo "DNS_HAS_IPV4=$([ -n "$resolved4" ] && echo yes || echo no)"
             echo "DNS_HAS_IPV6=$([ -n "$resolved6" ] && echo yes || echo no)"
             if { [ -n "$resolved4" ] && [[ "$locals" == *" $resolved4 "* ]]; } || { [ -n "$resolved6" ] && [[ "$locals" == *" $resolved6 "* ]]; }; then
@@ -34,6 +36,23 @@ jobs:
             else
               echo "DNS_POINTS_TO_THIS_SERVER=no"
             fi
+
+            echo "=== PUBLIC DNS OVER HTTPS ==="
+            curl -fsS --max-time 15 -H 'accept: application/dns-json' "https://dns.google/resolve?name=$DOMAIN&type=AAAA" > /tmp/google-aaaa.json || printf '{}' > /tmp/google-aaaa.json
+            curl -fsS --max-time 15 -H 'accept: application/dns-json' "https://cloudflare-dns.com/dns-query?name=$DOMAIN&type=AAAA" > /tmp/cf-aaaa.json || printf '{}' > /tmp/cf-aaaa.json
+            python3 - <<'PY'
+            import json
+            for label, path in [('GOOGLE', '/tmp/google-aaaa.json'), ('CLOUDFLARE', '/tmp/cf-aaaa.json')]:
+                try:
+                    d=json.load(open(path))
+                except Exception:
+                    d={}
+                answers=[str(x.get('data','')) for x in (d.get('Answer') or []) if x.get('type') == 28]
+                print(f'{label}_AAAA_COUNT={len(answers)}')
+                print(f'{label}_AAAA_VALUES={";".join(answers) if answers else "none"}')
+                print(f'{label}_STATUS={d.get("Status","unknown")}')
+            PY
+
             http="$(curl -sS --max-time 20 -o /tmp/book-public.json -w '%{http_code}' "https://$DOMAIN/api/health/" || true)"
             echo "PUBLIC_HTTPS_STATUS=$http"
             if [ "$http" = 200 ] && grep -q '"ok": true' /tmp/book-public.json; then
