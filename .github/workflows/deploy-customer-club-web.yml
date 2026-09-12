@@ -135,17 +135,16 @@ jobs:
             rm -f /etc/nginx/sites-enabled/default
             nginx -t
 
-            # Static files are served directly from WEBROOT, so a healthy existing
-            # nginx process needs no reload. Only restart it when the local vhost is
-            # not reachable; this avoids false deploy failures on STRATO's service shim.
-            if ! curl -fsS --max-time 10 http://127.0.0.1/ -H "Host: $DOMAIN" -o /tmp/aesthetic-focused-local-index.html; then
+            # Certbot redirects the HTTP vhost to HTTPS. Follow that redirect for
+            # the smoke check; a 301 body is not the customer bundle.
+            if ! curl -fsSL --max-time 15 http://127.0.0.1/ -H "Host: $DOMAIN" -o /tmp/aesthetic-focused-local-index.html; then
               systemctl restart nginx || {
                 systemctl status nginx --no-pager || true
                 journalctl -u nginx -n 80 --no-pager || true
                 exit 1
               }
               sleep 2
-              curl -fsS --max-time 20 http://127.0.0.1/ -H "Host: $DOMAIN" -o /tmp/aesthetic-focused-local-index.html
+              curl -fsSL --max-time 20 http://127.0.0.1/ -H "Host: $DOMAIN" -o /tmp/aesthetic-focused-local-index.html
             fi
 
             grep -q 'customer-dashboard-v2.css' /tmp/aesthetic-focused-local-index.html
@@ -155,9 +154,9 @@ jobs:
             grep -q '20260912-native-scroll-spacing-v6' /tmp/aesthetic-focused-local-index.html
             grep -q '20260912-native-scroll-v6' /tmp/aesthetic-focused-local-index.html
 
-            if ! curl -fsS --max-time 20 "https://$DOMAIN/?release=20260912-native-scroll-v6" -o /tmp/aesthetic-focused-index.html; then
+            if ! curl -fsSL --max-time 20 "https://$DOMAIN/?release=20260912-native-scroll-v6" -o /tmp/aesthetic-focused-index.html; then
               certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
-              curl -fsS --max-time 20 "https://$DOMAIN/?release=20260912-native-scroll-v6" -o /tmp/aesthetic-focused-index.html
+              curl -fsSL --max-time 20 "https://$DOMAIN/?release=20260912-native-scroll-v6" -o /tmp/aesthetic-focused-index.html
             fi
             grep -q '20260912-native-scroll-spacing-v6' /tmp/aesthetic-focused-index.html
             echo "Focused A+ patient app prepared on new STRATO origin for $DOMAIN"
