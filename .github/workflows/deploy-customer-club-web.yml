@@ -134,15 +134,23 @@ jobs:
             ln -sfn "$CONF" /etc/nginx/sites-enabled/a-esthetic-connected.conf
             rm -f /etc/nginx/sites-enabled/default
             nginx -t
-            systemctl enable --now nginx
-            systemctl reload nginx
+            systemctl enable nginx >/dev/null 2>&1 || true
+            if systemctl is-active --quiet nginx; then
+              systemctl reload nginx || systemctl restart nginx
+            else
+              systemctl start nginx
+            fi
+            systemctl is-active --quiet nginx
             sleep 2
             curl -fsS --max-time 20 http://127.0.0.1/ -H "Host: $DOMAIN" -o /tmp/aesthetic-focused-local-index.html
             grep -q 'customer-dashboard-v2.css' /tmp/aesthetic-focused-local-index.html
             grep -q 'core-app.js' /tmp/aesthetic-focused-local-index.html
             grep -q 'booking-final-rules.js' /tmp/aesthetic-focused-local-index.html
             grep -q 'mobile-polish.js' /tmp/aesthetic-focused-local-index.html
+            grep -q '20260912-native-scroll-spacing-v6' /tmp/aesthetic-focused-local-index.html
+            grep -q '20260912-native-scroll-v6' /tmp/aesthetic-focused-local-index.html
             certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
-            curl -fsS --max-time 20 "https://$DOMAIN/?release=20260911-strato" -o /tmp/aesthetic-focused-index.html || true
+            curl -fsS --max-time 20 "https://$DOMAIN/?release=20260912-native-scroll-v6" -o /tmp/aesthetic-focused-index.html
+            grep -q '20260912-native-scroll-spacing-v6' /tmp/aesthetic-focused-index.html
             echo "Focused A+ patient app prepared on new STRATO origin for $DOMAIN"
             rm -rf "$RELEASE_DIR" "$PACKAGE"
