@@ -1,5 +1,5 @@
-/* A+ Esthetic final mobile web polish v5
-   More deliberate side breathing room without changing the visual system. */
+/* A+ Esthetic final mobile web polish v6
+   Native-safe vertical scrolling plus calmer side breathing room. */
 
 html,
 body,
@@ -10,17 +10,69 @@ body,
   max-width:100%;
 }
 
+/*
+ * The customer shell must let the document itself scroll. Some Android WebView
+ * versions keep stale inline/translated lock styles after a sheet or route
+ * transition; forcing the document back to normal flow here makes every
+ * customer page scrollable while overlays keep their own internal scrolling.
+ */
 html,
 body{
-  overflow-x:hidden;
+  width:100%!important;
+  height:auto!important;
+  min-height:100%!important;
+  max-height:none!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  position:static!important;
+  top:auto!important;
+  touch-action:auto!important;
+  overscroll-behavior-y:auto!important;
 }
 
 body{
-  min-height:100dvh;
-  -webkit-overflow-scrolling:touch;
+  min-height:100dvh!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+
+#app,
+.core-shell,
+.core-main{
+  height:auto!important;
+  max-height:none!important;
+  overflow-y:visible!important;
+  touch-action:auto!important;
+}
+
+#app,
+.core-shell{
+  min-height:100dvh!important;
 }
 
 @media (max-width:760px){
+  .core-main{
+    padding-left:max(22px,env(safe-area-inset-left))!important;
+    padding-right:max(22px,env(safe-area-inset-right))!important;
+  }
+
+  .core-header{
+    width:calc(100% - 36px)!important;
+    max-width:calc(100vw - 36px)!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+
+  .core-nav{
+    left:max(18px,env(safe-area-inset-left))!important;
+    right:max(18px,env(safe-area-inset-right))!important;
+    width:auto!important;
+    max-width:calc(100vw - 36px)!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+}
+
+@media (max-width:520px){
   .core-main{
     padding-left:max(20px,env(safe-area-inset-left))!important;
     padding-right:max(20px,env(safe-area-inset-right))!important;
@@ -29,34 +81,11 @@ body{
   .core-header{
     width:calc(100% - 32px)!important;
     max-width:calc(100vw - 32px)!important;
-    margin-left:auto!important;
-    margin-right:auto!important;
   }
 
   .core-nav{
     left:max(16px,env(safe-area-inset-left))!important;
     right:max(16px,env(safe-area-inset-right))!important;
-    width:auto!important;
     max-width:calc(100vw - 32px)!important;
-    margin-left:auto!important;
-    margin-right:auto!important;
-  }
-}
-
-@media (max-width:520px){
-  .core-main{
-    padding-left:max(18px,env(safe-area-inset-left))!important;
-    padding-right:max(18px,env(safe-area-inset-right))!important;
-  }
-
-  .core-header{
-    width:calc(100% - 28px)!important;
-    max-width:calc(100vw - 28px)!important;
-  }
-
-  .core-nav{
-    left:max(14px,env(safe-area-inset-left))!important;
-    right:max(14px,env(safe-area-inset-right))!important;
-    max-width:calc(100vw - 28px)!important;
   }
 }
