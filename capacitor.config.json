@@ -7,7 +7,8 @@
   "zoomEnabled": false,
   "server": {
     "allowNavigation": [
-      "book.a-esthetic.de"
+      "book.a-esthetic.de",
+      "esthetic.smarbiz.sbs"
     ]
   },
   "android": {
