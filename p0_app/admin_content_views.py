@@ -1,6 +1,10 @@
+import base64
+import binascii
 import json
+import uuid
 from datetime import timedelta
 
+from django.core.files.base import ContentFile
 from django.http import FileResponse, Http404, JsonResponse
 from django.urls import reverse
 from django.utils import timezone
@@ -85,12 +89,28 @@ def mobile_admin_dashboard_banners(request):
             "ends_at": ends,
             "sort_order": max(0, min(9999, int(data.get("sort_order") or 100))),
         }
+        cover_data = str(data.get("cover_data") or "").strip()
+        cover_name = str(data.get("cover_name") or "banner.jpg").strip()
+        cover_type = str(data.get("cover_type") or "").lower()
+        if cover_data:
+            if cover_type not in {"image/jpeg", "image/png", "image/webp"}:
+                return JsonResponse({"ok": False, "error": "invalid_cover_type"}, status=400)
+            try:
+                decoded = base64.b64decode(cover_data, validate=True)
+            except (binascii.Error, ValueError):
+                return JsonResponse({"ok": False, "error": "invalid_cover_data"}, status=400)
+            if not decoded or len(decoded) > 6 * 1024 * 1024:
+                return JsonResponse({"ok": False, "error": "cover_too_large"}, status=400)
         if item:
             for key, value in values.items():
                 setattr(item, key, value)
-            item.save()
         else:
-            item = DashboardBanner.objects.create(**values)
+            item = DashboardBanner(**values)
+        if cover_data:
+            extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[cover_type]
+            safe_name = f"{uuid.uuid4().hex}{extension}"
+            item.cover_image.save(safe_name, ContentFile(decoded), save=False)
+        item.save()
         AuditLog.objects.create(actor=actor, action="Dashboard-Kampagne gespeichert", entity_type="DashboardBanner", entity_id=str(item.pk), metadata={"title": item.title})
 
     items = DashboardBanner.objects.all()[:100]
