@@ -38,6 +38,7 @@ urlpatterns = [
     path("api/mobile/admin/reviews/", review_views.mobile_admin_reviews, name="p0_mobile_admin_reviews"),
     path("api/mobile/admin/reviews/<int:review_id>/", review_views.mobile_admin_review, name="p0_mobile_admin_review"),
     path("api/mobile/admin/dashboard-banners/", admin_content_views.mobile_admin_dashboard_banners, name="p0_mobile_admin_dashboard_banners"),
+    path("api/mobile/banner-cover/<int:banner_id>/", admin_content_views.dashboard_banner_cover, name="p0_dashboard_banner_cover"),
 
     path("api/mobile/admin/book/overview/", book_admin_proxy_views.overview, name="p0_mobile_book_admin_overview"),
     path("api/mobile/admin/book/calendar/", book_admin_proxy_views.calendar, name="p0_mobile_book_admin_calendar"),
