@@ -109,6 +109,7 @@ class DashboardBanner(models.Model):
     title = models.CharField(max_length=160)
     text = models.TextField(blank=True)
     image_url = models.URLField(max_length=500, blank=True)
+    cover_image = models.FileField(upload_to="dashboard_banners/%Y/%m/", blank=True)
     cta_label = models.CharField(max_length=80, blank=True)
     cta_url = models.URLField(max_length=500, blank=True)
     active = models.BooleanField(default=True)

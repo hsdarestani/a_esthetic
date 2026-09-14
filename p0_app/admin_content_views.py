@@ -1,7 +1,12 @@
+import base64
+import binascii
 import json
+import uuid
 from datetime import timedelta
 
-from django.http import JsonResponse
+from django.core.files.base import ContentFile
+from django.http import FileResponse, Http404, JsonResponse
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
@@ -30,12 +35,12 @@ def _admin_auth(request):
     return user, None
 
 
-def _payload(item):
+def _payload(item, request=None):
     return {
         "id": item.pk,
         "title": item.title,
         "text": item.text,
-        "image_url": item.image_url,
+        "image_url": request.build_absolute_uri(reverse("p0_dashboard_banner_cover", kwargs={"banner_id": item.pk})) if request and item.cover_image else item.image_url,
         "cta_label": item.cta_label,
         "cta_url": item.cta_url,
         "active": item.active,
@@ -84,13 +89,43 @@ def mobile_admin_dashboard_banners(request):
             "ends_at": ends,
             "sort_order": max(0, min(9999, int(data.get("sort_order") or 100))),
         }
+        cover_data = str(data.get("cover_data") or "").strip()
+        cover_name = str(data.get("cover_name") or "banner.jpg").strip()
+        cover_type = str(data.get("cover_type") or "").lower()
+        if cover_data:
+            if cover_type not in {"image/jpeg", "image/png", "image/webp"}:
+                return JsonResponse({"ok": False, "error": "invalid_cover_type"}, status=400)
+            try:
+                decoded = base64.b64decode(cover_data, validate=True)
+            except (binascii.Error, ValueError):
+                return JsonResponse({"ok": False, "error": "invalid_cover_data"}, status=400)
+            if not decoded or len(decoded) > 6 * 1024 * 1024:
+                return JsonResponse({"ok": False, "error": "cover_too_large"}, status=400)
         if item:
             for key, value in values.items():
                 setattr(item, key, value)
-            item.save()
         else:
-            item = DashboardBanner.objects.create(**values)
+            item = DashboardBanner(**values)
+        if cover_data:
+            extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[cover_type]
+            safe_name = f"{uuid.uuid4().hex}{extension}"
+            item.cover_image.save(safe_name, ContentFile(decoded), save=False)
+        item.save()
         AuditLog.objects.create(actor=actor, action="Dashboard-Kampagne gespeichert", entity_type="DashboardBanner", entity_id=str(item.pk), metadata={"title": item.title})
 
     items = DashboardBanner.objects.all()[:100]
-    return JsonResponse({"ok": True, "banners": [_payload(item) for item in items]})
+    return JsonResponse({"ok": True, "banners": [_payload(item, request) for item in items]})
+
+
+@require_http_methods(["GET"])
+def dashboard_banner_cover(request, banner_id):
+    item = DashboardBanner.objects.filter(pk=banner_id, active=True).first()
+    if not item or not item.cover_image:
+        raise Http404
+    try:
+        response = FileResponse(item.cover_image.open("rb"), content_type="image/*")
+    except (FileNotFoundError, OSError):
+        raise Http404
+    response["Cache-Control"] = "public, max-age=3600"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
