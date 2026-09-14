@@ -45,7 +45,7 @@ class DashboardBannerUploadTests(TestCase):
             "cover_data": png,
         })
         self.assertEqual(response.status_code, 200)
-        payload = response.json()["banners"][0]
+        payload = next(row for row in response.json()["banners"] if row["title"] == "Herbst Special")
         self.assertIn("/api/mobile/banner-cover/", payload["image_url"])
         banner = DashboardBanner.objects.get()
         self.assertTrue(banner.cover_image.name.endswith(".png"))
@@ -54,6 +54,7 @@ class DashboardBannerUploadTests(TestCase):
         self.assertEqual(b"".join(cover.streaming_content), b"\x89PNG\r\n\x1a\n" + b"test-cover")
 
     def test_cover_rejects_unsupported_content_type(self):
+        before = DashboardBanner.objects.count()
         response = self.post({
             "title": "Unsafe",
             "cover_type": "text/html",
@@ -61,4 +62,4 @@ class DashboardBannerUploadTests(TestCase):
         })
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "invalid_cover_type")
-        self.assertFalse(DashboardBanner.objects.exists())
+        self.assertEqual(DashboardBanner.objects.count(), before)
