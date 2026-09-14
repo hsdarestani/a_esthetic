@@ -1,7 +1,8 @@
 import json
 from datetime import timedelta
 
-from django.http import JsonResponse
+from django.http import FileResponse, Http404, JsonResponse
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
@@ -35,7 +36,7 @@ def _payload(item, request=None):
         "id": item.pk,
         "title": item.title,
         "text": item.text,
-        "image_url": request.build_absolute_uri(item.cover_image.url) if request and item.cover_image else item.image_url,
+        "image_url": request.build_absolute_uri(reverse("p0_dashboard_banner_cover", kwargs={"banner_id": item.pk})) if request and item.cover_image else item.image_url,
         "cta_label": item.cta_label,
         "cta_url": item.cta_url,
         "active": item.active,
@@ -94,3 +95,17 @@ def mobile_admin_dashboard_banners(request):
 
     items = DashboardBanner.objects.all()[:100]
     return JsonResponse({"ok": True, "banners": [_payload(item, request) for item in items]})
+
+
+@require_http_methods(["GET"])
+def dashboard_banner_cover(request, banner_id):
+    item = DashboardBanner.objects.filter(pk=banner_id, active=True).first()
+    if not item or not item.cover_image:
+        raise Http404
+    try:
+        response = FileResponse(item.cover_image.open("rb"), content_type="image/*")
+    except (FileNotFoundError, OSError):
+        raise Http404
+    response["Cache-Control"] = "public, max-age=3600"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
