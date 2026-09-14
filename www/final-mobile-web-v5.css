@@ -89,3 +89,17 @@ body{
     max-width:calc(100vw - 32px)!important;
   }
 }
+
+
+/* Android already receives system-bar insets from MainActivity. Do not apply the
+   same top inset to the web shell a second time. */
+html.aplus-android .core-shell{
+  padding-top:0!important;
+}
+html.aplus-android .core-header{
+  top:0!important;
+  margin-top:4px!important;
+}
+@media (max-width:760px){
+  html.aplus-android .core-main{padding-top:14px!important;}
+}
