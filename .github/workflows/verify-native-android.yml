@@ -58,8 +58,8 @@ jobs:
 
       - name: Build signed branded Android release bundle
         env:
-          APP_VERSION_NAME: "1.0.0"
-          APP_BUILD_NUMBER: "1"
+          APP_VERSION_NAME: "1.0.1"
+          APP_BUILD_NUMBER: "2"
           REQUIRE_ANDROID_SIGNING: "1"
           ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/android/upload-keystore.jks
           ANDROID_KEYSTORE_PASSWORD: verification-only-password
@@ -73,6 +73,6 @@ jobs:
       - name: Upload verification bundle
         uses: actions/upload-artifact@v4
         with:
-          name: a-esthetic-android-release-aab
+          name: a-esthetic-android-1.0.1-build-2-aab
           path: artifacts/a-esthetic-release.aab
           if-no-files-found: error
