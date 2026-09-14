@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.html import format_html
 
 from .models import (
     AccountDeletionRequest,
@@ -7,7 +8,7 @@ from .models import (
     PackageBookingRedemption,
     PackageBookingService,
 )
-from .ops_models import AppNotification, PushDevice, RewardRedemption
+from .ops_models import AppNotification, DashboardBanner, PushDevice, RewardRedemption
 
 
 @admin.register(AccountDeletionRequest)
@@ -71,3 +72,25 @@ class AppNotificationAdmin(admin.ModelAdmin):
     list_filter = ("category", "read_at", "push_attempted_at")
     search_fields = ("user__email", "user__username", "title", "body")
     readonly_fields = ("created_at", "read_at", "push_attempted_at", "push_result")
+
+
+@admin.register(DashboardBanner)
+class DashboardBannerAdmin(admin.ModelAdmin):
+    list_display = ("title", "active", "starts_at", "ends_at", "sort_order", "cover_preview")
+    list_filter = ("active",)
+    search_fields = ("title", "text")
+    ordering = ("sort_order", "-starts_at")
+    readonly_fields = ("cover_preview",)
+    fieldsets = (
+        ("Inhalt", {"fields": ("title", "text", "cover_image", "cover_preview")}),
+        ("Button", {"fields": ("cta_label", "cta_url")}),
+        ("Veröffentlichung", {"fields": ("active", "starts_at", "ends_at", "sort_order")}),
+        ("Externe Bildquelle", {"classes": ("collapse",), "fields": ("image_url",)}),
+    )
+
+    @admin.display(description="Vorschau")
+    def cover_preview(self, obj):
+        url = obj.cover_image.url if obj and obj.cover_image else obj.image_url if obj else ""
+        if not url:
+            return "Noch kein Titelbild ausgewählt"
+        return format_html('<img src="{}" alt="" style="width:min(100%,560px);height:220px;object-fit:cover;border-radius:16px" />', url)
