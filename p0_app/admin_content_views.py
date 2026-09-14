@@ -30,12 +30,12 @@ def _admin_auth(request):
     return user, None
 
 
-def _payload(item):
+def _payload(item, request=None):
     return {
         "id": item.pk,
         "title": item.title,
         "text": item.text,
-        "image_url": item.image_url,
+        "image_url": request.build_absolute_uri(item.cover_image.url) if request and item.cover_image else item.image_url,
         "cta_label": item.cta_label,
         "cta_url": item.cta_url,
         "active": item.active,
@@ -93,4 +93,4 @@ def mobile_admin_dashboard_banners(request):
         AuditLog.objects.create(actor=actor, action="Dashboard-Kampagne gespeichert", entity_type="DashboardBanner", entity_id=str(item.pk), metadata={"title": item.title})
 
     items = DashboardBanner.objects.all()[:100]
-    return JsonResponse({"ok": True, "banners": [_payload(item) for item in items]})
+    return JsonResponse({"ok": True, "banners": [_payload(item, request) for item in items]})
