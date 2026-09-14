@@ -34,8 +34,18 @@
     const headers = new Headers(options.headers || {});
     if (state.token) headers.set('Authorization', `Bearer ${state.token}`);
     if (options.json !== undefined) { headers.set('Content-Type','application/json'); options.body=JSON.stringify(options.json); }
-    const response = await fetch(`${API}${path}`, {...options,headers,cache:'no-store'});
-    if (response.status===401) { logout(false); throw new Error('authentication_required'); }
+    let response = await fetch(`${API}${path}`, {...options,headers,cache:'no-store'});
+    if (response.status===401 && state.token && !options._authRetried) {
+      await new Promise(resolve => setTimeout(resolve, 700));
+      response = await fetch(`${API}${path}`, {...options,headers,cache:'no-store'});
+    }
+    if (response.status===401) {
+      logout(false);
+      showLogin('Ihre Sitzung ist abgelaufen. Bitte einmal erneut anmelden.');
+      const authError = new Error('authentication_required');
+      authError.code = 'authentication_required';
+      throw authError;
+    }
     const type=response.headers.get('content-type')||'';
     const data=type.includes('application/json')?await response.json():await response.text();
     if(!response.ok||data?.ok===false){const error=new Error(data?.message||data?.error||`HTTP ${response.status}`);error.code=data?.error;throw error;}
@@ -76,11 +86,16 @@
   function logout(render=true){document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};if(render)showLogin();}
 
   function showLogin(message=''){
-    root.innerHTML=`<div class="login-shell"><form class="login-card" data-login><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"><span>PATIENT APP</span></div><h1>Anmelden</h1><p>Termine, Patientenakte und A+ Punkte an einem Ort.</p>${message?`<div class="notice error">${esc(message)}</div>`:''}<label class="field"><span>E-Mail</span><input name="email" type="email" autocomplete="username" required></label><label class="field"><span>Passwort</span><input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide" type="submit">Anmelden</button></form></div>`;
-    root.querySelector('[data-login]').addEventListener('submit',async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button');btn.disabled=true;btn.textContent='Anmeldung …';try{const fd=new FormData(e.currentTarget);const data=await request('/login/',{method:'POST',json:{email:fd.get('email'),password:fd.get('password')}});state.token=data.token;localStorage.setItem('aplus_token',state.token);await boot();}catch(err){showLogin(err.code==='invalid_credentials'?'E-Mail oder Passwort ist nicht korrekt.':err.message);}});
+    const rememberedEmail=localStorage.getItem('aplus_login_email')||'';
+    root.innerHTML=`<div class="login-shell"><form class="login-card" data-login><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"><span>PATIENT APP</span></div><h1>Anmelden</h1><p>Termine, Patientenakte und A+ Punkte an einem Ort.</p>${message?`<div class="notice error">${esc(message)}</div>`:''}<label class="field"><span>E-Mail</span><input name="email" type="email" autocomplete="username" value="${esc(rememberedEmail)}" required></label><label class="field"><span>Passwort</span><input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide" type="submit">Anmelden</button></form></div>`;
+    root.querySelector('[data-login]').addEventListener('submit',async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button');btn.disabled=true;btn.textContent='Anmeldung …';try{const fd=new FormData(e.currentTarget);const data=await request('/login/',{method:'POST',json:{email:fd.get('email'),password:fd.get('password')}});state.token=data.token;localStorage.setItem('aplus_token',state.token);localStorage.setItem('aplus_login_email',String(fd.get('email')||''));await boot();}catch(err){showLogin(err.code==='invalid_credentials'?'E-Mail oder Passwort ist nicht korrekt.':err.message);}});
   }
 
-  async function boot(){if(!state.token)return showLogin();try{state.me=await request('/me/');go('dashboard');}catch(err){if(state.token)showLogin(err.message);}}
+  function showReconnect(message='Verbindung wird wiederhergestellt …'){
+    root.innerHTML=`<div class="login-shell"><section class="login-card"><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"><span>PATIENT APP</span></div><h1>Willkommen zurück</h1><p>${esc(message)}</p><div class="spinner"></div><button class="secondary wide" type="button" data-reconnect>Erneut verbinden</button></section></div>`;
+    root.querySelector('[data-reconnect]')?.addEventListener('click',boot);
+  }
+  async function boot(){if(!state.token)return showLogin();try{state.me=await request('/me/');go('dashboard');}catch(err){if(state.token)showReconnect('Die Verbindung ist gerade nicht verfügbar. Ihre Anmeldung bleibt gespeichert.');}}
   async function go(route){if(route==='reviews'){state.route='points';shell(loader());try{await renderReviews();}catch(err){shell(errorBox(err));}return;}if(!routes.some(r=>r[0]===route))route='dashboard';state.route=route;shell(loader());try{if(route==='dashboard')await renderDashboard();if(route==='appointments')await renderAppointments();if(route==='records')await renderRecords();if(route==='points')await renderPoints();if(route==='friends')await renderFriends();}catch(err){shell(`${pageHead('A+ Esthetic','Fehler')} ${errorBox(err)}`);}}
 
   async function renderDashboard(){

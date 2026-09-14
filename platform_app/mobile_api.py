@@ -31,7 +31,7 @@ from .models import (
 )
 
 TOKEN_SALT = 'aesthetic-customer-club-mobile-v1'
-TOKEN_MAX_AGE = 60 * 60 * 24 * 30
+TOKEN_MAX_AGE = 60 * 60 * 24 * 365
 
 
 def _json(request):
