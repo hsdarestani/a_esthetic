@@ -47,7 +47,7 @@ class DashboardBannerUploadTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = next(row for row in response.json()["banners"] if row["title"] == "Herbst Special")
         self.assertIn("/api/mobile/banner-cover/", payload["image_url"])
-        banner = DashboardBanner.objects.get()
+        banner = DashboardBanner.objects.get(title="Herbst Special")
         self.assertTrue(banner.cover_image.name.endswith(".png"))
         cover = self.client.get(f"/api/mobile/banner-cover/{banner.pk}/")
         self.assertEqual(cover.status_code, 200)
