@@ -113,11 +113,10 @@ PY
 # Apply the version supplied by A+ Publisher before Gradle packages the bundle.
 python3 scripts/configure_android_release.py
 
-# Use the exact current Play Store artwork, re-encoded as a standard WebP that
-# AAPT2 can compile reliably. This avoids the malformed/stale PNG that caused the
-# previous Publisher build to fail and also prevents Capacitor's default icon
-# from appearing on OEM launchers.
-LAUNCHER_SOURCE="$ROOT/assets/appicon.webp"
+# Use the exact icon uploaded as iconesth.png for the Android launcher. The
+# source is a valid opaque PNG, so keeping it as PNG avoids format/extension
+# mismatches and makes the Publisher build use the same artwork as iOS.
+LAUNCHER_SOURCE="$ROOT/iconesth.png"
 LAUNCHER_DIR="$ROOT/android/app/src/main/res/drawable-nodpi"
 MANIFEST="$ROOT/android/app/src/main/AndroidManifest.xml"
 
@@ -132,7 +131,7 @@ fi
 
 mkdir -p "$LAUNCHER_DIR"
 rm -f "$LAUNCHER_DIR/launcher_icon.png" "$LAUNCHER_DIR/launcher_icon.webp"
-cp "$LAUNCHER_SOURCE" "$LAUNCHER_DIR/launcher_icon.webp"
+cp "$LAUNCHER_SOURCE" "$LAUNCHER_DIR/launcher_icon.png"
 
 python3 - <<'PY'
 from pathlib import Path
@@ -182,7 +181,7 @@ if 'android:roundIcon="@drawable/launcher_icon"' not in text:
 print('Android manifest launcher references verified.')
 PY
 
-echo "Installed AAPT-safe A+ Esthetic Play Store artwork as Android launcher icon."
+echo "Installed iconesth.png as the A+ Esthetic Android launcher icon."
 
 mkdir -p artifacts
 
