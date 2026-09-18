@@ -77,7 +77,7 @@
     root.innerHTML = '<div class="book-slot-empty">Freie Termine werden geladen …</div>';
     const today = new Date();
     today.setHours(12, 0, 0, 0);
-    const days = Array.from({ length: 28 }, (_, offset) => {
+    const days = Array.from({ length: 91 }, (_, offset) => {
       const d = new Date(today);
       d.setDate(today.getDate() + offset);
       return dayKey(d);
