@@ -12,6 +12,7 @@ ROOT=Path('/opt/a-esthetic-mobile'); sys.path[:0]=[str(ROOT),str(ROOT/'vendor')]
 os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')
 import django; django.setup()
 from django.contrib.auth.models import User
+from django.utils import timezone
 from platform_app.models import MemberAccount, UserProfile, WalletAccount
 from p0_app.models import GoogleReviewActivity
 from p0_app.ops_models import PushDevice
@@ -77,13 +78,36 @@ print('BOOK_SMOKE_CLEANUP=ok')
 
 def main():
     global customer,admin
-    customer=User.objects.create_user(username=f'prebuild-{STAMP}',email=EMAIL,password=PASSWORD,first_name='Prebuild',last_name='Patient',is_active=True)
-    p,_=UserProfile.objects.get_or_create(user=customer); p.role='customer'; p.phone='+490000000000'; p.save(update_fields=['role','phone'])
+    _,signup,_=req(
+        f'{BASE}/api/mobile/signup/',
+        method='POST',
+        data={
+            'email':EMAIL,
+            'password':PASSWORD,
+            'first_name':'Prebuild',
+            'last_name':'Patient',
+            'phone':'+491701234567',
+            'salutation':'divers',
+            'referral_code':'',
+        },
+        expected=(201,),
+    )
+    token=signup['token']
+    customer=User.objects.filter(email__iexact=EMAIL).first()
+    if customer is None:
+        raise AssertionError('signup user not visible to app DB')
+    p,_=UserProfile.objects.get_or_create(user=customer)
+    p.email_verified_at=timezone.now()
+    p.phone_verified_at=timezone.now()
+    p.profile_completed_at=timezone.now()
+    p.onboarding_required=True
+    p.save(update_fields=['email_verified_at','phone_verified_at','profile_completed_at','onboarding_required'])
     member,_=MemberAccount.objects.get_or_create(user=customer); member.status='active'; member.save(update_fields=['status']); WalletAccount.objects.get_or_create(user=customer)
+
     admin=User.objects.create_user(username=f'prebuild-admin-{STAMP}',email=ADMIN_EMAIL,password=PASSWORD,first_name='Prebuild',last_name='Admin',is_active=True,is_staff=True,is_superuser=True)
     ap,_=UserProfile.objects.get_or_create(user=admin); ap.role='admin'; ap.save(update_fields=['role'])
 
-    _,x,_=req(f'{BASE}/api/mobile/login/',method='POST',data={'email':EMAIL,'password':PASSWORD}); assert x['ok'] and x['account_type']=='customer' and not x['admin']; token=x['token']; ok('customer login')
+    _,x,_=req(f'{BASE}/api/mobile/login/',method='POST',data={'email':EMAIL,'password':PASSWORD}); assert x['ok'] and x['account_type']=='customer' and not x['admin']; token=x['token']; ok('customer signup + login')
     _,x,_=req(f'{BASE}/api/mobile/login/',method='POST',data={'email':ADMIN_EMAIL,'password':PASSWORD}); assert x['ok'] and x['account_type']=='admin' and x['admin']; at=x['token']; ok('admin login separation')
     _,x,_=req(f'{BASE}/api/mobile/me/',token); assert x['profile']['email'].lower()==EMAIL.lower(); ok('account / me')
 
