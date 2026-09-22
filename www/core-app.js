@@ -128,7 +128,7 @@
       <div class="approved-home-copy">
         <span class="approved-kicker">WILLKOMMEN</span>
         <h1>Willkommen,<br>${esc(firstName())}.</h1>
-        <p>Schön, dass du da bist.<br>Deine Schönheit ist unsere Leidenschaft.</p>
+        <p>Schön, dass du da bist.<br>Schönheit, die sich nach dir richtet.</p>
       </div>
       <div class="approved-home-image" aria-hidden="true"></div>
     </section>`;
