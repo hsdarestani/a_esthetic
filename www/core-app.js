@@ -164,15 +164,6 @@
       <p>Punkte sammeln.<br>Vorteile später freischalten.</p><b>›</b>
     </section>`;
 
-    html+=`<section class="approved-visual-story">
-      <div class="approved-visual-story-image" aria-hidden="true"></div>
-      <div class="approved-visual-story-copy">
-        <span>A+ ESTHETIC · FRANKFURT</span>
-        <strong>Medizinische Präzision.<br>Ruhige Atmosphäre.</strong>
-        <p>Persönliche Beratung und ästhetische Behandlungen mit Blick auf natürliche Ergebnisse.</p>
-      </div>
-    </section>`;
-
     if(banners.length){
       html+=`<div class="approved-section-head"><h2>Special Offers</h2><span>${banners.length}</span></div>
       <div class="approved-campaign-stack">${banners.map(b=>`<article class="approved-campaign" style="--approved-campaign-image:url('${esc(b.image_url||'./assets/site/clinic.jpg')}')">
