@@ -1,4 +1,5 @@
 from pathlib import Path
+import base64
 import os
 from urllib.parse import urlparse
 
@@ -11,11 +12,25 @@ CSRF_TRUSTED_ORIGINS = [x.strip() for x in os.environ.get("CSRF_TRUSTED_ORIGINS"
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 APPLE_CLIENT_ID = os.environ.get("APPLE_CLIENT_ID", "")
-APPLE_PRIVATE_KEY = os.environ.get("APPLE_PRIVATE_KEY", "")
 APPLE_KEY_ID = os.environ.get("APPLE_KEY_ID", "")
 APPLE_TEAM_ID = os.environ.get("APPLE_TEAM_ID", "")
+APPLE_APP_ID_PREFIX = os.environ.get("APPLE_APP_ID_PREFIX", "") or APPLE_TEAM_ID
+APPLE_PRIVATE_KEY = os.environ.get("APPLE_PRIVATE_KEY", "")
+if not APPLE_PRIVATE_KEY and os.environ.get("APPLE_PRIVATE_KEY_B64"):
+    try:
+        APPLE_PRIVATE_KEY = base64.b64decode(
+            os.environ["APPLE_PRIVATE_KEY_B64"]
+        ).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        APPLE_PRIVATE_KEY = ""
+
 GOOGLE_SOCIAL_LOGIN_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
-APPLE_SOCIAL_LOGIN_ENABLED = bool(APPLE_CLIENT_ID and APPLE_PRIVATE_KEY and APPLE_KEY_ID and APPLE_TEAM_ID)
+APPLE_SOCIAL_LOGIN_ENABLED = bool(
+    APPLE_CLIENT_ID
+    and APPLE_PRIVATE_KEY
+    and APPLE_KEY_ID
+    and APPLE_APP_ID_PREFIX
+)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -167,11 +182,10 @@ if APPLE_SOCIAL_LOGIN_ENABLED:
     SOCIALACCOUNT_PROVIDERS["apple"] = {
         "APPS": [{
             "client_id": APPLE_CLIENT_ID,
-            "secret": APPLE_PRIVATE_KEY,
-            "key": APPLE_KEY_ID,
+            "secret": APPLE_KEY_ID,
+            "key": APPLE_APP_ID_PREFIX,
             "settings": {
                 "certificate_key": APPLE_PRIVATE_KEY,
-                "team_id": APPLE_TEAM_ID,
             },
         }],
     }
