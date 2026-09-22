@@ -121,7 +121,7 @@
     const next=upcoming[0];
     const contact=dash.contact||{};
     const banners=dash.campaigns||[];
-    const heroImage=banners.find(item=>item.image_url)?.image_url||'';
+    const heroImage='./assets/site/home-sculpture.webp';
     const points=Number(dash.points??dash.member?.coins??0).toLocaleString('de-DE');
 
     let html=`<section class="approved-home-hero ${heroImage?'has-image':''}" ${heroImage?`style="--approved-hero-image:url('${esc(heroImage)}')"`:''}>
@@ -162,6 +162,15 @@
     html+=`<section class="approved-points-preview" data-dash-points>
       <div><span>A+ PUNKTE</span><strong>${points}</strong></div>
       <p>Punkte sammeln.<br>Vorteile später freischalten.</p><b>›</b>
+    </section>`;
+
+    html+=`<section class="approved-visual-story">
+      <div class="approved-visual-story-image" aria-hidden="true"></div>
+      <div class="approved-visual-story-copy">
+        <span>A+ ESTHETIC · FRANKFURT</span>
+        <strong>Medizinische Präzision.<br>Ruhige Atmosphäre.</strong>
+        <p>Persönliche Beratung und ästhetische Behandlungen mit Blick auf natürliche Ergebnisse.</p>
+      </div>
     </section>`;
 
     if(banners.length){

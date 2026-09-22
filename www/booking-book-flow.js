@@ -43,6 +43,19 @@
   }
 
 
+  function serviceImage(name='') {
+    const value=String(name).toLowerCase();
+    if (value.includes('botox')) return './assets/site/treatment-botox.webp';
+    if (value.includes('hyal')) return './assets/site/treatment-hyaluron.webp';
+    if (value.includes('prp') || value.includes('eigenblut')) return './assets/site/treatment-prp.webp';
+    if (value.includes('micro') || value.includes('rf')) return './assets/site/treatment-rf.webp';
+    if (value.includes('laser') || value.includes('haar')) return './assets/site/treatment-laser.webp';
+    if (value.includes('skin')) return './assets/site/treatment-accent.webp';
+    if (value.includes('infusion') || value.includes('vitamin') || value.includes('wellness')) return './assets/site/home-clinic.webp';
+    return './assets/site/home-sculpture.webp';
+  }
+
+
   const providerPhotos = {
     'Frau Ariane Regaei': 'https://book.a-esthetic.de/static/booking/staff/ariane-regaei.jpg?v=e0a400ebbcee',
     'Qamar Hameed': 'https://book.a-esthetic.de/static/booking/staff/doctor-male.jpg',
@@ -285,14 +298,16 @@
       const duration = Number(service.duration_minutes);
       const durationLabel = Number.isFinite(duration) && duration > 0 ? `${duration} Min.` : 'Dauer auf Anfrage';
       return `
-      <button type="button" class="book-choice-card book-treatment-card" data-service-id="${service.id}" data-service-category="${serviceCategory(service.name)}">
-        <span class="book-treatment-icon">${treatmentIcon(service.name)}</span>
-        <div class="book-treatment-title-row">
-          <strong>${esc(service.name)}</strong>
-          <span class="book-duration-badge" data-service-duration>${esc(durationLabel)}</span>
+      <button type="button" class="book-choice-card book-treatment-card has-site-visual" data-service-id="${service.id}" data-service-category="${serviceCategory(service.name)}">
+        <span class="book-treatment-media" style="background-image:url('${esc(serviceImage(service.name))}')"><i>${treatmentIcon(service.name)}</i></span>
+        <div class="book-treatment-content">
+          <div class="book-treatment-title-row">
+            <strong>${esc(service.name)}</strong>
+            <span class="book-duration-badge" data-service-duration>${esc(durationLabel)}</span>
+          </div>
+          <p>Dein Termin wird individuell auf die Behandlung abgestimmt.</p>
+          <div class="book-meta"><span class="book-duration-fallback">${esc(durationLabel)}</span><span>${esc(service.price_label || '')}</span></div>
         </div>
-        <p>Dein Termin wird individuell auf die Behandlung abgestimmt.</p>
-        <div class="book-meta"><span class="book-duration-fallback">${esc(durationLabel)}</span><span>${esc(service.price_label || '')}</span></div>
       </button>`;
     }).join('') : '<div class="book-slot-empty">Zurzeit sind keine Online-Termine freigeschaltet.</div>';
 
