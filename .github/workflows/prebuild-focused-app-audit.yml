@@ -154,13 +154,18 @@ jobs:
 
       - name: Run isolated production integration smoke
         env:
-          HOST: ${{ secrets.HOST }}
-          PASS: ${{ secrets.PASS }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
         run: |
           set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
-          sshpass -p "$PASS" scp -q -o StrictHostKeyChecking=no scripts/prebuild_production_smoke.py root@"$HOST":/tmp/aesthetic-prebuild-smoke.py
-          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no root@"$HOST" 'bash -se' <<'REMOTE'
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/aesthetic_prod
+          chmod 600 ~/.ssh/aesthetic_prod
+          PORT="${SERVER_PORT:-22}"
+          scp -q -P "$PORT" -i ~/.ssh/aesthetic_prod -o StrictHostKeyChecking=no scripts/prebuild_production_smoke.py "$SERVER_USER@$SERVER_HOST":/tmp/aesthetic-prebuild-smoke.py
+          ssh -p "$PORT" -i ~/.ssh/aesthetic_prod -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -se' <<'REMOTE'
           set -euo pipefail
           chmod 700 /tmp/aesthetic-prebuild-smoke.py
           set -a
