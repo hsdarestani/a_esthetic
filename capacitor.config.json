@@ -3,7 +3,7 @@
   "appName": "A+ Esthetic",
   "webDir": "www",
   "loggingBehavior": "none",
-  "backgroundColor": "#FFFFFF",
+  "backgroundColor": "#F6F3EC",
   "zoomEnabled": false,
   "server": {
     "allowNavigation": [
@@ -14,14 +14,14 @@
   "android": {
     "allowMixedContent": false,
     "webContentsDebuggingEnabled": false,
-    "backgroundColor": "#FFFFFF"
+    "backgroundColor": "#F6F3EC"
   },
   "ios": {
     "preferredContentMode": "mobile",
     "allowsLinkPreview": false,
     "webContentsDebuggingEnabled": false,
     "contentInset": "automatic",
-    "backgroundColor": "#FFFFFF"
+    "backgroundColor": "#F6F3EC"
   },
   "plugins": {
     "SocialLogin": {

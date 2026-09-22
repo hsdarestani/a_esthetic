@@ -6,14 +6,23 @@
     layer = document.createElement('div');
     layer.className = 'aplus-global-wait';
     layer.hidden = true;
-    layer.innerHTML = '<div role="status" aria-live="polite"><span class="aplus-loader-brand">A+</span><span class="aplus-loader-ring"></span><strong>Einen Moment …</strong><small>Inhalte werden geladen.</small></div>';
+    layer.innerHTML = '<div role="status" aria-live="polite"><span class="aplus-loader-brand">A+</span><span class="aplus-loader-line"><i></i></span><strong>Einen Moment …</strong><small>Inhalte werden vorbereitet.</small></div>';
     document.body.appendChild(layer);
     return layer;
   }
+  function introActive() {
+    const splash = document.getElementById('brand-splash');
+    return document.body.classList.contains('brand-intro-active') || (splash && !splash.classList.contains('is-hidden'));
+  }
+  function scheduleLayer(delay=320) {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (pending > 0 && !introActive()) ensure().hidden = false;
+    }, delay);
+  }
   function begin() {
     pending += 1;
-    clearTimeout(timer);
-    timer = setTimeout(() => { if (pending > 0) ensure().hidden = false; }, 180);
+    if (!introActive()) scheduleLayer(320);
   }
   function end() {
     pending = Math.max(0, pending - 1);
@@ -22,6 +31,11 @@
       if (layer) layer.hidden = true;
     }
   }
+  window.addEventListener('aplus:intro-finished', () => {
+    if (layer) layer.hidden = true;
+    if (pending > 0) scheduleLayer(650);
+  });
+
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (...args) => {
     const options = args[1] || {};

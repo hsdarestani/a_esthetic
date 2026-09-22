@@ -92,6 +92,11 @@ jobs:
               assert needle in interactions, f'native interactions missing {needle}'
           book=pathlib.Path('www/booking-direct-api.js').read_text()
           assert 'https://book.a-esthetic.de/api/mobile' in book
+          onboarding=pathlib.Path('www/account-onboarding.js').read_text()
+          assert 'minimumVisibleMs = 2200' in onboarding and 'aplus:intro-finished' in onboarding, 'premium intro duration/event missing'
+          loading=pathlib.Path('www/global-loading.js').read_text()
+          loading_css=pathlib.Path('www/global-loading.css').read_text()
+          assert 'introActive()' in loading and 'brand-intro-active' in loading_css, 'global loader must stay hidden over brand intro'
           booking_flow=pathlib.Path('www/booking-book-flow.js').read_text()
           assert 'book-duration-badge' in booking_flow and 'duration_minutes' in booking_flow, 'service duration must remain visible in booking cards'
           client_css=pathlib.Path('www/client-v19.css').read_text()
@@ -153,7 +158,7 @@ jobs:
           set -euo pipefail
           for i in $(seq 1 60); do
             HTML="$(curl -fsS --max-time 15 'https://esthetic.smarbiz.sbs/?prebuild-audit=1' || true)"
-            if printf '%s' "$HTML" | grep -q 'native-push.js' && printf '%s' "$HTML" | grep -q 'account-onboarding.js?v=20260922-official-social-v3' && printf '%s' "$HTML" | grep -q 'ferrari-v18.css?v=20260922-v18' && printf '%s' "$HTML" | grep -q 'client-v19.css?v=20260923-progress-v21' && printf '%s' "$HTML" | grep -q 'approved-v22.css?v=20260923-approved-v22' && printf '%s' "$HTML" | grep -q 'core-app.js?v=20260923-copy-v23' && printf '%s' "$HTML" | grep -q 'booking-consent-bridge.js' && printf '%s' "$HTML" | grep -q 'native-interactions.js'; then
+            if printf '%s' "$HTML" | grep -q 'native-push.js' && printf '%s' "$HTML" | grep -q 'account-onboarding.js?v=20260923-intro-v24' && printf '%s' "$HTML" | grep -q 'ferrari-v18.css?v=20260922-v18' && printf '%s' "$HTML" | grep -q 'client-v19.css?v=20260923-progress-v21' && printf '%s' "$HTML" | grep -q 'approved-v22.css?v=20260923-approved-v22' && printf '%s' "$HTML" | grep -q 'core-app.js?v=20260923-copy-v23' && printf '%s' "$HTML" | grep -q 'booking-consent-bridge.js' && printf '%s' "$HTML" | grep -q 'native-interactions.js'; then
               echo 'CURRENT_WEB_RELEASE_READY=1'
               exit 0
             fi

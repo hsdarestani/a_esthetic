@@ -81,8 +81,8 @@ echo "Using dedicated iOS app icon: assets/appicon.png"
 npx @capacitor/assets generate --ios \
   --iconBackgroundColor '#000000' \
   --iconBackgroundColorDark '#000000' \
-  --splashBackgroundColor '#000000' \
-  --splashBackgroundColorDark '#000000' \
+  --splashBackgroundColor '#F6F3EC' \
+  --splashBackgroundColorDark '#F6F3EC' \
   --logoSplashScale 0.34
 
 APPICON_SET="$ROOT/ios/App/App/Assets.xcassets/AppIcon.appiconset"

@@ -520,10 +520,20 @@
     }
   }
 
+  const introStartedAt = performance.now();
+  let introHideScheduled = false;
   function hideSplash() {
     const splash = document.getElementById('brand-splash');
-    if (!splash) return;
-    window.setTimeout(() => splash.classList.add('is-hidden'), 850);
+    if (!splash || splash.classList.contains('is-hidden') || introHideScheduled) return;
+    introHideScheduled = true;
+    const minimumVisibleMs = 2200;
+    const elapsed = performance.now() - introStartedAt;
+    const wait = Math.max(0, minimumVisibleMs - elapsed);
+    window.setTimeout(() => {
+      splash.classList.add('is-hidden');
+      document.body.classList.remove('brand-intro-active');
+      window.dispatchEvent(new CustomEvent('aplus:intro-finished'));
+    }, wait);
   }
 
   window.APlusOnboarding = {

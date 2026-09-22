@@ -1,1 +1,25 @@
-.aplus-global-wait[hidden]{display:none!important}.aplus-global-wait{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:22px;background:rgba(27,23,17,.34);backdrop-filter:blur(8px);animation:aplus-wait-in .18s ease}.aplus-global-wait>div{width:min(260px,88vw);display:grid;justify-items:center;gap:9px;padding:24px 20px;border:1px solid rgba(219,183,103,.42);border-radius:24px;background:linear-gradient(150deg,#302b24,#171512);color:#fff;box-shadow:0 25px 70px rgba(0,0,0,.25);text-align:center}.aplus-loader-brand{font:500 28px Georgia,serif;color:#e1bf76}.aplus-loader-ring{width:32px;height:32px;border:3px solid rgba(255,255,255,.17);border-top-color:#ddb86a;border-radius:50%;animation:aplus-loader-spin .75s linear infinite}.aplus-global-wait strong{font-size:13px}.aplus-global-wait small{font-size:9px;color:rgba(255,255,255,.65)}button[aria-busy=true]{cursor:wait;opacity:.72}@keyframes aplus-loader-spin{to{transform:rotate(360deg)}}@keyframes aplus-wait-in{from{opacity:0}to{opacity:1}}@media(prefers-reduced-motion:reduce){.aplus-global-wait{animation:none}.aplus-loader-ring{animation-duration:1.5s}}
+.aplus-global-wait[hidden]{display:none!important}
+.aplus-global-wait{
+  position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:22px;
+  background:rgba(248,245,239,.76);backdrop-filter:blur(10px);
+  animation:aplus-wait-in .22s ease
+}
+.aplus-global-wait>div{
+  width:min(250px,84vw);display:grid;justify-items:center;gap:10px;padding:24px 20px 22px;
+  border:1px solid rgba(166,124,46,.13);border-radius:22px;
+  background:rgba(255,253,249,.97);color:#2c261e;
+  box-shadow:0 22px 64px rgba(50,39,24,.10);text-align:center
+}
+.aplus-loader-brand{font:500 28px Georgia,serif;color:#a97a29;letter-spacing:-.03em}
+.aplus-loader-line{position:relative;width:76px;height:1px;overflow:hidden;background:#eee3cf}
+.aplus-loader-line i{
+  position:absolute;inset:0;width:42%;background:linear-gradient(90deg,transparent,#c89b48,transparent);
+  animation:aplus-loader-glide 1.25s ease-in-out infinite
+}
+.aplus-global-wait strong{font-size:12px;font-weight:750}
+.aplus-global-wait small{font-size:9px;color:#8d8375}
+button[aria-busy=true]{cursor:wait;opacity:.72}
+body.brand-intro-active .aplus-global-wait{display:none!important}
+@keyframes aplus-loader-glide{0%{transform:translateX(-120%)}100%{transform:translateX(260%)}}
+@keyframes aplus-wait-in{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.aplus-global-wait{animation:none}.aplus-loader-line i{animation-duration:2s}}
