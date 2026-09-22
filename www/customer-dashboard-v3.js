@@ -82,7 +82,7 @@
     decorateAction(actions[0], 'book');
     decorateAction(actions[1], 'phone');
     decorateAction(actions[2], 'instagram');
-    addReviewToDashboard(main);
+    main.querySelector('[data-dashboard-google-review]')?.remove();
   }
 
   function simplifyPoints() {

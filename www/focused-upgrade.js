@@ -32,7 +32,7 @@
     const logo = document.querySelector('.login-logo');
     if (!logo || logo.dataset.realLogo === '1') return;
     logo.dataset.realLogo = '1';
-    logo.innerHTML = '<img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"><span>PATIENT APP</span>';
+    logo.innerHTML = '<img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic">';
   }
 
   function upgradeBooking() {
