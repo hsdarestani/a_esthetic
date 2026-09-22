@@ -1,0 +1,39 @@
+name: A+ Esthetic runtime provider audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/runtime-provider-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check production provider configuration
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            set -a
+            . /opt/a-esthetic-mobile/mobile.env
+            set +a
+            cd /opt/a-esthetic-mobile
+            /opt/a-esthetic-mobile/venv/bin/python manage.py shell -c "
+            import os
+            from django.conf import settings
+            google=bool(getattr(settings,'GOOGLE_SOCIAL_LOGIN_ENABLED',False))
+            apple=bool(getattr(settings,'APPLE_SOCIAL_LOGIN_ENABLED',False))
+            sms=bool(os.environ.get('SMS_WEBHOOK_URL') or (os.environ.get('TWILIO_ACCOUNT_SID') and os.environ.get('TWILIO_AUTH_TOKEN') and os.environ.get('TWILIO_FROM_NUMBER')))
+            print('GOOGLE_SOCIAL_CONFIGURED='+str(google).lower())
+            print('APPLE_SOCIAL_CONFIGURED='+str(apple).lower())
+            print('SMS_PROVIDER_CONFIGURED='+str(bool(sms)).lower())
+            "
