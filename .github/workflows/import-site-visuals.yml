@@ -1,0 +1,69 @@
+name: Import A+ website visuals
+
+on:
+  push:
+    paths:
+      - ".github/workflows/import-site-visuals.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download and optimize selected visuals
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet pillow
+          mkdir -p www/assets/site
+          python - <<'PY'
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          from PIL import Image, ImageOps
+          from io import BytesIO
+
+          assets = {
+              "home-sculpture.webp": "https://a-esthetic.de/wp-content/uploads/full-36.png",
+              "home-clinic.webp": "https://a-esthetic.de/wp-content/uploads/IMG_4007_581440-scaled.jpg",
+              "treatment-botox.webp": "https://a-esthetic.de/wp-content/uploads/botox.png",
+              "treatment-hyaluron.webp": "https://a-esthetic.de/wp-content/uploads/Layer-0-1.png",
+              "treatment-prp.webp": "https://a-esthetic.de/wp-content/uploads/prp.png",
+              "treatment-rf.webp": "https://a-esthetic.de/wp-content/uploads/xlg.png",
+              "treatment-laser.webp": "https://a-esthetic.de/wp-content/uploads/full-5.png",
+              "treatment-accent.webp": "https://a-esthetic.de/wp-content/uploads/sm2x-6.png",
+          }
+          headers={"User-Agent":"Mozilla/5.0"}
+          out=Path("www/assets/site")
+          for name,url in assets.items():
+              req=Request(url,headers=headers)
+              data=urlopen(req,timeout=45).read()
+              img=Image.open(BytesIO(data))
+              img=ImageOps.exif_transpose(img).convert("RGB")
+              max_w=1400
+              if img.width>max_w:
+                  h=round(img.height*(max_w/img.width))
+                  img=img.resize((max_w,h),Image.Resampling.LANCZOS)
+              dest=out/name
+              img.save(dest,"WEBP",quality=86,method=6)
+              print(f"IMPORTED {name} {img.width}x{img.height} <- {url}")
+          PY
+
+      - name: Commit visual assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add www/assets/site
+          if git diff --cached --quiet; then
+            echo "No asset changes."
+            exit 0
+          fi
+          git commit -m "Import website visuals for customer app"
+          git push
