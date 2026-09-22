@@ -9,7 +9,8 @@ class FeatureModule(models.Model):
     def __str__(self): return self.name_de
 class UserProfile(models.Model):
     ROLE_CHOICES=[('customer','Kundin/Kunde'),('reception','Empfang'),('specialist','Behandler/in'),('manager','Management'),('admin','Administrator/in')]
-    user=models.OneToOneField(User,on_delete=models.CASCADE,related_name='profile'); role=models.CharField(max_length=20,choices=ROLE_CHOICES,default='customer'); phone=models.CharField(max_length=40,blank=True); preferred_language=models.CharField(max_length=10,default='de'); marketing_consent=models.BooleanField(default=False); health_data_consent=models.BooleanField(default=False); created_at=models.DateTimeField(auto_now_add=True)
+    SALUTATION_CHOICES=[('herr','Herr'),('frau','Frau'),('divers','Divers')]
+    user=models.OneToOneField(User,on_delete=models.CASCADE,related_name='profile'); role=models.CharField(max_length=20,choices=ROLE_CHOICES,default='customer'); phone=models.CharField(max_length=40,blank=True); salutation=models.CharField(max_length=12,choices=SALUTATION_CHOICES,blank=True); preferred_language=models.CharField(max_length=10,default='de'); marketing_consent=models.BooleanField(default=False); health_data_consent=models.BooleanField(default=False); onboarding_required=models.BooleanField(default=False); auth_provider=models.CharField(max_length=20,default='password'); email_verified_at=models.DateTimeField(null=True,blank=True); phone_verified_at=models.DateTimeField(null=True,blank=True); profile_completed_at=models.DateTimeField(null=True,blank=True); referral_code_used=models.CharField(max_length=32,blank=True); created_at=models.DateTimeField(auto_now_add=True)
     def __str__(self): return f'{self.user.username} – {self.get_role_display()}'
 class AuditLog(models.Model):
     actor=models.ForeignKey(User,null=True,blank=True,on_delete=models.SET_NULL); action=models.CharField(max_length=120); entity_type=models.CharField(max_length=100,blank=True); entity_id=models.CharField(max_length=100,blank=True); metadata=models.JSONField(default=dict,blank=True); ip_address=models.GenericIPAddressField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
@@ -48,8 +49,14 @@ class PackageDefinition(models.Model):
     def __str__(self): return self.name
 class Referral(models.Model):
     STATUS=[('invited','Eingeladen'),('registered','Registriert'),('visited','Erster Besuch'),('rewarded','Belohnt')]
-    referrer=models.ForeignKey(User,on_delete=models.CASCADE,related_name='referrals'); code=models.CharField(max_length=32,unique=True); invited_email=models.EmailField(blank=True); status=models.CharField(max_length=20,choices=STATUS,default='invited'); reward_coins=models.PositiveIntegerField(default=0); created_at=models.DateTimeField(auto_now_add=True); rewarded_at=models.DateTimeField(null=True,blank=True)
+    referrer=models.ForeignKey(User,on_delete=models.CASCADE,related_name='referrals'); referred_user=models.OneToOneField(User,null=True,blank=True,on_delete=models.SET_NULL,related_name='referral_origin'); code=models.CharField(max_length=32,unique=True); invited_email=models.EmailField(blank=True); status=models.CharField(max_length=20,choices=STATUS,default='invited'); reward_coins=models.PositiveIntegerField(default=0); created_at=models.DateTimeField(auto_now_add=True); registered_at=models.DateTimeField(null=True,blank=True); rewarded_at=models.DateTimeField(null=True,blank=True)
     def __str__(self): return f'{self.code} – {self.get_status_display()}'
+
+class AccountVerification(models.Model):
+    CHANNEL=[('email','E-Mail'),('sms','SMS')]
+    user=models.ForeignKey(User,on_delete=models.CASCADE,related_name='verification_challenges'); channel=models.CharField(max_length=12,choices=CHANNEL); code_digest=models.CharField(max_length=160); sent_at=models.DateTimeField(auto_now=True); expires_at=models.DateTimeField(); verified_at=models.DateTimeField(null=True,blank=True); attempts=models.PositiveSmallIntegerField(default=0)
+    class Meta: constraints=[models.UniqueConstraint(fields=['user','channel'],name='unique_user_verification_channel')]
+    def __str__(self): return f'{self.user_id}:{self.channel}'
 class Campaign(models.Model):
     AUDIENCE=[('all','Alle Mitglieder'),('inactive','Inaktive Mitglieder'),('vip','Signature / Black'),('birthday','Geburtstag'),('package_expiry','Paket läuft ab')]
     name=models.CharField(max_length=160); audience=models.CharField(max_length=30,choices=AUDIENCE,default='all'); message=models.TextField(); starts_at=models.DateTimeField(); ends_at=models.DateTimeField(); active=models.BooleanField(default=True); issuer=models.CharField(max_length=80,default='A+ Esthetic',editable=False); created_at=models.DateTimeField(auto_now_add=True)

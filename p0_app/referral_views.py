@@ -65,29 +65,6 @@ def _send_referral_email(referral, request):
     return f"https://a-esthetic.de/?ref={referral.code}"
 
 
-def _award_referral_points(referral):
-    reference = f"referral:{referral.pk}"
-    with transaction.atomic():
-        wallet, _ = WalletAccount.objects.select_for_update().get_or_create(user=referral.referrer)
-        if WalletTransaction.objects.filter(user=referral.referrer, kind="coin", reference=reference).exists():
-            return False, wallet.coin_balance
-        points = int(referral.reward_coins or REFERRAL_POINTS)
-        wallet.coin_balance += points
-        wallet.save(update_fields=["coin_balance", "updated_at"])
-        WalletTransaction.objects.create(
-            user=referral.referrer,
-            kind="coin",
-            direction="in",
-            coin_amount=points,
-            description="Freund/in eingeladen",
-            reference=reference,
-        )
-        referral.status = "rewarded"
-        referral.rewarded_at = timezone.now()
-        referral.save(update_fields=["status", "rewarded_at"])
-        return True, wallet.coin_balance
-
-
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def mobile_club(request):
@@ -121,10 +98,9 @@ def mobile_club(request):
             AuditLog.objects.create(actor=user, action="Referral-E-Mail fehlgeschlagen", entity_type="Referral", entity_id=str(referral.pk), metadata={"error": str(exc)[:500], "relay": "book"}, ip_address=request.META.get("REMOTE_ADDR"))
             return JsonResponse({"ok": False, "error": "referral_email_failed", "referral_id": referral.pk}, status=503)
 
-        awarded, balance = _award_referral_points(referral)
-        points_awarded = int(referral.reward_coins or REFERRAL_POINTS) if awarded else 0
-        AuditLog.objects.create(actor=user, action="Referral-E-Mail versendet", entity_type="Referral", entity_id=str(referral.pk), metadata={"invite_url": invite_url, "relay": "book", "points_awarded": points_awarded}, ip_address=request.META.get("REMOTE_ADDR"))
-        create_notification(user, "Einladung versendet", f"Ihre Einladung an {invited_email} wurde versendet. +{points_awarded} Punkte.", category="referral", deeplink="friends", send_push=False)
+        points_awarded = 0
+        AuditLog.objects.create(actor=user, action="Referral-E-Mail versendet", entity_type="Referral", entity_id=str(referral.pk), metadata={"invite_url": invite_url, "relay": "book", "points_awarded": 0}, ip_address=request.META.get("REMOTE_ADDR"))
+        create_notification(user, "Einladung versendet", f"Ihre Einladung an {invited_email} wurde versendet. Punkte erhalten Sie nach der ersten Buchung.", category="referral", deeplink="friends", send_push=False)
 
     campaigns = Campaign.objects.filter(active=True, starts_at__lte=timezone.now(), ends_at__gte=timezone.now())
     giftcards = GiftCard.objects.filter(purchaser=user)

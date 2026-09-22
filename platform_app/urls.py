@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import admin_aware_login, legal_views, mobile_api, patient_documents, views
+from . import account_onboarding, admin_aware_login, legal_views, mobile_api, patient_documents, views
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
@@ -29,6 +29,14 @@ urlpatterns = [
 
     path('api/mobile/status/', mobile_api.status, name='mobile_status'),
     path('api/mobile/login/', admin_aware_login.login, name='mobile_login'),
+    path('api/mobile/auth/config/', account_onboarding.auth_config, name='mobile_auth_config'),
+    path('api/mobile/signup/', account_onboarding.signup, name='mobile_signup'),
+    path('api/mobile/onboarding/', account_onboarding.onboarding, name='mobile_onboarding'),
+    path('api/mobile/verification/email/request/', account_onboarding.email_request, name='mobile_email_request'),
+    path('api/mobile/verification/email/confirm/', account_onboarding.email_confirm, name='mobile_email_confirm'),
+    path('api/mobile/verification/sms/request/', account_onboarding.sms_request, name='mobile_sms_request'),
+    path('api/mobile/verification/sms/confirm/', account_onboarding.sms_confirm, name='mobile_sms_confirm'),
+    path('api/mobile/social-session/', account_onboarding.social_session, name='mobile_social_session'),
     path('api/mobile/me/', mobile_api.me, name='mobile_me'),
     path('api/mobile/dashboard/', mobile_api.dashboard, name='mobile_dashboard'),
     path('api/mobile/club/', mobile_api.club, name='mobile_club'),

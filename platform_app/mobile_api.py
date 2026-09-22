@@ -11,6 +11,7 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from .account_state import account_state, is_admin_identity
 from .models import (
     Appointment,
     AuditLog,
@@ -66,10 +67,18 @@ def _user_from_request(request):
         return None
 
 
-def _auth(request):
+def _auth(request, allow_incomplete=False):
     user = _user_from_request(request)
     if not user:
         return None, JsonResponse({'ok': False, 'error': 'authentication_required'}, status=401)
+    if not allow_incomplete and not is_admin_identity(user):
+        state = account_state(user)
+        if state.get('locked'):
+            return None, JsonResponse({
+                'ok': False,
+                'error': 'profile_completion_required',
+                'account': state,
+            }, status=423)
     return user, None
 
 
@@ -125,7 +134,7 @@ def login(request):
 @csrf_exempt
 @require_http_methods(['GET'])
 def me(request):
-    user, error = _auth(request)
+    user, error = _auth(request, allow_incomplete=True)
     if error:
         return error
     profile, _ = UserProfile.objects.get_or_create(user=user)
@@ -134,10 +143,14 @@ def me(request):
         'member': _member_payload(user),
         'profile': {
             'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
             'phone': profile.phone,
+            'salutation': profile.salutation,
             'marketing_consent': profile.marketing_consent,
             'preferred_language': profile.preferred_language,
         },
+        'account': account_state(user),
     })
 
 

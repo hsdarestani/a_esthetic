@@ -11,6 +11,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from platform_app import mobile_api as legacy_mobile_api
+from platform_app.account_onboarding import award_referrer_first_booking
 
 from .ops_models import AppNotification, PushDevice
 from .push import create_notification, push_configuration
@@ -218,3 +219,22 @@ def internal_booking_notification(request):
         "missing_customer": missing_customer,
         "push": push_configuration(),
     })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def internal_referral_booking(request):
+    expected = _internal_sync_token()
+    if not expected:
+        return JsonResponse({"ok": False, "error": "referral_sync_not_configured"}, status=503)
+    if not _internal_authorized(request):
+        return JsonResponse({"ok": False, "error": "referral_sync_forbidden"}, status=403)
+    data = _json(request)
+    email = str(data.get("customer_email") or "").strip().lower()
+    if not email:
+        return JsonResponse({"ok": False, "error": "customer_email_required"}, status=400)
+    result = award_referrer_first_booking(
+        email,
+        str(data.get("booking_public_id") or ""),
+    )
+    return JsonResponse(result)

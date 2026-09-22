@@ -6,6 +6,7 @@ from django.views.decorators.http import require_http_methods
 
 from . import mobile_api
 from .models import AuditLog, UserProfile
+from .account_state import account_state
 
 
 def _is_admin(user):
@@ -63,4 +64,5 @@ def login(request):
         }
     else:
         payload['member'] = mobile_api._member_payload(user)
+        payload['account'] = account_state(user)
     return JsonResponse(payload)

@@ -179,10 +179,8 @@ def mobile_patient_record_upload(request):
             ip_address=request.META.get("REMOTE_ADDR"),
         )
 
-    kind = str(request.POST.get("kind") or "document").strip().lower()
-    if kind not in ALLOWED_KINDS:
-        return JsonResponse({"ok": False, "error": "invalid_kind"}, status=400)
-    title = str(request.POST.get("title") or "").strip()[:180]
+    kind = "document"
+    title = ""
     note = str(request.POST.get("note") or "").strip()[:6000]
     uploaded = request.FILES.get("file")
     payload = {
@@ -212,11 +210,14 @@ def mobile_patient_record_upload(request):
             "original_name": original_name,
             "mime_type": (uploaded.content_type or mimetypes.guess_type(original_name)[0] or "application/octet-stream")[:120],
         })
-        if not payload["title"]:
-            payload["title"] = Path(original_name).stem[:180] or "Dokument"
+        kind = "photo" if str(payload["mime_type"]).startswith("image/") else "document"
+        payload["kind"] = kind
+        payload["title"] = Path(original_name).stem[:180] or "Dokument"
     elif not note:
         return JsonResponse({"ok": False, "error": "empty_record"}, status=400)
-    elif not payload["title"]:
+    else:
+        kind = "note"
+        payload["kind"] = "note"
         payload["title"] = "Notiz"
 
     result, book_error, status = _book_json(
