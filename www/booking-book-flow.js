@@ -34,6 +34,15 @@
     return '<svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="8.5"/></svg>';
   }
 
+  function serviceCategory(name='') {
+    const value=String(name).toLowerCase();
+    if (/botox|hyaluron|lippen|skinbooster|gesicht|haut|beratung|microneedling/.test(value)) return 'face';
+    if (/haar|körper|body|lipolyse/.test(value)) return 'body';
+    if (/infusion|wellness|vitamin|analyse/.test(value)) return 'wellness';
+    return 'all';
+  }
+
+
   const providerPhotos = {
     'Frau Ariane Regaei': 'https://book.a-esthetic.de/static/booking/staff/ariane-regaei.jpg?v=e0a400ebbcee',
     'Qamar Hameed': 'https://book.a-esthetic.de/static/booking/staff/doctor-male.jpg',
@@ -218,6 +227,12 @@
 
         <section class="book-step is-active" data-book-step="1">
           <div class="book-step-head"><span>01</span><div><h2>Behandlung wählen</h2><p>Was dürfen wir für dich einplanen?</p></div></div>
+          <div class="book-service-filters" data-service-filters>
+            <button type="button" class="is-active" data-service-filter="all">Alle</button>
+            <button type="button" data-service-filter="face">Gesicht</button>
+            <button type="button" data-service-filter="body">Körper</button>
+            <button type="button" data-service-filter="wellness">Wellness</button>
+          </div>
           <div class="book-choice-grid" data-services></div>
         </section>
 
@@ -270,7 +285,7 @@
       const duration = Number(service.duration_minutes);
       const durationLabel = Number.isFinite(duration) && duration > 0 ? `${duration} Min.` : 'Dauer auf Anfrage';
       return `
-      <button type="button" class="book-choice-card book-treatment-card" data-service-id="${service.id}">
+      <button type="button" class="book-choice-card book-treatment-card" data-service-id="${service.id}" data-service-category="${serviceCategory(service.name)}">
         <span class="book-treatment-icon">${treatmentIcon(service.name)}</span>
         <div class="book-treatment-title-row">
           <strong>${esc(service.name)}</strong>
@@ -280,6 +295,16 @@
         <div class="book-meta"><span class="book-duration-fallback">${esc(durationLabel)}</span><span>${esc(service.price_label || '')}</span></div>
       </button>`;
     }).join('') : '<div class="book-slot-empty">Zurzeit sind keine Online-Termine freigeschaltet.</div>';
+
+    const filters=host.querySelector('[data-service-filters]');
+    filters?.querySelectorAll('[data-service-filter]').forEach(filterButton=>filterButton.addEventListener('click',()=>{
+      const filter=filterButton.dataset.serviceFilter;
+      filters.querySelectorAll('[data-service-filter]').forEach(item=>item.classList.toggle('is-active',item===filterButton));
+      services.querySelectorAll('[data-service-id]').forEach(card=>{
+        const category=card.dataset.serviceCategory||'all';
+        card.hidden=filter!=='all'&&category!==filter;
+      });
+    }));
 
     services.querySelectorAll('[data-service-id]').forEach(button => button.addEventListener('click', () => {
       state.service = state.data.services.find(item => Number(item.id) === Number(button.dataset.serviceId));
