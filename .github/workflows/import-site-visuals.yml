@@ -1,4 +1,4 @@
-name: Import A+ website visuals
+name: Import exact A+ website visuals
 
 on:
   push:
@@ -16,54 +16,51 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download and optimize selected visuals
+      - name: Import exact approved A+ visuals
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --quiet pillow
+          rm -rf www/assets/site
           mkdir -p www/assets/site
-          python - <<'PY'
-          from pathlib import Path
-          from urllib.request import Request, urlopen
-          from PIL import Image, ImageOps
-          from io import BytesIO
 
-          assets = {
-              "home-sculpture.webp": "https://a-esthetic.de/wp-content/uploads/full-36.png",
-              "home-clinic.webp": "https://a-esthetic.de/wp-content/uploads/IMG_4007_581440-scaled.jpg",
-              "treatment-botox.webp": "https://a-esthetic.de/wp-content/uploads/botox.png",
-              "treatment-hyaluron.webp": "https://a-esthetic.de/wp-content/uploads/Layer-0-1.png",
-              "treatment-prp.webp": "https://a-esthetic.de/wp-content/uploads/prp.png",
-              "treatment-rf.webp": "https://a-esthetic.de/wp-content/uploads/xlg.png",
-              "treatment-laser.webp": "https://a-esthetic.de/wp-content/uploads/full-5.png",
-              "treatment-accent.webp": "https://a-esthetic.de/wp-content/uploads/sm2x-6.png",
-          }
-          headers={"User-Agent":"Mozilla/5.0"}
-          out=Path("www/assets/site")
-          for name,url in assets.items():
-              req=Request(url,headers=headers)
-              data=urlopen(req,timeout=45).read()
-              img=Image.open(BytesIO(data))
-              img=ImageOps.exif_transpose(img).convert("RGB")
-              max_w=1400
-              if img.width>max_w:
-                  h=round(img.height*(max_w/img.width))
-                  img=img.resize((max_w,h),Image.Resampling.LANCZOS)
-              dest=out/name
-              img.save(dest,"WEBP",quality=86,method=6)
-              print(f"IMPORTED {name} {img.width}x{img.height} <- {url}")
-          PY
+          curl -fsSL --retry 4 --retry-delay 2             "https://a-esthetic.de/wp-content/themes/aesthetic-child/assets/staging/v5/hero.svg"             -o www/assets/site/hero.svg
 
-      - name: Commit visual assets
+          curl -fsSL --retry 4 --retry-delay 2             "https://a-esthetic.de/wp-content/themes/aesthetic-child/assets/staging/botox.png"             -o www/assets/site/botox.png
+
+          curl -fsSL --retry 4 --retry-delay 2             "https://a-esthetic.de/wp-content/themes/aesthetic-child/assets/staging/hyaluron.png"             -o www/assets/site/hyaluron.png
+
+          curl -fsSL --retry 4 --retry-delay 2             "https://a-esthetic.de/wp-content/themes/aesthetic-child/assets/staging/skinbooster.png"             -o www/assets/site/skinbooster.png
+
+          curl -fsSL --retry 4 --retry-delay 2             "https://a-esthetic.de/wp-content/themes/aesthetic-child/assets/staging/prp.png"             -o www/assets/site/prp.png
+
+          curl -fsSL --retry 4 --retry-delay 2             "https://a-esthetic.de/wp-content/uploads/WhatsApp-Image-2026-09-23-at-01.36.13.jpeg"             -o www/assets/site/infusion.jpeg
+
+          curl -fsSL --retry 4 --retry-delay 2             "https://a-esthetic.de/wp-content/themes/aesthetic-child/assets/staging/lipolyse.png"             -o www/assets/site/lipolyse.png
+
+          curl -fsSL --retry 4 --retry-delay 2             "https://a-esthetic.de/wp-content/themes/aesthetic-child/assets/staging/rf-microneedling.png"             -o www/assets/site/rf-microneedling.png
+
+          curl -fsSL --retry 4 --retry-delay 2             "https://a-esthetic.de/wp-content/themes/aesthetic-child/assets/staging/laser.png"             -o www/assets/site/laser.png
+
+          curl -fsSL --retry 4 --retry-delay 2             "https://a-esthetic.de/wp-content/uploads/IMG_4007_581440-scaled.jpg"             -o www/assets/site/clinic.jpg
+
+          test -s www/assets/site/hero.svg
+          for file in botox.png hyaluron.png skinbooster.png prp.png infusion.jpeg lipolyse.png rf-microneedling.png laser.png clinic.jpg; do
+            test -s "www/assets/site/$file"
+          done
+
+          echo "Exact A+ visual assets imported:"
+          find www/assets/site -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
+
+      - name: Commit exact visual assets
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add www/assets/site
+          git add -A www/assets/site
           if git diff --cached --quiet; then
             echo "No asset changes."
             exit 0
           fi
-          git commit -m "Import website visuals for customer app"
+          git commit -m "Replace app visuals with approved A+ website assets"
           git push
