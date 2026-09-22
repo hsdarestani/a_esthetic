@@ -11,7 +11,9 @@ CSRF_TRUSTED_ORIGINS = [x.strip() for x in os.environ.get("CSRF_TRUSTED_ORIGINS"
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_IOS_CLIENT_ID = os.environ.get("GOOGLE_IOS_CLIENT_ID", "")
 APPLE_CLIENT_ID = os.environ.get("APPLE_CLIENT_ID", "")
+APPLE_NATIVE_CLIENT_ID = os.environ.get("APPLE_NATIVE_CLIENT_ID", "de.aplusesthetic.app")
 APPLE_KEY_ID = os.environ.get("APPLE_KEY_ID", "")
 APPLE_TEAM_ID = os.environ.get("APPLE_TEAM_ID", "")
 APPLE_APP_ID_PREFIX = os.environ.get("APPLE_APP_ID_PREFIX", "") or APPLE_TEAM_ID

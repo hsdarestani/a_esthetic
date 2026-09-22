@@ -290,7 +290,9 @@ def auth_config(request):
         # OAuth client identifiers are public by design and are needed by the
         # providers' official web button libraries. Secrets remain server-only.
         "google_client_id": settings.GOOGLE_CLIENT_ID if google_enabled else "",
+        "google_ios_client_id": settings.GOOGLE_IOS_CLIENT_ID if google_enabled else "",
         "apple_client_id": settings.APPLE_CLIENT_ID if apple_enabled else "",
+        "apple_native_client_id": settings.APPLE_NATIVE_CLIENT_ID if apple_enabled else "",
     })
 
 
@@ -528,12 +530,24 @@ def _social_payload(provider, credential):
     if provider == "google":
         if not getattr(settings, "GOOGLE_SOCIAL_LOGIN_ENABLED", False):
             raise ValueError("google_not_configured")
-        try:
-            payload = google_id_token.verify_oauth2_token(
-                credential, google_requests.Request(), settings.GOOGLE_CLIENT_ID
-            )
-        except Exception as exc:
-            raise ValueError("invalid_google_token") from exc
+        allowed_audiences = [
+            value for value in {
+                settings.GOOGLE_CLIENT_ID,
+                getattr(settings, "GOOGLE_IOS_CLIENT_ID", ""),
+            } if value
+        ]
+        payload = None
+        last_error = None
+        for audience in allowed_audiences:
+            try:
+                payload = google_id_token.verify_oauth2_token(
+                    credential, google_requests.Request(), audience
+                )
+                break
+            except Exception as exc:
+                last_error = exc
+        if payload is None:
+            raise ValueError("invalid_google_token") from last_error
         if not payload.get("email") or not payload.get("email_verified"):
             raise ValueError("google_email_not_verified")
         return payload
@@ -549,7 +563,10 @@ def _social_payload(provider, credential):
                 credential,
                 signing_key.key,
                 algorithms=["RS256"],
-                audience=settings.APPLE_CLIENT_ID,
+                audience=[
+                    settings.APPLE_CLIENT_ID,
+                    getattr(settings, "APPLE_NATIVE_CLIENT_ID", "de.aplusesthetic.app"),
+                ],
                 issuer="https://appleid.apple.com",
             )
         except Exception as exc:

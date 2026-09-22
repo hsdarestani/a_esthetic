@@ -28,6 +28,7 @@ jobs:
     env:
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
       APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}
       APPLE_KEY_ID: ${{ secrets.APPLE_KEY_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -67,7 +68,7 @@ jobs:
           port: ${{ secrets.SERVER_PORT }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 25m
-          envs: GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,APPLE_CLIENT_ID,APPLE_KEY_ID,APPLE_TEAM_ID,APPLE_APP_ID_PREFIX,APPLE_PRIVATE_KEY_B64,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER,ADMINPASS
+          envs: GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,GOOGLE_IOS_CLIENT_ID,APPLE_CLIENT_ID,APPLE_KEY_ID,APPLE_TEAM_ID,APPLE_APP_ID_PREFIX,APPLE_PRIVATE_KEY_B64,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER,ADMINPASS
           script: |
             set -euo pipefail
             export DEBIAN_FRONTEND=noninteractive
@@ -129,6 +130,7 @@ jobs:
             keys = [
                 "GOOGLE_CLIENT_ID",
                 "GOOGLE_CLIENT_SECRET",
+                "GOOGLE_IOS_CLIENT_ID",
                 "APPLE_CLIENT_ID",
                 "APPLE_KEY_ID",
                 "APPLE_TEAM_ID",

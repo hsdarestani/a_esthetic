@@ -45,7 +45,8 @@
       invalid_google_token:'Google-Anmeldung konnte nicht verifiziert werden.',
       invalid_apple_token:'Apple-Anmeldung konnte nicht verifiziert werden.',
       social_email_missing:'Für diese Anmeldung wurde keine E-Mail-Adresse bereitgestellt.',
-      social_account_conflict:'Dieses Konto kann nicht automatisch mit der Social-Anmeldung verknüpft werden.'
+      social_account_conflict:'Dieses Konto kann nicht automatisch mit der Social-Anmeldung verknüpft werden.',
+      native_social_unavailable:'Die native Anmeldung ist auf diesem Gerät noch nicht vollständig konfiguriert.'
     };
     return map[error?.code] || error?.message || 'Bitte versuchen Sie es erneut.';
   }
@@ -249,6 +250,138 @@
     return cachedConfig;
   }
 
+  function nativePlatform() {
+    try {
+      const value = window.Capacitor?.getPlatform?.() || '';
+      return value === 'ios' || value === 'android' ? value : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function nativeSocialPlugin() {
+    return window.Capacitor?.Plugins?.SocialLogin || null;
+  }
+
+  let nativeSocialReady = null;
+  async function initializeNativeSocial(config) {
+    const platform = nativePlatform();
+    const plugin = nativeSocialPlugin();
+    if (!platform || !plugin) return false;
+    if (nativeSocialReady) return nativeSocialReady;
+
+    nativeSocialReady = (async () => {
+      const options = {};
+      if (config.google && config.google_client_id) {
+        if (platform === 'android') {
+          options.google = {
+            webClientId: config.google_client_id,
+            mode: 'online'
+          };
+        } else if (platform === 'ios' && config.google_ios_client_id) {
+          options.google = {
+            iOSClientId: config.google_ios_client_id,
+            iOSServerClientId: config.google_client_id,
+            mode: 'online'
+          };
+        }
+      }
+      if (platform === 'ios' && config.apple) {
+        options.apple = {
+          clientId: config.apple_native_client_id || 'de.aplusesthetic.app'
+        };
+      }
+      if (!Object.keys(options).length) return false;
+      await plugin.initialize(options);
+      return true;
+    })().catch(() => false);
+
+    return nativeSocialReady;
+  }
+
+  async function nativeSocialLogin(provider, config) {
+    const plugin = nativeSocialPlugin();
+    const ready = await initializeNativeSocial(config);
+    if (!plugin || !ready) throw new Error('native_social_unavailable');
+
+    const response = await plugin.login({
+      provider,
+      options: provider === 'google'
+        ? {scopes:['email','profile']}
+        : {scopes:['email','name']}
+    });
+    const result = response?.result || {};
+    const credential = result.idToken || '';
+    if (!credential) throw new Error('social_credential_required');
+
+    const profile = result.profile || {};
+    const user = provider === 'apple'
+      ? {
+          email: profile.email || '',
+          name: {
+            firstName: profile.givenName || '',
+            lastName: profile.familyName || ''
+          }
+        }
+      : {
+          email: profile.email || '',
+          name: {
+            firstName: profile.givenName || '',
+            lastName: profile.familyName || ''
+          }
+        };
+
+    await completeSocialLogin(provider, credential, user);
+  }
+
+  function renderNativeSocialButtons(config, wrapper) {
+    const platform = nativePlatform();
+    if (!platform || !wrapper) return false;
+
+    const canGoogle = config.google && config.google_client_id &&
+      (platform === 'android' || Boolean(config.google_ios_client_id));
+    const canApple = platform === 'ios' && config.apple;
+
+    const buttons = [];
+    if (canGoogle) {
+      buttons.push(
+        '<button type="button" class="native-provider-button native-google-button" data-native-social="google">' +
+          '<img src="https://developers.google.com/static/identity/images/g-logo.png" alt="" aria-hidden="true">' +
+          '<span>Mit Google anmelden</span>' +
+        '</button>'
+      );
+    }
+    if (canApple) {
+      buttons.push(
+        '<button type="button" class="native-provider-button native-apple-button" data-native-social="apple">' +
+          '<span class="native-apple-mark" aria-hidden="true"></span>' +
+          '<span>Mit Apple anmelden</span>' +
+        '</button>'
+      );
+    }
+    if (!buttons.length) return false;
+
+    wrapper.innerHTML =
+      '<div class="login-divider"><span>oder</span></div>' +
+      '<div class="native-social-grid">' + buttons.join('') + '</div>';
+
+    wrapper.querySelectorAll('[data-native-social]').forEach(button => {
+      button.addEventListener('click', async () => {
+        if (button.disabled) return;
+        button.disabled = true;
+        try {
+          await nativeSocialLogin(button.dataset.nativeSocial, config);
+        } catch (error) {
+          await showSignup(errorText(error));
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
+    initializeNativeSocial(config).catch(() => {});
+    return true;
+  }
+
   function waitForGlobal(test, timeout=8000) {
     const started = Date.now();
     return new Promise((resolve, reject) => {
@@ -356,13 +489,16 @@
     if ((config.google || config.apple) && !form.querySelector('[data-social-login]')) {
       const wrapper = document.createElement('div');
       wrapper.dataset.socialLogin = '1';
+      form.appendChild(wrapper);
+
+      if (renderNativeSocialButtons(config, wrapper)) return;
+
       wrapper.innerHTML =
         '<div class="login-divider"><span>oder</span></div>' +
         '<div class="official-social-grid">' +
           (config.google ? '<div class="official-google" data-google-signin></div>' : '') +
           (config.apple ? '<div class="official-apple" id="appleid-signin" data-apple-signin data-color="black" data-border="true" data-type="sign-in" data-mode="center-align"></div>' : '') +
         '</div>';
-      form.appendChild(wrapper);
       await Promise.allSettled([
         renderGoogleButton(config, wrapper.querySelector('[data-google-signin]')),
         renderAppleButton(config, wrapper.querySelector('[data-apple-signin]'))
