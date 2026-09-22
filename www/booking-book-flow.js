@@ -170,6 +170,7 @@
     if (!target) return;
     target.innerHTML = `
       <div class="book-summary-row"><span>Behandlung</span><strong>${esc(state.service?.name || '')}</strong></div>
+      <div class="book-summary-row"><span>Dauer</span><strong>${Number(state.service?.duration_minutes) > 0 ? `${Number(state.service.duration_minutes)} Min.` : 'Auf Anfrage'}</strong></div>
       <div class="book-summary-row"><span>Behandler</span><strong>${esc(state.staff?.name || '')}</strong></div>
       <div class="book-summary-row"><span>Datum</span><strong>${esc(state.dateLabel)}</strong></div>
       <div class="book-summary-row"><span>Uhrzeit</span><strong>${esc(state.slotLabel)}</strong></div>`;
@@ -265,13 +266,20 @@
 
     const host = card.querySelector('[data-book-root]');
     const services = host.querySelector('[data-services]');
-    services.innerHTML = state.data.services.length ? state.data.services.map(service => `
+    services.innerHTML = state.data.services.length ? state.data.services.map(service => {
+      const duration = Number(service.duration_minutes);
+      const durationLabel = Number.isFinite(duration) && duration > 0 ? `${duration} Min.` : 'Dauer auf Anfrage';
+      return `
       <button type="button" class="book-choice-card book-treatment-card" data-service-id="${service.id}">
         <span class="book-treatment-icon">${treatmentIcon(service.name)}</span>
-        <strong>${esc(service.name)}</strong>
+        <div class="book-treatment-title-row">
+          <strong>${esc(service.name)}</strong>
+          <span class="book-duration-badge" data-service-duration>${esc(durationLabel)}</span>
+        </div>
         <p>Dein Termin wird individuell auf die Behandlung abgestimmt.</p>
-        <div class="book-meta"><span>${Number(service.duration_minutes) || 0} Min.</span><span>${esc(service.price_label || '')}</span></div>
-      </button>`).join('') : '<div class="book-slot-empty">Zurzeit sind keine Online-Termine freigeschaltet.</div>';
+        <div class="book-meta"><span class="book-duration-fallback">${esc(durationLabel)}</span><span>${esc(service.price_label || '')}</span></div>
+      </button>`;
+    }).join('') : '<div class="book-slot-empty">Zurzeit sind keine Online-Termine freigeschaltet.</div>';
 
     services.querySelectorAll('[data-service-id]').forEach(button => button.addEventListener('click', () => {
       state.service = state.data.services.find(item => Number(item.id) === Number(button.dataset.serviceId));

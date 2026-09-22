@@ -89,6 +89,8 @@ jobs:
               assert needle in interactions, f'native interactions missing {needle}'
           book=pathlib.Path('www/booking-direct-api.js').read_text()
           assert 'https://book.a-esthetic.de/api/mobile' in book
+          booking_flow=pathlib.Path('www/booking-book-flow.js').read_text()
+          assert 'book-duration-badge' in booking_flow and 'duration_minutes' in booking_flow, 'service duration must remain visible in booking cards'
           print('FOCUSED_RUNTIME_STATIC_AUDIT=success')
           PY
 
