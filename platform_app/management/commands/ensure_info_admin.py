@@ -1,4 +1,5 @@
 import json
+import os
 import secrets
 import string
 from pathlib import Path
@@ -26,8 +27,14 @@ def _token():
 
 
 def _password():
+    configured = str(os.environ.get("ADMINPASS") or "").strip()
+    if configured:
+        if len(configured) < 12:
+            raise CommandError("ADMINPASS must contain at least 12 characters.")
+        return configured, True
     alphabet = string.ascii_letters + string.digits
-    return "A+" + "".join(secrets.choice(alphabet) for _ in range(18)) + "!9"
+    generated = "A+" + "".join(secrets.choice(alphabet) for _ in range(18)) + "!9"
+    return generated, False
 
 
 class Command(BaseCommand):
@@ -42,7 +49,8 @@ class Command(BaseCommand):
             raise CommandError("This bootstrap is restricted to info@a-esthetic.de.")
 
         existing = User.objects.filter(email__iexact=email).first()
-        if MARKER.exists():
+        configured_password = bool(str(os.environ.get("ADMINPASS") or "").strip())
+        if MARKER.exists() and not configured_password:
             if existing:
                 profile, _ = UserProfile.objects.get_or_create(user=existing)
                 changed = []
@@ -64,7 +72,7 @@ class Command(BaseCommand):
         if not token:
             raise CommandError("Internal sync token is missing.")
 
-        password = _password()
+        password, from_adminpass = _password()
         with transaction.atomic():
             user = existing or User(username=email, email=email)
             user.username = email
@@ -88,6 +96,7 @@ class Command(BaseCommand):
             payload = json.dumps({
                 "email": email,
                 "password": password,
+                "send_credentials": not from_adminpass,
             }).encode("utf-8")
             request = Request(
                 BOOK_BOOTSTRAP_URL,
@@ -117,6 +126,6 @@ class Command(BaseCommand):
         MARKER.touch(mode=0o600, exist_ok=True)
         self.stdout.write(
             self.style.SUCCESS(
-                "Canonical info admin created/mirrored; credentials were delivered securely by e-mail."
+                "Canonical info admin password synchronized from ADMINPASS." if from_adminpass else "Canonical info admin created/mirrored; credentials were delivered securely by e-mail."
             )
         )

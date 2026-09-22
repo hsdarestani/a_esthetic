@@ -36,6 +36,7 @@ jobs:
       TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
       TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
       TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+      ADMINPASS: ${{ secrets.ADMINPASS }}
     steps:
       - uses: actions/checkout@v4
 
@@ -66,7 +67,7 @@ jobs:
           port: ${{ secrets.SERVER_PORT }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 25m
-          envs: GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,APPLE_CLIENT_ID,APPLE_KEY_ID,APPLE_TEAM_ID,APPLE_APP_ID_PREFIX,APPLE_PRIVATE_KEY_B64,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER
+          envs: GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,APPLE_CLIENT_ID,APPLE_KEY_ID,APPLE_TEAM_ID,APPLE_APP_ID_PREFIX,APPLE_PRIVATE_KEY_B64,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER,ADMINPASS
           script: |
             set -euo pipefail
             export DEBIAN_FRONTEND=noninteractive
@@ -163,6 +164,7 @@ jobs:
             "$VENV/bin/python" manage.py seed_p3
             "$VENV/bin/python" manage.py collectstatic --noinput
             "$VENV/bin/python" manage.py check
+            "$VENV/bin/python" manage.py ensure_info_admin --email info@a-esthetic.de
 
             cat > /etc/systemd/system/a-esthetic-mobile.service <<SERVICE
             [Unit]

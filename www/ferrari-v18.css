@@ -1,0 +1,75 @@
+:root{
+  --lux-bg:#f5f2ec;--lux-paper:rgba(255,255,255,.94);--lux-ink:#191713;--lux-muted:#7e776d;
+  --lux-line:rgba(52,45,35,.10);--lux-gold:#b88934;--lux-gold-2:#d9b765;--lux-dark:#1d1a16;
+  --lux-shadow:0 18px 52px rgba(34,28,19,.075);--lux-radius:22px;
+}
+html,body{background:var(--lux-bg)!important}
+body{background:
+  radial-gradient(circle at 82% -8%,rgba(190,145,58,.12),transparent 26rem),
+  linear-gradient(180deg,#f8f6f2 0,#f3efe8 100%)!important}
+.core-shell{background:transparent!important}
+.core-header{
+  height:76px!important;padding:0 16px!important;
+  border-bottom:1px solid rgba(53,45,34,.07)!important;
+  background:rgba(250,248,244,.90)!important;
+  box-shadow:0 8px 28px rgba(36,30,20,.035)!important;
+  backdrop-filter:blur(24px) saturate(1.08)!important;
+}
+.core-brand strong{font-size:23px!important;letter-spacing:-.035em!important}
+.core-brand span{color:#9a712b!important;letter-spacing:.18em!important}
+.core-icon-btn{border-color:rgba(49,42,32,.09)!important;background:rgba(255,255,255,.78)!important;box-shadow:0 6px 16px rgba(31,26,18,.045)!important}
+.core-main{width:min(760px,100%)!important;padding:24px 16px 34px!important}
+.page-head{margin:6px 2px 22px!important}.page-head h1{font-size:clamp(36px,9vw,54px)!important;line-height:.96!important;letter-spacing:-.055em!important}.page-head p{max-width:620px!important;color:var(--lux-muted)!important}
+.eyebrow{color:#9b722c!important;letter-spacing:.18em!important}.eyebrow:before{background:linear-gradient(90deg,#d6b56d,#aa7624)!important}
+.card,.appointment-row,.history-row,.review-row,.referral-row,.record-row,.wallet-row,.upload-box{
+  border-color:var(--lux-line)!important;border-radius:var(--lux-radius)!important;
+  background:var(--lux-paper)!important;box-shadow:var(--lux-shadow)!important;
+}
+.card{padding:19px!important;margin-bottom:12px!important}
+.section-title{margin:28px 2px 12px!important}.section-title h2{font-size:23px!important;letter-spacing:-.035em!important}
+.appointment-feature{
+  position:relative;overflow:hidden!important;
+  background:linear-gradient(145deg,#28241e 0%,#14120f 100%)!important;
+  border:1px solid rgba(255,255,255,.04)!important;
+  box-shadow:0 24px 54px rgba(24,20,14,.18)!important;
+}
+.appointment-feature:after{content:"";position:absolute;right:-60px;top:-90px;width:210px;height:210px;border-radius:50%;background:radial-gradient(circle,rgba(213,174,91,.19),transparent 67%);pointer-events:none}
+.primary{
+  border:0!important;border-radius:14px!important;
+  background:linear-gradient(135deg,#d4ae58,#ad7a27)!important;
+  box-shadow:0 10px 24px rgba(162,113,29,.18)!important;
+}
+.secondary{border-color:var(--lux-line)!important;border-radius:14px!important;background:#fff!important}
+.field>span{color:#6d655a!important;font-size:10px!important;letter-spacing:.015em}.field input,.field select,.field textarea{min-height:50px!important;border-color:rgba(54,46,34,.11)!important;border-radius:14px!important;background:#fbfaf7!important;font-size:16px!important}.field input:focus,.field select:focus,.field textarea:focus{border-color:rgba(184,137,52,.58)!important;background:#fff!important;box-shadow:0 0 0 3px rgba(184,137,52,.09)!important}
+.slot-grid{gap:9px!important}.slot{min-height:44px!important;border-color:var(--lux-line)!important;border-radius:13px!important;background:#fff!important}.slot.is-selected{background:var(--lux-dark)!important;border-color:var(--lux-dark)!important;box-shadow:0 7px 16px rgba(27,23,16,.12)!important}
+.date-box{background:#f7f2e7!important;border:1px solid #eadfc8!important}.date-box span{color:#8f6828!important}
+.status{border:1px solid rgba(70,61,47,.05)!important}
+.wallet-hero{background:linear-gradient(145deg,#d5ae57,#a97827)!important;box-shadow:0 22px 50px rgba(157,108,27,.17)!important}
+.core-nav{
+  left:10px!important;right:10px!important;bottom:10px!important;
+  border:1px solid rgba(49,42,32,.09)!important;border-radius:22px!important;
+  background:rgba(255,255,255,.94)!important;padding:7px 7px calc(7px + env(safe-area-inset-bottom))!important;
+  box-shadow:0 18px 48px rgba(31,25,17,.13)!important;backdrop-filter:blur(24px)!important;
+}
+.nav-btn{min-height:48px!important;border-radius:15px!important;transition:background .15s ease,color .15s ease,transform .15s ease}.nav-btn.is-active{background:#f7efdd!important;color:#8f6521!important}.nav-btn:active{transform:scale(.97)}
+.login-shell{background:
+  radial-gradient(circle at 50% 0,rgba(193,145,54,.13),transparent 24rem),
+  linear-gradient(180deg,#faf8f4,#f2eee6)!important;padding:26px 16px max(26px,env(safe-area-inset-bottom))!important}
+.login-card{
+  width:min(450px,100%)!important;padding:28px!important;border-color:rgba(52,45,34,.09)!important;
+  border-radius:30px!important;background:rgba(255,255,255,.95)!important;
+  box-shadow:0 30px 90px rgba(35,28,18,.11)!important;
+}
+.login-logo{margin-bottom:28px!important}.login-brand-logo{width:min(180px,52vw)!important}
+.login-card h1{font-size:37px!important;letter-spacing:-.045em!important}
+.login-divider{margin:20px 0!important}.official-social-grid{gap:11px!important}.official-apple{border-radius:8px!important;overflow:hidden}
+.verify-card{border-color:var(--lux-line)!important;background:#faf8f3!important;border-radius:18px!important;padding:15px!important}.verify-card.is-done{background:#f3f8f3!important}
+.settings-overlay{background:rgba(18,15,11,.46)!important;backdrop-filter:blur(8px)!important}.settings-card{border-radius:28px 28px 0 0!important;padding:22px 18px calc(24px + env(safe-area-inset-bottom))!important;box-shadow:0 -24px 70px rgba(0,0,0,.16)!important}
+.settings-user{background:#f8f4eb!important;border:1px solid #ebe1ce!important}
+.brand-splash{background:radial-gradient(circle at 50% 38%,rgba(190,143,50,.17),transparent 17rem),#f6f2eb!important}.brand-splash-logo{width:164px!important}.brand-splash-ring{border-color:rgba(178,131,43,.18)!important;border-top-color:#ad7c2d!important}
+@media(max-width:520px){
+  .core-main{padding-left:13px!important;padding-right:13px!important;padding-bottom:112px!important}
+  .card{border-radius:20px!important;padding:17px!important}
+  .core-nav{left:8px!important;right:8px!important;bottom:8px!important}
+  .login-card{padding:23px 20px!important;border-radius:26px!important}
+}
