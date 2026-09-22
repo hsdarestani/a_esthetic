@@ -45,16 +45,16 @@
 
   function serviceImage(name='') {
     const value=String(name).toLowerCase();
-    if (value.includes('botox')) return './assets/site/treatment-botox.webp';
-    if (value.includes('hyal')) return './assets/site/treatment-hyaluron.webp';
-    if (value.includes('prp') || value.includes('eigenblut')) return './assets/site/treatment-prp.webp';
-    if (value.includes('micro') || value.includes('rf')) return './assets/site/treatment-rf.webp';
-    if (value.includes('laser') || value.includes('haar')) return './assets/site/treatment-laser.webp';
-    if (value.includes('skin')) return './assets/site/treatment-accent.webp';
-    if (value.includes('infusion') || value.includes('vitamin') || value.includes('wellness')) return './assets/site/home-clinic.webp';
-    return './assets/site/home-sculpture.webp';
+    if (value.includes('botox')) return './assets/site/botox.png';
+    if (value.includes('hyal')) return './assets/site/hyaluron.png';
+    if (value.includes('skinbooster') || value.includes('skin booster')) return './assets/site/skinbooster.png';
+    if (value.includes('prp') || value.includes('eigenblut')) return './assets/site/prp.png';
+    if (value.includes('infusion') || value.includes('vitamin')) return './assets/site/infusion.jpeg';
+    if (value.includes('lipolyse') || value.includes('fett-weg') || value.includes('fett weg')) return './assets/site/lipolyse.png';
+    if (value.includes('microneedling') || value.includes('micro needling') || value.includes('rf')) return './assets/site/rf-microneedling.png';
+    if (value.includes('laser') || value.includes('haarentfernung')) return './assets/site/laser.png';
+    return './assets/site/clinic.jpg';
   }
-
 
   const providerPhotos = {
     'Frau Ariane Regaei': 'https://book.a-esthetic.de/static/booking/staff/ariane-regaei.jpg?v=e0a400ebbcee',
