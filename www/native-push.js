@@ -49,6 +49,10 @@
       home: 'appointments',
       booking: 'appointments',
       appointments: 'appointments',
+      wallet: 'points',
+      points: 'points',
+      admin_booking: '__admin_booking__',
+      booking_admin: '__admin_booking__',
       review: 'reviews',
       reviews: 'reviews',
       club: 'friends',
@@ -64,6 +68,10 @@
   function openNotification(event) {
     const deeplink = event?.notification?.data?.deeplink || event?.notification?.data?.route || '';
     const target = routeForDeeplink(deeplink);
+    if (target === '__admin_booking__') {
+      if (window.APlusAdminMode?.open) window.APlusAdminMode.open();
+      return;
+    }
     const button = document.querySelector(`[data-route="${target}"]`);
     if (button) button.click();
   }
@@ -121,4 +129,8 @@
     if (event.key === TOKEN_KEY) reconcileAuth().catch(() => {});
   });
   setTimeout(() => { reconcileAuth().catch(() => {}); }, 0);
+
+  window.APlusNativePush = {
+    register: () => reconcileAuth(),
+  };
 })();

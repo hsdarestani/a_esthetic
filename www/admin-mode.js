@@ -67,11 +67,22 @@
     });
   }
 
-  function openExactBookAdmin(value = token()) {
+  async function openExactBookAdmin(value = token()) {
     if (!value || redirecting) return;
     redirecting = true;
     adminState = true;
     blankForAdmin();
+    try {
+      const register = window.APlusNativePush?.register;
+      if (typeof register === 'function') {
+        await Promise.race([
+          register(),
+          new Promise(resolve => window.setTimeout(resolve, 1800)),
+        ]);
+      }
+    } catch (_) {
+      // Push registration is best-effort and must never block admin access.
+    }
     // The bearer lives only in the fragment. The Book bridge immediately removes
     // it from the address bar and exchanges it for a normal first-party staff session.
     window.location.replace(`${BOOK_ENTRY}#token=${encodeURIComponent(value)}`);
@@ -138,7 +149,7 @@
         const data = await response.clone().json();
         if (data && data.token && data.admin === true) {
           localStorage.setItem('aplus_token', data.token);
-          openExactBookAdmin(data.token);
+          await openExactBookAdmin(data.token);
           return new Promise(() => {});
         }
         if (data && data.token && data.admin === false) adminState = false;

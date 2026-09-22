@@ -29,6 +29,7 @@ urlpatterns = [
     path("api/mobile/notifications/read-all/", notification_views.mobile_notifications_read_all, name="p0_mobile_notifications_read_all"),
     path("api/mobile/notifications/<int:notification_id>/read/", notification_views.mobile_notification_read, name="p0_mobile_notification_read"),
     path("api/mobile/notifications/devices/", notification_views.mobile_push_devices, name="p0_mobile_push_devices"),
+    path("api/mobile/internal/booking-notifications/", notification_views.internal_booking_notification, name="p0_internal_booking_notification"),
     path("api/mobile/admin/", admin_mobile_views.mobile_admin_overview, name="p0_mobile_admin_overview"),
     path("api/mobile/admin/customers/", admin_mobile_views.mobile_admin_customers, name="p0_mobile_admin_customers"),
     path("api/mobile/admin/customers/<int:customer_id>/", admin_mobile_views.mobile_admin_customer, name="p0_mobile_admin_customer"),
