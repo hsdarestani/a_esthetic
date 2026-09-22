@@ -1,0 +1,51 @@
+name: Scan A+ site visual assets
+
+on:
+  push:
+    paths:
+      - ".github/workflows/scan-site-visuals.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discover visual assets
+        shell: bash
+        run: |
+          python - <<'PY'
+          import html, re, urllib.request, urllib.parse
+          from collections import OrderedDict
+
+          pages = [
+              "https://a-esthetic.de/",
+              "https://a-esthetic.de/behandlungen/",
+              "https://a-esthetic.de/botox-behandlungen/",
+              "https://a-esthetic.de/hyaluronsaure-behandlungen/",
+              "https://a-esthetic.de/skinbooster/",
+              "https://a-esthetic.de/prp-behandlung/",
+              "https://a-esthetic.de/rf-microneedling/",
+              "https://a-esthetic.de/laser-behandlungen/",
+          ]
+          headers={"User-Agent":"Mozilla/5.0"}
+          urls=OrderedDict()
+          for page in pages:
+              req=urllib.request.Request(page,headers=headers)
+              text=urllib.request.urlopen(req,timeout=30).read().decode("utf-8","ignore")
+              text=html.unescape(text)
+              patterns=[
+                  r'https://a-esthetic\.de/wp-content/uploads/[^"\'\s<>]+?\.(?:jpg|jpeg|png|webp|avif)',
+                  r'(?:(?:src|data-src|href)=["\'])(/wp-content/uploads/[^"\']+?\.(?:jpg|jpeg|png|webp|avif))',
+              ]
+              for pat in patterns:
+                  for m in re.findall(pat,text,re.I):
+                      u=m if isinstance(m,str) else m[0]
+                      if u.startswith("/"): u="https://a-esthetic.de"+u
+                      u=u.split("?")[0]
+                      urls[u]=page
+          print("ASSET_COUNT",len(urls))
+          for u,page in urls.items():
+              print("ASSET", urllib.parse.unquote(u), "SOURCE", page)
+          PY
