@@ -102,17 +102,17 @@ jobs:
           client_css=pathlib.Path('www/client-v19.css').read_text()
           assert '.book-progress-line' in client_css and 'max-height:1px' in client_css, 'booking progress connector must remain a thin line'
           site_assets = [
-              'home-sculpture.webp','home-clinic.webp','treatment-botox.webp',
-              'treatment-hyaluron.webp','treatment-prp.webp','treatment-rf.webp',
-              'treatment-laser.webp','treatment-accent.webp'
+              'hero.svg','clinic.jpg','botox.png','hyaluron.png','skinbooster.png',
+              'prp.png','infusion.jpeg','lipolyse.png','rf-microneedling.png','laser.png'
           ]
           for asset in site_assets:
               assert pathlib.Path('www/assets/site', asset).is_file(), f'missing website visual {asset}'
           approved_css=pathlib.Path('www/approved-v22.css').read_text()
           for needle in ('.approved-home-hero','.approved-record-timeline','.approved-points-hero','.book-service-filters'):
               assert needle in approved_css, f'approved design missing {needle}'
-          assert 'home-sculpture.webp' in approved_css and 'home-clinic.webp' in approved_css, 'website visuals must be integrated'
-          assert 'serviceImage(' in booking_flow and 'treatment-botox.webp' in booking_flow, 'booking treatment visuals missing'
+          assert 'hero.svg' in approved_css and 'clinic.jpg' in approved_css, 'approved hero/clinic visuals must be integrated'
+          for marker in ('botox.png','hyaluron.png','skinbooster.png','prp.png','infusion.jpeg','lipolyse.png','rf-microneedling.png','laser.png'):
+              assert marker in booking_flow, f'approved treatment visual missing {marker}'
           print('FOCUSED_RUNTIME_STATIC_AUDIT=success')
           PY
 
@@ -167,7 +167,7 @@ jobs:
           set -euo pipefail
           for i in $(seq 1 60); do
             HTML="$(curl -fsS --max-time 15 'https://esthetic.smarbiz.sbs/?prebuild-audit=1' || true)"
-            if printf '%s' "$HTML" | grep -q 'native-push.js' && printf '%s' "$HTML" | grep -q 'account-onboarding.js?v=20260923-intro-v24' && printf '%s' "$HTML" | grep -q 'ferrari-v18.css?v=20260922-v18' && printf '%s' "$HTML" | grep -q 'client-v19.css?v=20260923-progress-v21' && printf '%s' "$HTML" | grep -q 'approved-v22.css?v=20260923-sitevisuals-v25' && printf '%s' "$HTML" | grep -q 'core-app.js?v=20260923-sitevisuals-v25' && printf '%s' "$HTML" | grep -q 'booking-consent-bridge.js' && printf '%s' "$HTML" | grep -q 'native-interactions.js'; then
+            if printf '%s' "$HTML" | grep -q 'native-push.js' && printf '%s' "$HTML" | grep -q 'account-onboarding.js?v=20260923-intro-v24' && printf '%s' "$HTML" | grep -q 'ferrari-v18.css?v=20260922-v18' && printf '%s' "$HTML" | grep -q 'client-v19.css?v=20260923-progress-v21' && printf '%s' "$HTML" | grep -q 'approved-v22.css?v=20260923-approvedassets-v26' && printf '%s' "$HTML" | grep -q 'core-app.js?v=20260923-approvedassets-v26' && printf '%s' "$HTML" | grep -q 'booking-consent-bridge.js' && printf '%s' "$HTML" | grep -q 'native-interactions.js'; then
               echo 'CURRENT_WEB_RELEASE_READY=1'
               exit 0
             fi
