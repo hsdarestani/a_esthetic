@@ -41,7 +41,11 @@
       sms_not_configured:'SMS-Bestätigung ist serverseitig noch nicht konfiguriert.',
       mail_relay_not_configured:'Der E-Mail-Versand ist momentan nicht verfügbar.',
       mail_relay_unavailable:'Der E-Mail-Versand ist momentan nicht erreichbar.',
-      social_session_required:'Die Social-Anmeldung konnte nicht abgeschlossen werden.'
+      social_session_required:'Die Social-Anmeldung konnte nicht abgeschlossen werden.',
+      invalid_google_token:'Google-Anmeldung konnte nicht verifiziert werden.',
+      invalid_apple_token:'Apple-Anmeldung konnte nicht verifiziert werden.',
+      social_email_missing:'Für diese Anmeldung wurde keine E-Mail-Adresse bereitgestellt.',
+      social_account_conflict:'Dieses Konto kann nicht automatisch mit der Social-Anmeldung verknüpft werden.'
     };
     return map[error?.code] || error?.message || 'Bitte versuchen Sie es erneut.';
   }
@@ -245,6 +249,93 @@
     return cachedConfig;
   }
 
+  function waitForGlobal(test, timeout=8000) {
+    const started = Date.now();
+    return new Promise((resolve, reject) => {
+      const tick = () => {
+        const value = test();
+        if (value) return resolve(value);
+        if (Date.now() - started >= timeout) return reject(new Error('provider_library_timeout'));
+        setTimeout(tick, 80);
+      };
+      tick();
+    });
+  }
+
+  async function completeSocialLogin(provider, credential, user={}) {
+    const result = await api('/social-token/', {
+      method:'POST',
+      json:{provider, credential, user}
+    });
+    localStorage.setItem('aplus_token', result.token);
+    if (result.account?.profile_complete) return location.reload();
+    await showOnboarding();
+  }
+
+  async function renderGoogleButton(config, host) {
+    if (!config.google || !config.google_client_id || !host) return;
+    try {
+      await waitForGlobal(() => window.google?.accounts?.id);
+      window.google.accounts.id.initialize({
+        client_id: config.google_client_id,
+        callback: async response => {
+          try {
+            await completeSocialLogin('google', response.credential);
+          } catch (error) {
+            await showSignup(errorText(error));
+          }
+        },
+        auto_select: false
+      });
+      const width = Math.max(240, Math.floor(host.getBoundingClientRect().width || 340));
+      window.google.accounts.id.renderButton(host, {
+        type:'standard',
+        theme:'outline',
+        size:'large',
+        text:'signin_with',
+        shape:'rectangular',
+        logo_alignment:'left',
+        width,
+        locale:'de'
+      });
+    } catch (_) {
+      host.innerHTML = '';
+    }
+  }
+
+  async function renderAppleButton(config, host) {
+    if (!config.apple || !config.apple_client_id || !host) return;
+    try {
+      await waitForGlobal(() => window.AppleID?.auth);
+      const state = (window.crypto?.randomUUID?.() || (String(Date.now()) + Math.random()))
+        .replace(/[^a-zA-Z0-9._-]/g, '');
+      sessionStorage.setItem('aplus_apple_state', state);
+      window.AppleID.auth.init({
+        clientId: config.apple_client_id,
+        scope: 'name email',
+        redirectURI: 'https://esthetic.smarbiz.sbs/accounts/apple/login/callback/',
+        state,
+        usePopup: true
+      });
+      if (!window.__aplusAppleListenerBound) {
+        window.__aplusAppleListenerBound = true;
+        document.addEventListener('AppleIDSignInOnSuccess', async event => {
+          const payload = event.detail?.data || event.detail || {};
+          const authorization = payload.authorization || {};
+          const expectedState = sessionStorage.getItem('aplus_apple_state') || '';
+          if (expectedState && authorization.state && authorization.state !== expectedState) return;
+          try {
+            await completeSocialLogin('apple', authorization.id_token, payload.user || {});
+          } catch (error) {
+            await showSignup(errorText(error));
+          }
+        });
+      }
+    } catch (_) {
+      host.innerHTML = '';
+    }
+  }
+
   async function enhanceLogin() {
     const form = document.querySelector('[data-login]');
     if (!form || form.dataset.accountEnhanced === '1') return;
@@ -262,30 +353,20 @@
     }
 
     const config = await getAuthConfig();
-    const social = [];
-    if (config.google) {
-      social.push(
-        '<a class="provider-login provider-google" href="https://esthetic.smarbiz.sbs/accounts/google/login/?process=login" aria-label="Mit Google anmelden">' +
-          '<img src="https://developers.google.com/static/identity/images/g-logo.png" alt="" aria-hidden="true">' +
-          '<span>Mit Google anmelden</span>' +
-        '</a>'
-      );
-    }
-    if (config.apple) {
-      const appleButton = 'https://appleid.cdn-apple.com/appleid/button?height=48&width=375&color=black&border=true&type=sign-in&border_radius=13&scale=2&locale=de_DE';
-      social.push(
-        '<a class="provider-login provider-apple" href="https://esthetic.smarbiz.sbs/accounts/apple/login/?process=login" aria-label="Mit Apple anmelden">' +
-          '<img src="' + appleButton + '" alt="Mit Apple anmelden">' +
-        '</a>'
-      );
-    }
-    if (social.length && !form.querySelector('[data-social-login]')) {
+    if ((config.google || config.apple) && !form.querySelector('[data-social-login]')) {
       const wrapper = document.createElement('div');
       wrapper.dataset.socialLogin = '1';
       wrapper.innerHTML =
         '<div class="login-divider"><span>oder</span></div>' +
-        '<div class="social-login-grid">' + social.join('') + '</div>';
+        '<div class="official-social-grid">' +
+          (config.google ? '<div class="official-google" data-google-signin></div>' : '') +
+          (config.apple ? '<div class="official-apple" id="appleid-signin" data-apple-signin data-color="black" data-border="true" data-type="sign-in" data-mode="center-align"></div>' : '') +
+        '</div>';
       form.appendChild(wrapper);
+      await Promise.allSettled([
+        renderGoogleButton(config, wrapper.querySelector('[data-google-signin]')),
+        renderAppleButton(config, wrapper.querySelector('[data-apple-signin]'))
+      ]);
     }
   }
 

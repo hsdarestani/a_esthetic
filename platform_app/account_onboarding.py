@@ -8,6 +8,10 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import requests
+import jwt
+from allauth.socialaccount.models import SocialAccount
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import User
@@ -518,6 +522,132 @@ def sms_confirm(request):
     profile.phone_verified_at = now
     profile.save(update_fields=["phone_verified_at"])
     return JsonResponse({"ok": True, "account": _maybe_complete(user)})
+
+
+def _social_payload(provider, credential):
+    if provider == "google":
+        if not getattr(settings, "GOOGLE_SOCIAL_LOGIN_ENABLED", False):
+            raise ValueError("google_not_configured")
+        try:
+            payload = google_id_token.verify_oauth2_token(
+                credential, google_requests.Request(), settings.GOOGLE_CLIENT_ID
+            )
+        except Exception as exc:
+            raise ValueError("invalid_google_token") from exc
+        if not payload.get("email") or not payload.get("email_verified"):
+            raise ValueError("google_email_not_verified")
+        return payload
+
+    if provider == "apple":
+        if not getattr(settings, "APPLE_SOCIAL_LOGIN_ENABLED", False):
+            raise ValueError("apple_not_configured")
+        try:
+            signing_key = jwt.PyJWKClient(
+                "https://appleid.apple.com/auth/keys", cache_keys=True
+            ).get_signing_key_from_jwt(credential)
+            return jwt.decode(
+                credential,
+                signing_key.key,
+                algorithms=["RS256"],
+                audience=settings.APPLE_CLIENT_ID,
+                issuer="https://appleid.apple.com",
+            )
+        except Exception as exc:
+            raise ValueError("invalid_apple_token") from exc
+
+    raise ValueError("unsupported_social_provider")
+
+
+def _social_username(email, provider, uid):
+    base = re.sub(r"[^a-zA-Z0-9._-]", "", (email or "").split("@", 1)[0])[:100]
+    base = base or f"{provider}-{uid[:18]}"
+    candidate = base
+    counter = 1
+    while User.objects.filter(username=candidate).exists():
+        counter += 1
+        candidate = f"{base[:120]}-{counter}"
+    return candidate
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def social_token(request):
+    data = _json(request)
+    provider = str(data.get("provider") or "").strip().lower()
+    credential = str(data.get("credential") or data.get("id_token") or "").strip()
+    if not credential:
+        return JsonResponse({"ok": False, "error": "social_credential_required"}, status=400)
+
+    try:
+        claims = _social_payload(provider, credential)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=401)
+
+    uid = str(claims.get("sub") or "").strip()
+    if not uid:
+        return JsonResponse({"ok": False, "error": "social_subject_missing"}, status=401)
+
+    account = SocialAccount.objects.select_related("user").filter(
+        provider=provider, uid=uid
+    ).first()
+    supplied = data.get("user") if isinstance(data.get("user"), dict) else {}
+    supplied_name = supplied.get("name") if isinstance(supplied.get("name"), dict) else {}
+    email = str(claims.get("email") or supplied.get("email") or "").strip().lower()
+    first_name = str(claims.get("given_name") or supplied_name.get("firstName") or "").strip()[:80]
+    last_name = str(claims.get("family_name") or supplied_name.get("lastName") or "").strip()[:80]
+
+    with transaction.atomic():
+        if account:
+            user = account.user
+        else:
+            if not email:
+                return JsonResponse({"ok": False, "error": "social_email_missing"}, status=400)
+            user = User.objects.filter(email__iexact=email).order_by("id").first()
+            if user and (user.is_staff or user.is_superuser):
+                return JsonResponse({"ok": False, "error": "social_account_conflict"}, status=409)
+            if not user:
+                user = User(
+                    username=_social_username(email, provider, uid),
+                    email=email,
+                    first_name=first_name,
+                    last_name=last_name,
+                    is_active=True,
+                )
+                user.set_unusable_password()
+                user.save()
+            SocialAccount.objects.create(
+                user=user, provider=provider, uid=uid, extra_data=claims
+            )
+
+        changed = []
+        if email and not user.email:
+            user.email = email
+            changed.append("email")
+        if first_name and not user.first_name:
+            user.first_name = first_name
+            changed.append("first_name")
+        if last_name and not user.last_name:
+            user.last_name = last_name
+            changed.append("last_name")
+        if changed:
+            user.save(update_fields=changed)
+
+        profile, _ = UserProfile.objects.get_or_create(
+            user=user, defaults={"role": "customer"}
+        )
+        if profile.role != "customer":
+            return JsonResponse({"ok": False, "error": "social_account_conflict"}, status=409)
+        profile.auth_provider = provider
+        profile.onboarding_required = True
+        if user.email and not profile.email_verified_at:
+            profile.email_verified_at = timezone.now()
+        profile.save(update_fields=["auth_provider", "onboarding_required", "email_verified_at"])
+
+    return JsonResponse({
+        "ok": True,
+        "token": mobile_api._token_for(user),
+        "account": _maybe_complete(user),
+    })
 
 
 @csrf_exempt
