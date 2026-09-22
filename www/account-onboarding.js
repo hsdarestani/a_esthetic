@@ -263,12 +263,28 @@
 
     const config = await getAuthConfig();
     const social = [];
-    if (config.google) social.push('<a class="social-login" href="/accounts/google/login/?process=login"><b>G</b><span>Mit Google anmelden</span></a>');
-    if (config.apple) social.push('<a class="social-login" href="/accounts/apple/login/?process=login"><b></b><span>Mit Apple anmelden</span></a>');
+    if (config.google) {
+      social.push(
+        '<a class="provider-login provider-google" href="https://esthetic.smarbiz.sbs/accounts/google/login/?process=login" aria-label="Mit Google anmelden">' +
+          '<img src="https://developers.google.com/static/identity/images/g-logo.png" alt="" aria-hidden="true">' +
+          '<span>Mit Google anmelden</span>' +
+        '</a>'
+      );
+    }
+    if (config.apple) {
+      const appleButton = 'https://appleid.cdn-apple.com/appleid/button?height=48&width=375&color=black&border=true&type=sign-in&border_radius=13&scale=2&locale=de_DE';
+      social.push(
+        '<a class="provider-login provider-apple" href="https://esthetic.smarbiz.sbs/accounts/apple/login/?process=login" aria-label="Mit Apple anmelden">' +
+          '<img src="' + appleButton + '" alt="Mit Apple anmelden">' +
+        '</a>'
+      );
+    }
     if (social.length && !form.querySelector('[data-social-login]')) {
       const wrapper = document.createElement('div');
       wrapper.dataset.socialLogin = '1';
-      wrapper.innerHTML = '<div class="login-divider"><span>oder</span></div><div class="social-login-grid">' + social.join('') + '</div>';
+      wrapper.innerHTML =
+        '<div class="login-divider"><span>oder</span></div>' +
+        '<div class="social-login-grid">' + social.join('') + '</div>';
       form.appendChild(wrapper);
     }
   }
