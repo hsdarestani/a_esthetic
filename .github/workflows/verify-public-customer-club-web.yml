@@ -22,12 +22,13 @@ jobs:
           from urllib.error import HTTPError, URLError
           from urllib.request import Request, urlopen
 
-          release = '20260922-ferrari-v18'
+          release = '20260922-client-v19'
           domain = 'esthetic.smarbiz.sbs'
           required_markers = (
-              'core-app.js?v=20260922-onboarding-v1',
+              'core-app.js?v=20260922-v19',
               'account-onboarding.js?v=20260922-official-social-v3',
               'ferrari-v18.css?v=20260922-v18',
+              'client-v19.css?v=20260922-v19',
               'booking-direct-api.js?v=20260906-sams-v1',
               'booking-book-flow.js?v=20260906-sams-v1',
               'focused-upgrade.js?v=20260922-onboarding-v1',
@@ -60,7 +61,7 @@ jobs:
               raise SystemExit('Public root did not switch to the focused Book/Wallet release within 180 seconds.')
 
           assets = (
-              'core-app.css', 'core-app.js', 'account-onboarding.js', 'ferrari-v18.css', 'booking-direct-api.js', 'admin-mode.js',
+              'core-app.css', 'core-app.js', 'account-onboarding.js', 'ferrari-v18.css', 'client-v19.css', 'booking-direct-api.js', 'admin-mode.js',
               'booking-book-flow.css', 'booking-book-flow.js',
               'focused-upgrade.css', 'focused-upgrade.js', 'assets/logo.svg',
           )
