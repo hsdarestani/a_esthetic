@@ -243,3 +243,12 @@ body{background:
   .book-treatment-card,.book-staff-card{padding-left:62px!important}
   .approved-points-balance em{font-size:16px}
 }
+
+.book-service-filters{display:flex;gap:7px;margin:0 0 13px;overflow-x:auto;scrollbar-width:none}
+.book-service-filters::-webkit-scrollbar{display:none}
+.book-service-filters button{
+  appearance:none;flex:0 0 auto;min-height:34px;padding:0 14px;border:0;border-radius:999px;
+  background:#ece8e1;color:#776e62;font-size:9px;font-weight:750
+}
+.book-service-filters button.is-active{background:linear-gradient(135deg,#f0ddb4,#e6c98f);color:#74521b}
+.book-treatment-card[hidden]{display:none!important}
