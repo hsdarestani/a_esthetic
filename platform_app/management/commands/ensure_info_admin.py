@@ -29,8 +29,6 @@ def _token():
 def _password():
     configured = str(os.environ.get("ADMINPASS") or "").strip()
     if configured:
-        if len(configured) < 12:
-            raise CommandError("ADMINPASS must contain at least 12 characters.")
         return configured, True
     alphabet = string.ascii_letters + string.digits
     generated = "A+" + "".join(secrets.choice(alphabet) for _ in range(18)) + "!9"
