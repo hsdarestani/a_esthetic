@@ -22,17 +22,17 @@ jobs:
           from urllib.error import HTTPError, URLError
           from urllib.request import Request, urlopen
 
-          release = '20260923-sitevisuals-v25'
+          release = '20260923-approvedassets-v26'
           domain = 'esthetic.smarbiz.sbs'
           required_markers = (
-              'core-app.js?v=20260923-sitevisuals-v25',
+              'core-app.js?v=20260923-approvedassets-v26',
               'account-onboarding.js?v=20260923-intro-v24',
               'ferrari-v18.css?v=20260922-v18',
               'client-v19.css?v=20260923-progress-v21',
-              'approved-v22.css?v=20260923-sitevisuals-v25',
+              'approved-v22.css?v=20260923-approvedassets-v26',
               'global-loading.js?v=20260923-intro-v24',
               'booking-direct-api.js?v=20260906-sams-v1',
-              'booking-book-flow.js?v=20260923-sitevisuals-v25',
+              'booking-book-flow.js?v=20260923-approvedassets-v26',
               'focused-upgrade.js?v=20260922-onboarding-v1',
               'focused-upgrade.css?v=20260906-sams-v1',
           )
@@ -76,6 +76,13 @@ jobs:
           _, booking_flow = fetch(f'https://{domain}/booking-book-flow.js?release={release}')
           if 'Behandlung wählen' not in booking_flow or 'Freien Termin wählen' not in booking_flow:
               raise SystemExit('Canonical Book-style four-step booking flow is missing.')
+          for marker in ('./assets/site/botox.png','./assets/site/hyaluron.png','./assets/site/skinbooster.png','./assets/site/prp.png','./assets/site/infusion.jpeg','./assets/site/lipolyse.png','./assets/site/rf-microneedling.png','./assets/site/laser.png'):
+              if marker not in booking_flow:
+                  raise SystemExit(f'Approved treatment visual mapping missing: {marker}')
+
+          _, core_app = fetch(f'https://{domain}/core-app.js?release={release}')
+          if './assets/site/hero.svg' not in core_app or './assets/site/clinic.jpg' not in core_app:
+              raise SystemExit('Approved hero/clinic visuals are missing from the customer app.')
 
           _, focused_upgrade = fetch(f'https://{domain}/focused-upgrade.js?release={release}')
           for marker in ('wallet-pass/qr/', 'wallet-pass/apple/', 'wallet-pass/google/', './assets/logo.svg'):
