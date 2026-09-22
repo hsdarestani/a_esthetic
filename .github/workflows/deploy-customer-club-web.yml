@@ -156,18 +156,18 @@ jobs:
             grep -q 'ferrari-v18.css?v=20260922-v18' /tmp/aesthetic-focused-local-index.html
             grep -q 'client-v19.css?v=20260923-progress-v21' /tmp/aesthetic-focused-local-index.html
             grep -q 'approved-v22.css?v=20260923-approved-v22' /tmp/aesthetic-focused-local-index.html
-            grep -q 'core-app.js?v=20260923-approved-v22' /tmp/aesthetic-focused-local-index.html
+            grep -q 'core-app.js?v=20260923-copy-v23' /tmp/aesthetic-focused-local-index.html
             grep -q 'booking-book-flow.js?v=20260923-approved-v22' /tmp/aesthetic-focused-local-index.html
 
-            if ! curl -fsSL --max-time 20 "https://$DOMAIN/?release=20260923-approved-v22" -o /tmp/aesthetic-focused-index.html; then
+            if ! curl -fsSL --max-time 20 "https://$DOMAIN/?release=20260923-copy-v23" -o /tmp/aesthetic-focused-index.html; then
               certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
-              curl -fsSL --max-time 20 "https://$DOMAIN/?release=20260923-approved-v22" -o /tmp/aesthetic-focused-index.html
+              curl -fsSL --max-time 20 "https://$DOMAIN/?release=20260923-copy-v23" -o /tmp/aesthetic-focused-index.html
             fi
             grep -q 'account-onboarding.js?v=20260922-official-social-v3' /tmp/aesthetic-focused-index.html
             grep -q 'ferrari-v18.css?v=20260922-v18' /tmp/aesthetic-focused-index.html
             grep -q 'client-v19.css?v=20260923-progress-v21' /tmp/aesthetic-focused-index.html
             grep -q 'approved-v22.css?v=20260923-approved-v22' /tmp/aesthetic-focused-index.html
-            grep -q 'core-app.js?v=20260923-approved-v22' /tmp/aesthetic-focused-index.html
+            grep -q 'core-app.js?v=20260923-copy-v23' /tmp/aesthetic-focused-index.html
             grep -q 'booking-book-flow.js?v=20260923-approved-v22' /tmp/aesthetic-focused-index.html
             echo "Focused A+ patient app prepared on new STRATO origin for $DOMAIN"
             rm -rf "$RELEASE_DIR" "$PACKAGE"

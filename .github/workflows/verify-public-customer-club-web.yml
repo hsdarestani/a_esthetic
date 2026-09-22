@@ -22,10 +22,10 @@ jobs:
           from urllib.error import HTTPError, URLError
           from urllib.request import Request, urlopen
 
-          release = '20260923-approved-v22'
+          release = '20260923-copy-v23'
           domain = 'esthetic.smarbiz.sbs'
           required_markers = (
-              'core-app.js?v=20260923-approved-v22',
+              'core-app.js?v=20260923-copy-v23',
               'account-onboarding.js?v=20260922-official-social-v3',
               'ferrari-v18.css?v=20260922-v18',
               'client-v19.css?v=20260923-progress-v21',
