@@ -143,7 +143,7 @@ jobs:
           set -euo pipefail
           for i in $(seq 1 60); do
             HTML="$(curl -fsS --max-time 15 'https://esthetic.smarbiz.sbs/?prebuild-audit=1' || true)"
-            if printf '%s' "$HTML" | grep -q 'native-push.js' && printf '%s' "$HTML" | grep -q 'account-onboarding.js?v=20260922-v1' && printf '%s' "$HTML" | grep -q 'booking-consent-bridge.js' && printf '%s' "$HTML" | grep -q 'native-interactions.js'; then
+            if printf '%s' "$HTML" | grep -q 'native-push.js' && printf '%s' "$HTML" | grep -q 'account-onboarding.js?v=20260922-official-social-v3' && printf '%s' "$HTML" | grep -q 'ferrari-v18.css?v=20260922-v18' && printf '%s' "$HTML" | grep -q 'booking-consent-bridge.js' && printf '%s' "$HTML" | grep -q 'native-interactions.js'; then
               echo 'CURRENT_WEB_RELEASE_READY=1'
               exit 0
             fi
