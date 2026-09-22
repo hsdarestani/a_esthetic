@@ -49,6 +49,9 @@ jobs:
           pip install -r requirements.txt
           npm install --no-audit --no-fund
 
+      - name: Check forbidden brand possessives
+        run: python scripts/check_no_unser_copy.py
+
       - name: Run complete Django test suite
         env:
           DJANGO_DEBUG: "1"
