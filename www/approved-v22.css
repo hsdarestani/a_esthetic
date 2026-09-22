@@ -285,7 +285,7 @@ body{background:
 .book-treatment-media{
   position:relative!important;left:auto!important;top:auto!important;
   width:auto!important;height:auto!important;min-height:108px!important;border-radius:0!important;
-  background-position:center!important;background-size:cover!important;background-repeat:no-repeat!important;
+  background-position:right center!important;background-size:cover!important;background-repeat:no-repeat!important;
   overflow:hidden!important;color:#fff!important
 }
 .book-treatment-media:after{
@@ -326,7 +326,11 @@ body{background:
 
 /* Approved exact treatment visual sizing v26 */
 .book-treatment-card.has-site-visual{grid-template-columns:96px minmax(0,1fr)!important}
-.book-treatment-media{background-position:center!important;background-size:cover!important}
+.book-treatment-media{background-position:right center!important;background-size:cover!important}
 @media(max-width:520px){
   .book-treatment-card.has-site-visual{grid-template-columns:88px minmax(0,1fr)!important}
 }
+
+/* Final treatment artwork crop v27 */
+.book-treatment-media{background-position:right center!important;background-size:cover!important}
+.approved-visual-story,.approved-visual-story-image,.approved-visual-story-copy{display:none!important}
