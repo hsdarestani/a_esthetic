@@ -105,7 +105,7 @@ jobs:
             rm -rf "$RELEASE_DIR"
             mkdir -p "$RELEASE_DIR" "$WEBROOT"
             tar -xzf "$PACKAGE" -C "$RELEASE_DIR"
-            for FILE in index.html core-app.css core-app.js account-onboarding.js customer-dashboard-v2.css booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js booking-final-rules.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css apple-wallet-native.js native-interactions.js native-interactions.css mobile-polish.js mobile-polish.css customer-luxury.js customer-luxury.css assets/logo.svg; do test -s "$RELEASE_DIR/$FILE"; done
+            for FILE in index.html core-app.css core-app.js account-onboarding.js ferrari-v18.css customer-dashboard-v2.css booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js booking-final-rules.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css apple-wallet-native.js native-interactions.js native-interactions.css mobile-polish.js mobile-polish.css customer-luxury.js customer-luxury.css assets/logo.svg; do test -s "$RELEASE_DIR/$FILE"; done
 
             rm -rf "$WEBROOT"/*
             cp -a "$RELEASE_DIR"/. "$WEBROOT"/
@@ -153,12 +153,13 @@ jobs:
             grep -q 'booking-final-rules.js' /tmp/aesthetic-focused-local-index.html
             grep -q 'mobile-polish.js' /tmp/aesthetic-focused-local-index.html
             grep -q 'account-onboarding.js?v=20260922-official-social-v3' /tmp/aesthetic-focused-local-index.html
-            grep -q '20260922-ferrari-v18' /tmp/aesthetic-focused-local-index.html
+            grep -q 'ferrari-v18.css?v=20260922-v18' /tmp/aesthetic-focused-local-index.html
 
             if ! curl -fsSL --max-time 20 "https://$DOMAIN/?release=20260922-ferrari-v18" -o /tmp/aesthetic-focused-index.html; then
               certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
               curl -fsSL --max-time 20 "https://$DOMAIN/?release=20260922-ferrari-v18" -o /tmp/aesthetic-focused-index.html
             fi
             grep -q 'account-onboarding.js?v=20260922-official-social-v3' /tmp/aesthetic-focused-index.html
+            grep -q 'ferrari-v18.css?v=20260922-v18' /tmp/aesthetic-focused-index.html
             echo "Focused A+ patient app prepared on new STRATO origin for $DOMAIN"
             rm -rf "$RELEASE_DIR" "$PACKAGE"
