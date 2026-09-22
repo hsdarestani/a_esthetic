@@ -22,13 +22,13 @@ jobs:
           from urllib.error import HTTPError, URLError
           from urllib.request import Request, urlopen
 
-          release = '20260922-client-v19'
+          release = '20260923-progress-v21'
           domain = 'esthetic.smarbiz.sbs'
           required_markers = (
               'core-app.js?v=20260922-v19',
               'account-onboarding.js?v=20260922-official-social-v3',
               'ferrari-v18.css?v=20260922-v18',
-              'client-v19.css?v=20260922-duration-v20',
+              'client-v19.css?v=20260923-progress-v21',
               'booking-direct-api.js?v=20260906-sams-v1',
               'booking-book-flow.js?v=20260922-duration-v20',
               'focused-upgrade.js?v=20260922-onboarding-v1',

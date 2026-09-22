@@ -44,7 +44,7 @@ body{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!im
 .book-embedded-canonical .book-flow{padding:18px 14px 20px!important;border:1px solid var(--v19-line)!important;border-radius:22px!important;background:#fff!important;box-shadow:var(--v19-shadow)!important}
 .book-step-head h2{font:650 24px/1.1 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;letter-spacing:-.035em!important}.book-step-head p{font-size:10px!important;color:#857d72!important}
 .book-treatment-grid{gap:9px!important}.book-treatment-card,.book-staff-card{border:1px solid var(--v19-line)!important;border-radius:18px!important;background:#fff!important;box-shadow:none!important;padding:14px!important}.book-treatment-card.is-selected,.book-staff-card.is-selected{border-color:#bd9041!important;box-shadow:0 0 0 3px rgba(184,137,52,.08)!important}.book-treatment-card strong,.book-staff-card strong{font-size:12px!important}.book-treatment-card p,.book-staff-card p{font-size:9.5px!important;line-height:1.45!important}
-.book-progress{margin-bottom:20px!important}.book-progress span{width:30px!important;height:30px!important;font-size:9px!important}
+.book-progress{margin-bottom:20px!important}.book-progress-dot{width:30px!important;height:30px!important;font-size:9px!important}.book-progress-line{width:auto!important;height:1px!important;min-height:1px!important;flex:1 1 auto!important;background:#ddd7cc!important}
 .book-time-grid{gap:7px!important}.book-time-grid button{border-radius:12px!important;min-height:42px!important}
 .appointment-feature{border-radius:20px!important;background:#1d1a16!important}
 
@@ -96,3 +96,9 @@ body{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!im
   .book-treatment-title-row{gap:8px!important}
   .book-duration-badge{font-size:8px!important;padding:4px 7px!important}
 }
+
+/* Booking progress v21 */
+.book-progress{display:flex!important;align-items:center!important}
+.book-progress-dot{flex:0 0 30px!important;border-radius:50%!important}
+.book-progress-line{display:block!important;flex:1 1 auto!important;width:auto!important;height:1px!important;min-height:1px!important;max-height:1px!important;margin:0!important;border:0!important;background:#ddd7cc!important}
+.book-progress-dot.is-done + .book-progress-line{background:#1d1a16!important}

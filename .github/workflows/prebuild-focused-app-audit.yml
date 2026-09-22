@@ -91,6 +91,8 @@ jobs:
           assert 'https://book.a-esthetic.de/api/mobile' in book
           booking_flow=pathlib.Path('www/booking-book-flow.js').read_text()
           assert 'book-duration-badge' in booking_flow and 'duration_minutes' in booking_flow, 'service duration must remain visible in booking cards'
+          client_css=pathlib.Path('www/client-v19.css').read_text()
+          assert '.book-progress-line' in client_css and 'max-height:1px' in client_css, 'booking progress connector must remain a thin line'
           print('FOCUSED_RUNTIME_STATIC_AUDIT=success')
           PY
 
