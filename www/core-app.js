@@ -21,6 +21,17 @@
     ['points', '◆', 'Punkte'],
     ['friends', '↗', 'Freunde'],
   ];
+  const NAV_ICONS = {
+    dashboard:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-8Z"/><path d="M9 20v-6h6v6"/></svg>',
+    appointments:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14.5" rx="3"/><path d="M8 3.5v4M16 3.5v4M4 10h16"/><path d="M8 14h8M8 17h5"/></svg>',
+    records:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4V20H7a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2Z"/><path d="M14 3.5v4h4M8.5 12h6M8.5 15.5h6"/></svg>',
+    points:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19 7v10l-7 3.5L5 17V7l7-3.5Z"/><path d="m8.5 12 2.2 2.2 4.8-4.8"/></svg>',
+    friends:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.4-3.2 2.2-4.9 5.5-4.9s5.1 1.7 5.5 4.9M16 7.5h4.5M18.25 5.25v4.5M15 13.5c2.4.35 3.8 1.8 4.1 4.1"/></svg>',
+    settings:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 13.7a7.3 7.3 0 0 0 .05-3.4l1.8-1.4-1.8-3.1-2.25.9a7.5 7.5 0 0 0-3-1.7L13.5 2h-3L10.2 5a7.5 7.5 0 0 0-3 1.7l-2.25-.9-1.8 3.1 1.8 1.4a7.3 7.3 0 0 0 .05 3.4l-1.85 1.4 1.8 3.1 2.3-.9a7.5 7.5 0 0 0 2.95 1.7l.3 3h3l.3-3a7.5 7.5 0 0 0 2.95-1.7l2.3.9 1.8-3.1-1.85-1.4Z"/></svg>',
+    phone:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 10 8.4 8.2 10.2a14.2 14.2 0 0 0 5.6 5.6L15.6 14l4.4 3c.5.3.7.9.45 1.45-.65 1.45-2 2.45-3.6 2.45C9.2 20.9 3.1 14.8 3.1 7.15c0-1.6 1-2.95 2.45-3.6A1.2 1.2 0 0 1 7 4Z"/></svg>',
+    instagram:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r=".8" fill="currentColor" stroke="none"/></svg>'
+  };
+  const navIcon = key => NAV_ICONS[key] || '';
   const state = { route: 'dashboard', token: localStorage.getItem('aplus_token') || '', me: null, cache: {} };
   const root = document.getElementById('app');
 
@@ -59,13 +70,18 @@
   function shell(content){
     const email=state.me?.profile?.email||'';
     root.innerHTML=`<div class="core-shell">
-      <header class="core-header"><span class="core-header-spacer"></span><div class="core-brand"><img src="./assets/logo.svg" alt="A+ Esthetic"><span>A+ ESTHETIC</span></div><button class="core-icon-btn" data-settings aria-label="Einstellungen">⚙</button></header>
+      <header class="core-header">
+        <span class="core-header-spacer"></span>
+        <div class="core-brand"><img src="./assets/logo.svg" alt="A+ Esthetic"></div>
+        <button class="core-icon-btn" data-settings aria-label="Einstellungen"><span class="header-icon">${NAV_ICONS.settings}</span></button>
+      </header>
       <main class="core-main">${content}</main>
-      <nav class="core-nav">${routes.map(([key,icon,label])=>`<button class="nav-btn ${state.route===key?'is-active':''}" data-route="${key}"><span>${icon}</span><span>${label}</span></button>`).join('')}</nav>
+      <nav class="core-nav" aria-label="Hauptnavigation">${routes.map(([key,,label])=>`<button class="nav-btn ${state.route===key?'is-active':''}" data-route="${key}" aria-label="${label}"><span class="nav-icon">${navIcon(key)}</span><span class="nav-label">${label}</span></button>`).join('')}</nav>
     </div>`;
     root.querySelectorAll('[data-route]').forEach(btn=>btn.addEventListener('click',()=>go(btn.dataset.route)));
     root.querySelector('[data-settings]')?.addEventListener('click',()=>showSettings(email));
   }
+
 
   function showSettings(email){
     document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());
@@ -106,12 +122,60 @@
     const next=upcoming[0],last=previous[0];
     const contact=dash.contact||{};
     const banners=dash.campaigns||[];
-    let html=`<section class="dash-hero"><div class="dash-hero-glow"></div><img src="./assets/logo.svg" alt="A+ Esthetic"><div><span>WILLKOMMEN</span><h1>Hallo, ${esc(firstName())}.</h1></div></section>`;
-    html+=`<section class="dash-visit-grid"><article><span>LETZTER BESUCH</span><strong>${last?fmt(last.starts_at):'Noch keiner'}</strong><small>${last?esc(last.service||'Behandlung'):'Wir freuen uns auf Sie.'}</small></article><article class="is-next"><span>NÄCHSTER TERMIN</span><strong>${next?fmt(next.starts_at):'Noch offen'}</strong><small>${next?esc(next.service||'Behandlung'):'Jetzt Termin reservieren'}</small></article></section>`;
-    html+=`<div class="dash-actions"><button class="dash-action is-primary" data-dash-book><b>Reservieren</b><span>Termin auswählen ›</span></button><a class="dash-action" href="tel:${esc(contact.phone||CONTACT.phone)}"><b>Anrufen</b><span>${esc(contact.phone_label||CONTACT.phoneLabel)}</span></a><a class="dash-action" href="${esc(contact.instagram_url||CONTACT.instagram)}" target="_blank" rel="noopener"><b>Instagram</b><span>@aplus.esthetic ↗</span></a></div>`;
-    html+=`<section class="dash-points"><div><span>A+ PUNKTE</span><strong>${Number(dash.points??dash.member?.coins??0).toLocaleString('de-DE')}</strong><small>Punkte sammeln. Vorteile später freischalten.</small></div><button data-dash-points>Details ›</button></section>`;
-    if(banners.length){html+=`<div class="section-title"><h2>Special Offers</h2><small>${banners.length}</small></div><div class="campaign-stack">${banners.map(b=>`<article class="campaign-card" ${b.image_url?`style="--campaign-image:url('${esc(b.image_url)}')"`:''}><div class="campaign-shade"></div><div class="campaign-copy"><span>SPECIAL OFFER</span><h3>${esc(b.title)}</h3>${b.text?`<p>${esc(b.text)}</p>`:''}${b.cta_url?`<a href="${esc(b.cta_url)}" target="_blank" rel="noopener">${esc(b.cta_label||'Mehr erfahren')} ›</a>`:''}</div></article>`).join('')}</div>`;}
-    shell(html);root.querySelector('[data-dash-book]').onclick=()=>go('appointments');root.querySelector('[data-dash-points]').onclick=()=>go('points');
+    const points=Number(dash.points??dash.member?.coins??0).toLocaleString('de-DE');
+
+    let html=`<section class="home-hero">
+      <div class="home-hero-copy">
+        <span class="home-kicker">WILLKOMMEN</span>
+        <h1>Hallo, ${esc(firstName())}.</h1>
+        <p>Ihr persönlicher Bereich für Termine, Dokumente und A+ Vorteile.</p>
+      </div>
+      <div class="home-mark">A+</div>
+    </section>`;
+
+    if(next){
+      const d=dateBits(next.starts_at);
+      html+=`<section class="home-next-card">
+        <div class="home-next-date"><strong>${d.day}</strong><span>${d.month}</span><small>${d.time}</small></div>
+        <div class="home-next-copy"><span>NÄCHSTER TERMIN</span><strong>${esc(next.service||'Behandlung')}</strong><small>${esc(next.staff||'A+ Esthetic')} · ${d.full}</small></div>
+        <button type="button" class="home-next-action" data-dash-book>Termin buchen <span>›</span></button>
+      </section>`;
+    }else{
+      html+=`<section class="home-next-card is-empty">
+        <div class="home-next-copy"><span>NÄCHSTER TERMIN</span><strong>Noch kein Termin geplant</strong><small>Wählen Sie Behandlung und Wunschzeit in wenigen Schritten.</small></div>
+        <button type="button" class="home-next-action" data-dash-book>Termin reservieren <span>›</span></button>
+      </section>`;
+    }
+
+    if(last){
+      html+=`<div class="home-last-visit"><span>Letzter Besuch</span><b>${fmt(last.starts_at)}</b><small>${esc(last.service||'Behandlung')}</small></div>`;
+    }
+
+    html+=`<section class="home-contact-grid">
+      <a class="home-contact-card" href="tel:${esc(contact.phone||CONTACT.phone)}">
+        <span class="home-contact-icon">${NAV_ICONS.phone}</span>
+        <span><small>KONTAKT</small><strong>Praxis anrufen</strong><em>${esc(contact.phone_label||CONTACT.phoneLabel)}</em></span>
+        <i>›</i>
+      </a>
+      <a class="home-contact-card" href="${esc(contact.instagram_url||CONTACT.instagram)}" target="_blank" rel="noopener">
+        <span class="home-contact-icon">${NAV_ICONS.instagram}</span>
+        <span><small>SOCIAL</small><strong>Instagram</strong><em>@aplus.esthetic</em></span>
+        <i>↗</i>
+      </a>
+    </section>`;
+
+    html+=`<section class="home-points-card">
+      <div><span>A+ PUNKTE</span><strong>${points}</strong><small>Ihr aktueller Punktestand</small></div>
+      <button type="button" data-dash-points>Öffnen <span>›</span></button>
+    </section>`;
+
+    if(banners.length){
+      html+=`<div class="section-title home-section-title"><h2>Aktuelles</h2><small>${banners.length}</small></div><div class="campaign-stack">${banners.map(b=>`<article class="campaign-card" ${b.image_url?`style="--campaign-image:url('${esc(b.image_url)}')"`:''}><div class="campaign-shade"></div><div class="campaign-copy"><span>SPECIAL</span><h3>${esc(b.title)}</h3>${b.text?`<p>${esc(b.text)}</p>`:''}${b.cta_url?`<a href="${esc(b.cta_url)}" target="_blank" rel="noopener">${esc(b.cta_label||'Mehr erfahren')} <b>›</b></a>`:''}</div></article>`).join('')}</div>`;
+    }
+
+    shell(html);
+    root.querySelectorAll('[data-dash-book]').forEach(button=>button.onclick=()=>go('appointments'));
+    root.querySelector('[data-dash-points]')?.addEventListener('click',()=>go('points'));
   }
 
   async function renderAppointments(){
