@@ -253,21 +253,15 @@ body{background:
 .book-service-filters button.is-active{background:linear-gradient(135deg,#f0ddb4,#e6c98f);color:#74521b}
 .book-treatment-card[hidden]{display:none!important}
 
-/* Website visual integration v25 */
+/* Approved website visual integration v26 */
 .approved-home-hero{
-  grid-template-columns:minmax(0,1fr) 46%!important;
-  background:#f5eee3!important
-}
-.approved-home-image{
-  position:relative!important;min-height:220px!important;
+  display:block!important;min-height:220px!important;
   background:
-    linear-gradient(90deg,#f5eee3 0%,rgba(245,238,227,.72) 16%,rgba(245,238,227,.08) 52%,transparent 100%),
-    url('./assets/site/home-sculpture.webp') center 44%/cover no-repeat!important
+    linear-gradient(90deg,rgba(247,243,235,.98) 0%,rgba(247,243,235,.90) 39%,rgba(247,243,235,.48) 62%,rgba(247,243,235,.08) 100%),
+    url('./assets/site/hero.svg') right center/cover no-repeat!important
 }
-.approved-home-image:after{
-  content:"";position:absolute;inset:auto 14px 14px auto;width:34px;height:1px;
-  background:#bd9041;opacity:.7
-}
+.approved-home-copy{max-width:62%!important}
+.approved-home-image{display:none!important}
 .approved-visual-story{
   display:grid;grid-template-columns:42% minmax(0,1fr);min-height:136px;margin:0 0 18px;
   overflow:hidden;border:1px solid var(--a22-line);border-radius:22px;background:#fff;
@@ -276,7 +270,7 @@ body{background:
 .approved-visual-story-image{
   min-height:136px;background:
     linear-gradient(90deg,transparent 55%,rgba(255,253,250,.78) 100%),
-    url('./assets/site/home-clinic.webp') center/cover no-repeat
+    url('./assets/site/clinic.jpg') center/cover no-repeat
 }
 .approved-visual-story-copy{align-self:center;padding:17px 16px 17px 12px}
 .approved-visual-story-copy>span{display:block;color:#98702a;font-size:6.8px;font-weight:900;letter-spacing:.15em}
@@ -309,23 +303,18 @@ body{background:
 .book-treatment-card.has-site-visual:hover .book-treatment-media,
 .book-treatment-card.has-site-visual:focus-visible .book-treatment-media{filter:saturate(1.03) contrast(1.02)}
 
-.approved-upload-card{
-  position:relative;overflow:hidden;
-  background:
-    linear-gradient(120deg,rgba(255,255,255,.98) 0%,rgba(255,255,255,.95) 68%,rgba(255,255,255,.42) 100%),
-    url('./assets/site/home-sculpture.webp') 116% 12%/170px auto no-repeat!important
-}
+.approved-upload-card{position:relative;overflow:hidden;background:#fff!important}
 .approved-points-hero{
   position:relative;overflow:hidden;
   background:
-    linear-gradient(90deg,rgba(27,23,18,.98) 0%,rgba(27,23,18,.95) 62%,rgba(27,23,18,.55) 100%),
-    url('./assets/site/home-sculpture.webp') 112% center/210px auto no-repeat!important
+    radial-gradient(circle at 90% 20%,rgba(194,149,64,.18),transparent 14rem),
+    linear-gradient(145deg,#2a241b,#17130f)!important
 }
 .approved-points-hero>*{position:relative;z-index:2}
 
 @media(max-width:520px){
-  .approved-home-hero{grid-template-columns:minmax(0,1fr) 43%!important}
-  .approved-home-image{min-height:205px!important;background-position:center 42%!important}
+  .approved-home-hero{min-height:205px!important;background-position:72% center!important;background-size:cover!important}
+  .approved-home-copy{max-width:68%!important}
   .approved-visual-story{grid-template-columns:40% minmax(0,1fr);min-height:126px}
   .approved-visual-story-image{min-height:126px}
   .approved-visual-story-copy{padding:14px 13px 14px 10px}
@@ -333,4 +322,11 @@ body{background:
   .book-treatment-card.has-site-visual{grid-template-columns:82px minmax(0,1fr)!important;min-height:104px!important}
   .book-treatment-media{min-height:104px!important}
   .book-treatment-content{padding:12px 11px 10px}
+}
+
+/* Approved exact treatment visual sizing v26 */
+.book-treatment-card.has-site-visual{grid-template-columns:96px minmax(0,1fr)!important}
+.book-treatment-media{background-position:center!important;background-size:cover!important}
+@media(max-width:520px){
+  .book-treatment-card.has-site-visual{grid-template-columns:88px minmax(0,1fr)!important}
 }
