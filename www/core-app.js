@@ -121,7 +121,7 @@
     const next=upcoming[0];
     const contact=dash.contact||{};
     const banners=dash.campaigns||[];
-    const heroImage='./assets/site/home-sculpture.webp';
+    const heroImage='./assets/site/hero.svg';
     const points=Number(dash.points??dash.member?.coins??0).toLocaleString('de-DE');
 
     let html=`<section class="approved-home-hero ${heroImage?'has-image':''}" ${heroImage?`style="--approved-hero-image:url('${esc(heroImage)}')"`:''}>
@@ -175,7 +175,7 @@
 
     if(banners.length){
       html+=`<div class="approved-section-head"><h2>Special Offers</h2><span>${banners.length}</span></div>
-      <div class="approved-campaign-stack">${banners.map(b=>`<article class="approved-campaign" ${b.image_url?`style="--approved-campaign-image:url('${esc(b.image_url)}')"`:''}>
+      <div class="approved-campaign-stack">${banners.map(b=>`<article class="approved-campaign" style="--approved-campaign-image:url('${esc(b.image_url||'./assets/site/clinic.jpg')}')">
         <div class="approved-campaign-copy"><span>SPECIAL OFFER</span><h3>${esc(b.title)}</h3>${b.text?`<p>${esc(b.text)}</p>`:''}${b.cta_url?`<a href="${esc(b.cta_url)}" target="_blank" rel="noopener">${esc(b.cta_label||'Mehr erfahren')} <b>›</b></a>`:''}</div>
       </article>`).join('')}</div>`;
     }
