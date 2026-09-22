@@ -28,9 +28,10 @@ jobs:
       - name: Verify focused Book and A+ points administration
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.HOST }}
-          username: root
-          password: ${{ secrets.PASS }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 10m
           script: |
             set -euo pipefail
@@ -56,7 +57,7 @@ jobs:
             User.objects.filter(username__startswith=os.environ.get('PREFIX', '')).delete()
             PY
               rm -f /tmp/aplus-smoke.env /tmp/book.cookies /tmp/sso.json /tmp/wallet.json \
-                /tmp/dashboard.html /tmp/calendar.html /tmp/points.html /tmp/patients.html /tmp/reviews.html /tmp/referrals.html \
+                /tmp/dashboard.html /tmp/more.html /tmp/calendar.html /tmp/points.html /tmp/patients.html /tmp/reviews.html /tmp/referrals.html \
                 /tmp/admin-luxury-v2.js
             }
             trap cleanup EXIT
@@ -156,8 +157,12 @@ jobs:
 
             curl -fsS --max-time 30 -c /tmp/book.cookies -b /tmp/book.cookies "$BOOK/verwaltung/dashboard/" > /tmp/dashboard.html
             require_marker /tmp/dashboard.html 'Patient suchen' 'admin dashboard patient search'
-            require_marker /tmp/dashboard.html 'Kampagnen & Banner' 'campaign editor'
-            require_marker /tmp/dashboard.html 'Nachrichten-Vorlagen' 'WhatsApp templates'
+
+            curl -fsS --max-time 30 -c /tmp/book.cookies -b /tmp/book.cookies "$BOOK/verwaltung/mehr/" > /tmp/more.html
+            require_marker /tmp/more.html 'Kampagnen' 'campaign management'
+            require_marker /tmp/more.html 'WhatsApp-Vorlagen' 'WhatsApp templates'
+            require_marker /tmp/more.html 'data-ferrari-open="campaign-new"' 'compact campaign creation'
+            require_marker /tmp/more.html 'Kunden öffnen' 'WhatsApp usage guidance'
 
             curl -fsS --max-time 30 -c /tmp/book.cookies -b /tmp/book.cookies "$BOOK/verwaltung/kalender/" > /tmp/calendar.html
             require_marker /tmp/calendar.html 'Kalender (Tagesansicht)' 'Book calendar'
