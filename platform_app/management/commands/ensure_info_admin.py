@@ -13,6 +13,7 @@ from platform_app.models import UserProfile
 
 
 BOOK_BOOTSTRAP_URL = "https://book.a-esthetic.de/api/internal/admin-bootstrap/"
+MARKER = Path("/opt/a-esthetic-mobile/.info-admin-bootstrap-v1")
 
 
 def _token():
@@ -30,29 +31,33 @@ def _password():
 
 
 class Command(BaseCommand):
-    help = "Create the canonical info@a-esthetic.de admin once and mirror it into Book."
+    help = "Create/mirror the canonical info@a-esthetic.de admin once."
 
     def add_arguments(self, parser):
         parser.add_argument("--email", default="info@a-esthetic.de")
 
     def handle(self, *args, **options):
         email = str(options["email"]).strip().lower()
+        if email != "info@a-esthetic.de":
+            raise CommandError("This bootstrap is restricted to info@a-esthetic.de.")
+
         existing = User.objects.filter(email__iexact=email).first()
-        if existing:
-            profile, _ = UserProfile.objects.get_or_create(user=existing)
-            changed = []
-            if not existing.is_staff:
-                existing.is_staff = True
-                changed.append("is_staff")
-            if not existing.is_superuser:
-                existing.is_superuser = True
-                changed.append("is_superuser")
-            if changed:
-                existing.save(update_fields=changed)
-            if profile.role != "admin":
-                profile.role = "admin"
-                profile.save(update_fields=["role"])
-            self.stdout.write("Canonical info admin already exists; password unchanged.")
+        if MARKER.exists():
+            if existing:
+                profile, _ = UserProfile.objects.get_or_create(user=existing)
+                changed = []
+                if not existing.is_staff:
+                    existing.is_staff = True
+                    changed.append("is_staff")
+                if not existing.is_superuser:
+                    existing.is_superuser = True
+                    changed.append("is_superuser")
+                if changed:
+                    existing.save(update_fields=changed)
+                if profile.role != "admin":
+                    profile.role = "admin"
+                    profile.save(update_fields=["role"])
+            self.stdout.write("Canonical info admin bootstrap already completed.")
             return
 
         token = _token()
@@ -61,21 +66,25 @@ class Command(BaseCommand):
 
         password = _password()
         with transaction.atomic():
-            user = User.objects.create_user(
-                username=email,
-                email=email,
-                password=password,
-                first_name="A+ Esthetic",
-                last_name="Admin",
-                is_staff=True,
-                is_superuser=True,
-                is_active=True,
+            user = existing or User(username=email, email=email)
+            user.username = email
+            user.email = email
+            user.first_name = user.first_name or "A+ Esthetic"
+            user.last_name = user.last_name or "Admin"
+            user.is_staff = True
+            user.is_superuser = True
+            user.is_active = True
+            user.set_password(password)
+            user.save()
+
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.role = "admin"
+            profile.auth_provider = "info_admin_v1"
+            profile.onboarding_required = False
+            profile.save(
+                update_fields=["role", "auth_provider", "onboarding_required"]
             )
-            UserProfile.objects.create(
-                user=user,
-                role="admin",
-                auth_provider="password",
-            )
+
             payload = json.dumps({
                 "email": email,
                 "password": password,
@@ -96,11 +105,18 @@ class Command(BaseCommand):
                     body = json.loads(response.read().decode("utf-8"))
                     if response.status not in {200, 201} or not body.get("ok"):
                         raise CommandError("Book admin bootstrap failed.")
-            except (HTTPError, URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            except (
+                HTTPError,
+                URLError,
+                TimeoutError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+            ) as exc:
                 raise CommandError(f"Book admin bootstrap failed: {exc}") from exc
 
+        MARKER.touch(mode=0o600, exist_ok=True)
         self.stdout.write(
             self.style.SUCCESS(
-                "Canonical info admin created; credentials were delivered securely by e-mail."
+                "Canonical info admin created/mirrored; credentials were delivered securely by e-mail."
             )
         )
