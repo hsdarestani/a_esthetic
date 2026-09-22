@@ -118,65 +118,64 @@
     const [dash,booking]=await Promise.all([request('/dashboard/'),request('/booking/')]);
     const all=Array.isArray(booking.appointments)?booking.appointments:[];
     const upcoming=all.filter(a=>!isPast(a)&&String(a.status_code||a.status||'').toLowerCase()!=='cancelled').sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
-    const previous=all.filter(a=>isPast(a)&&String(a.status_code||a.status||'').toLowerCase()!=='cancelled').sort((a,b)=>new Date(b.starts_at)-new Date(a.starts_at));
-    const next=upcoming[0],last=previous[0];
+    const next=upcoming[0];
     const contact=dash.contact||{};
     const banners=dash.campaigns||[];
+    const heroImage=banners.find(item=>item.image_url)?.image_url||'';
     const points=Number(dash.points??dash.member?.coins??0).toLocaleString('de-DE');
 
-    let html=`<section class="home-hero">
-      <div class="home-hero-copy">
-        <span class="home-kicker">WILLKOMMEN</span>
-        <h1>Hallo, ${esc(firstName())}.</h1>
-        <p>Ihr persönlicher Bereich für Termine, Dokumente und A+ Vorteile.</p>
+    let html=`<section class="approved-home-hero ${heroImage?'has-image':''}" ${heroImage?`style="--approved-hero-image:url('${esc(heroImage)}')"`:''}>
+      <div class="approved-home-copy">
+        <span class="approved-kicker">WILLKOMMEN</span>
+        <h1>Willkommen,<br>${esc(firstName())}.</h1>
+        <p>Schön, dass du da bist.<br>Deine Schönheit ist unsere Leidenschaft.</p>
       </div>
-      <div class="home-mark">A+</div>
+      <div class="approved-home-image" aria-hidden="true"></div>
     </section>`;
 
     if(next){
       const d=dateBits(next.starts_at);
-      html+=`<section class="home-next-card">
-        <div class="home-next-date"><strong>${d.day}</strong><span>${d.month}</span><small>${d.time}</small></div>
-        <div class="home-next-copy"><span>NÄCHSTER TERMIN</span><strong>${esc(next.service||'Behandlung')}</strong><small>${esc(next.staff||'A+ Esthetic')} · ${d.full}</small></div>
-        <button type="button" class="home-next-action" data-dash-book>Termin buchen <span>›</span></button>
+      html+=`<section class="approved-next-card">
+        <div class="approved-next-label">NÄCHSTER TERMIN</div>
+        <div class="approved-next-main">
+          <div class="approved-date"><strong>${d.day}</strong><span>${d.month}</span></div>
+          <div class="approved-next-copy"><strong>${esc(next.service||'Behandlung')}</strong><span>${d.time} Uhr · ${esc(next.staff||'A+ Esthetic')}</span></div>
+          <button type="button" data-dash-book aria-label="Termin öffnen">›</button>
+        </div>
       </section>`;
     }else{
-      html+=`<section class="home-next-card is-empty">
-        <div class="home-next-copy"><span>NÄCHSTER TERMIN</span><strong>Noch kein Termin geplant</strong><small>Wählen Sie Behandlung und Wunschzeit in wenigen Schritten.</small></div>
-        <button type="button" class="home-next-action" data-dash-book>Termin reservieren <span>›</span></button>
+      html+=`<section class="approved-next-card is-empty">
+        <div class="approved-next-label">NÄCHSTER TERMIN</div>
+        <div class="approved-next-main">
+          <div class="approved-next-copy"><strong>Noch kein Termin geplant</strong><span>Wunschbehandlung und Zeit direkt auswählen.</span></div>
+          <button type="button" data-dash-book aria-label="Termin reservieren">›</button>
+        </div>
       </section>`;
     }
 
-    if(last){
-      html+=`<div class="home-last-visit"><span>Letzter Besuch</span><b>${fmt(last.starts_at)}</b><small>${esc(last.service||'Behandlung')}</small></div>`;
-    }
-
-    html+=`<section class="home-contact-grid">
-      <a class="home-contact-card" href="tel:${esc(contact.phone||CONTACT.phone)}">
-        <span class="home-contact-icon">${NAV_ICONS.phone}</span>
-        <span><small>KONTAKT</small><strong>Praxis anrufen</strong><em>${esc(contact.phone_label||CONTACT.phoneLabel)}</em></span>
-        <i>›</i>
-      </a>
-      <a class="home-contact-card" href="${esc(contact.instagram_url||CONTACT.instagram)}" target="_blank" rel="noopener">
-        <span class="home-contact-icon">${NAV_ICONS.instagram}</span>
-        <span><small>SOCIAL</small><strong>Instagram</strong><em>@aplus.esthetic</em></span>
-        <i>↗</i>
-      </a>
+    html+=`<section class="approved-quick-actions">
+      <button type="button" data-dash-book><span>${NAV_ICONS.appointments}</span><b>Reservieren</b></button>
+      <a href="tel:${esc(contact.phone||CONTACT.phone)}"><span>${NAV_ICONS.phone}</span><b>Anrufen</b></a>
+      <a href="${esc(contact.instagram_url||CONTACT.instagram)}" target="_blank" rel="noopener"><span>${NAV_ICONS.instagram}</span><b>Instagram</b></a>
     </section>`;
 
-    html+=`<section class="home-points-card">
-      <div><span>A+ PUNKTE</span><strong>${points}</strong><small>Ihr aktueller Punktestand</small></div>
-      <button type="button" data-dash-points>Öffnen <span>›</span></button>
+    html+=`<section class="approved-points-preview" data-dash-points>
+      <div><span>A+ PUNKTE</span><strong>${points}</strong></div>
+      <p>Punkte sammeln.<br>Vorteile später freischalten.</p><b>›</b>
     </section>`;
 
     if(banners.length){
-      html+=`<div class="section-title home-section-title"><h2>Aktuelles</h2><small>${banners.length}</small></div><div class="campaign-stack">${banners.map(b=>`<article class="campaign-card" ${b.image_url?`style="--campaign-image:url('${esc(b.image_url)}')"`:''}><div class="campaign-shade"></div><div class="campaign-copy"><span>SPECIAL</span><h3>${esc(b.title)}</h3>${b.text?`<p>${esc(b.text)}</p>`:''}${b.cta_url?`<a href="${esc(b.cta_url)}" target="_blank" rel="noopener">${esc(b.cta_label||'Mehr erfahren')} <b>›</b></a>`:''}</div></article>`).join('')}</div>`;
+      html+=`<div class="approved-section-head"><h2>Special Offers</h2><span>${banners.length}</span></div>
+      <div class="approved-campaign-stack">${banners.map(b=>`<article class="approved-campaign" ${b.image_url?`style="--approved-campaign-image:url('${esc(b.image_url)}')"`:''}>
+        <div class="approved-campaign-copy"><span>SPECIAL OFFER</span><h3>${esc(b.title)}</h3>${b.text?`<p>${esc(b.text)}</p>`:''}${b.cta_url?`<a href="${esc(b.cta_url)}" target="_blank" rel="noopener">${esc(b.cta_label||'Mehr erfahren')} <b>›</b></a>`:''}</div>
+      </article>`).join('')}</div>`;
     }
 
     shell(html);
-    root.querySelectorAll('[data-dash-book]').forEach(button=>button.onclick=()=>go('appointments'));
+    root.querySelectorAll('[data-dash-book]').forEach(button=>button.addEventListener('click',()=>go('appointments')));
     root.querySelector('[data-dash-points]')?.addEventListener('click',()=>go('points'));
   }
+
 
   async function renderAppointments(){
     const data=await request('/booking/');const all=data.appointments||[];const upcoming=all.filter(a=>!isPast(a)).sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
@@ -192,15 +191,45 @@
     const [wallet,reviews,pass]=await Promise.all([request('/wallet/'),request('/reviews/'),request('/wallet-pass/').catch(()=>({}))]);
     const verified=(reviews.activities||[]).filter(x=>x.status==='verified');
     const card=pass.card||{};
-    let html=pageHead('A+ PUNKTE','Ihre Punkte','Punkte durch Aktivitäten sammeln. Einlösen kommt in der nächsten Ausbaustufe.');
-    html+=`<section class="points-hero"><span>AKTUELLER STAND</span><strong>${Number(wallet.coin_balance||0).toLocaleString('de-DE')}</strong><small>A+ Punkte</small></section>`;
-    html+=`<section class="point-task-grid"><button data-review-route><b>★ Google Bewertung</b><span>+${Number(reviews.verified_review_points||250)} Punkte nach Verifizierung</span></button><button data-friends-route><b>↗ Freunde einladen</b><span>Punkte automatisch nach erfolgreicher Einladung</span></button></section>`;
-    if(card.member_number){html+=`<section class="points-card"><div><img src="./assets/logo.svg" alt="A+"><span>DIGITALE MITGLIEDSKARTE</span><strong>${esc(card.name||state.me?.member?.name||'')}</strong><small>${esc(card.member_number)}</small></div><div class="points-card-actions"><button class="secondary" data-show-member-qr>QR anzeigen</button>${pass.providers?.apple?.configured?'<button class="secondary" data-wallet-provider="apple">Zu Apple Wallet</button>':''}</div><div class="member-qr-slot" data-member-qr-slot hidden><img data-member-qr alt="Persönlicher QR-Code"><div data-wallet-notice hidden></div></div></section>`;}
-    html+=`<div class="section-title"><h2>Punkteverlauf</h2><small>${(wallet.transactions||[]).filter(x=>x.kind==='coin').length}</small></div>${pointRows(wallet.transactions)}`;
+    const balance=Number(wallet.coin_balance||0);
+    const nextMilestone=Math.max(1000,Math.ceil((balance+1)/1000)*1000);
+    const remaining=Math.max(0,nextMilestone-balance);
+    const progress=Math.min(100,(balance/nextMilestone)*100);
+
+    let html=`<section class="approved-points-hero">
+      <span>A+ PUNKTE</span>
+      <div class="approved-points-balance"><strong>${balance.toLocaleString('de-DE')}</strong><p>Deine Punkte</p><em>Schönheit<br>lohnt sich.</em></div>
+      <small>Noch ${remaining.toLocaleString('de-DE')} Punkte bis zu deinem nächsten Reward</small>
+      <div class="approved-progress"><i style="width:${progress}%"></i></div><b>${balance.toLocaleString('de-DE')} / ${nextMilestone.toLocaleString('de-DE')}</b>
+    </section>`;
+    html+=`<section class="approved-benefits"><div class="approved-page-head compact"><h1>Deine Vorteile</h1><p>Sammle Punkte und freue dich auf exklusive Rewards und besondere Erlebnisse.</p></div>
+      <button data-review-route><span>☆</span><div><strong>Google Bewertung</strong><small>+${Number(reviews.verified_review_points||250)} Punkte nach Verifizierung</small></div><b>›</b></button>
+      <button data-friends-route><span>◇</span><div><strong>Freunde einladen</strong><small>Punkte nach erfolgreicher Empfehlung</small></div><b>›</b></button>
+      <div class="approved-benefit-row"><span>✦</span><div><strong>Exklusive Specials</strong><small>Früherer Zugang zu Aktionen</small></div><b>›</b></div>
+      ${card.member_number?`<button data-show-member-qr><span>▣</span><div><strong>Digitale Mitgliedskarte</strong><small>${esc(card.member_number)}</small></div><b>›</b></button>`:''}
+    </section>`;
+    if(card.member_number){
+      html+=`<section class="approved-member-card" data-member-qr-slot hidden><img data-member-qr alt="Persönlicher QR-Code"><div data-wallet-notice hidden></div>${pass.providers?.apple?.configured?'<button class="secondary" data-wallet-provider="apple">Zu Apple Wallet</button>':''}</section>`;
+    }
+    html+=`<section class="approved-quote">“ Schönheit ist die beste<br>Form der Selbstliebe. ”</section>`;
+    html+=`<div class="approved-section-head"><h2>Punkteverlauf</h2><span>${(wallet.transactions||[]).filter(x=>x.kind==='coin').length}</span></div>${pointRows(wallet.transactions)}`;
     if(verified.length)html+=`<div class="notice success">${verified.length} Google-Bewertung${verified.length===1?'':'en'} verifiziert.</div>`;
-    shell(html);root.querySelector('[data-review-route]').onclick=()=>go('reviews');root.querySelector('[data-friends-route]').onclick=()=>go('friends');
-    const qrBtn=root.querySelector('[data-show-member-qr]');if(qrBtn)qrBtn.onclick=async()=>{const slot=root.querySelector('[data-member-qr-slot]');slot.hidden=false;const img=slot.querySelector('[data-member-qr]');if(img.dataset.loaded)return;try{const r=await fetch(`${API}/wallet-pass/qr/`,{headers:{Authorization:`Bearer ${state.token}`}});if(!r.ok)throw new Error();img.src=URL.createObjectURL(await r.blob());img.dataset.loaded='1';}catch(_){slot.innerHTML='<div class="notice error">QR-Code konnte nicht geladen werden.</div>';}};
+    shell(html);
+    root.querySelector('[data-review-route]')?.addEventListener('click',()=>go('reviews'));
+    root.querySelector('[data-friends-route]')?.addEventListener('click',()=>go('friends'));
+    const qrBtn=root.querySelector('[data-show-member-qr]');
+    if(qrBtn)qrBtn.onclick=async()=>{
+      const slot=root.querySelector('[data-member-qr-slot]');slot.hidden=false;
+      const img=slot.querySelector('[data-member-qr]');
+      if(img.dataset.loaded)return;
+      try{
+        const resp=await fetch(`${API}/wallet-pass/qr/`,{headers:{Authorization:`Bearer ${state.token}`}});
+        if(!resp.ok)throw new Error();
+        img.src=URL.createObjectURL(await resp.blob());img.dataset.loaded='1';
+      }catch(_){slot.innerHTML='<div class="notice error">QR-Code konnte nicht geladen werden.</div>';}
+    };
   }
+
 
   async function renderReviews(){
     const data=await request('/reviews/');const items=data.activities||[];
@@ -220,16 +249,59 @@
   }
 
   async function renderRecords(){
-    const data=await request('/patient-records/');const records=(data.records||[]).sort((a,b)=>new Date(b.captured_at||b.created_at)-new Date(a.captured_at||a.created_at));
-    let html=pageHead('PATIENTENAKTE','Ihre Akte','Dokumente und Notizen chronologisch – von Ihnen und der Praxis.');
-    html+=`<section class="upload-box"><form data-upload enctype="multipart/form-data"><label class="field"><span>Datei</span><input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.txt,.rtf,.csv"></label><div class="native-photo-row"><button type="button" class="secondary" data-native-photo>Foto aufnehmen</button><small>Öffnet auf iPhone/Android die native Kamera stabil.</small></div><label class="field"><span>Notiz (optional)</span><textarea name="note"></textarea></label>${!data.health_data_consent?`<label class="consent"><input name="health_data_consent" type="checkbox" value="1" required><span>Ich willige ein, dass diese Gesundheitsdaten zur Behandlung und Dokumentation verarbeitet werden.</span></label>`:'<input type="hidden" name="health_data_consent" value="1">'}<button class="primary wide">In Akte speichern</button></form></section>`;
-    html+=`<div class="section-title"><h2>Verlauf</h2><small>${records.length}</small></div>${records.length?records.map(recordRow).join(''):'<div class="empty">Ihre Patientenakte enthält noch keine Einträge.</div>'}`;
-    shell(html);bindRecordActions();
+    const data=await request('/patient-records/');
+    const records=(data.records||[]).sort((a,b)=>new Date(b.captured_at||b.created_at)-new Date(a.captured_at||a.created_at));
+    let html=`<section class="approved-page-head"><h1>Meine Akte</h1><p>Deine Dokumente, Fotos und Notizen.<br>Sicher. Persönlich. Jederzeit verfügbar.</p></section>`;
+    html+=`<section class="approved-upload-card">
+      <form data-upload enctype="multipart/form-data">
+        <label class="approved-upload-zone">
+          <input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.txt,.rtf,.csv">
+          <span class="approved-upload-icon">↥</span>
+          <strong>Neuer Akteneintrag</strong>
+          <p>Datei, Foto oder Notiz hier ablegen<br>oder auswählen.</p>
+          <b>Datei auswählen</b>
+          <small>Fotos, PDF oder Dokumente</small>
+        </label>
+        <button type="button" class="approved-photo-button" data-native-photo>Foto aufnehmen</button>
+        <label class="approved-note-field"><span>Notiz <small>optional</small></span><textarea name="note" placeholder="Zusätzliche Information …"></textarea></label>
+        ${!data.health_data_consent?`<label class="approved-consent"><input name="health_data_consent" type="checkbox" value="1" required><span>Ich willige ein, dass diese Gesundheitsdaten zur Behandlung und Dokumentation verarbeitet werden.</span></label>`:'<input type="hidden" name="health_data_consent" value="1">'}
+        <button class="approved-save-record">In Akte speichern</button>
+      </form>
+    </section>`;
+    html+=`<div class="approved-record-filters">
+      <button class="is-active" data-record-filter="all">Alle</button>
+      <button data-record-filter="image">Bilder</button>
+      <button data-record-filter="document">Dokumente</button>
+      <button data-record-filter="note">Notizen</button>
+    </div>`;
+    html+=`<div class="approved-section-head records-head"><h2>Zuletzt hinzugefügt</h2><span>${records.length}</span></div>
+      <section class="approved-record-timeline">${records.length?records.map(recordRow).join(''):'<div class="empty">Ihre Patientenakte enthält noch keine Einträge.</div>'}</section>`;
+    shell(html);
+    bindRecordActions();
+    root.querySelectorAll('[data-record-filter]').forEach(button=>button.addEventListener('click',()=>{
+      const filter=button.dataset.recordFilter;
+      root.querySelectorAll('[data-record-filter]').forEach(item=>item.classList.toggle('is-active',item===button));
+      root.querySelectorAll('[data-record-kind]').forEach(row=>{
+        const kind=String(row.dataset.recordKind||'').toLowerCase();
+        const visible=filter==='all'||kind.includes(filter)||(filter==='image'&&(kind.includes('photo')||kind.includes('bild')));
+        row.hidden=!visible;
+      });
+    }));
   }
 
-  function recordRow(r){const source=r.customer_uploaded?'Von Ihnen':'Praxis';return `<article class="record-row"><div class="record-row-head"><div><div class="record-source">${source} · ${esc(r.kind_label||r.kind)}</div><strong>${esc(r.title||'Akteneintrag')}</strong></div><small class="row-sub">${fmt(r.captured_at||r.created_at)}</small></div>${r.note?`<div class="row-sub">${esc(r.note)}</div>`:''}${r.has_file?`<div class="record-actions"><button class="secondary" data-record-file="${esc(r.id)}" data-download="0">Öffnen</button><button class="secondary" data-record-file="${esc(r.id)}" data-download="1">Download</button></div>`:''}</article>`;}
 
-  async function nativePhotoToInput(input){const camera=window.Capacitor?.Plugins?.Camera;if(!camera?.getPhoto){input.click();return;}const photo=await camera.getPhoto({quality:88,resultType:'uri',source:'CAMERA',direction:'REAR',correctOrientation:true,presentationStyle:'fullscreen'});if(!photo?.webPath)return;const response=await fetch(photo.webPath);const blob=await response.blob();const file=new File([blob],`APlus-Foto-${Date.now()}.jpg`,{type:blob.type||'image/jpeg'});const dt=new DataTransfer();dt.items.add(file);input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));}
+  function recordRow(r){
+    const source=r.customer_uploaded?'Von Ihnen':'Praxis';
+    const kind=String(r.kind||'document').toLowerCase();
+    const icon=kind.includes('image')||kind.includes('photo')?'◉':kind.includes('note')?'✎':'▤';
+    return `<article class="approved-record-row" data-record-kind="${esc(kind)}">
+      <span class="approved-record-dot"></span><span class="approved-record-icon">${icon}</span>
+      <div class="approved-record-copy"><strong>${esc(r.title||'Akteneintrag')}</strong><span>${fmt(r.captured_at||r.created_at)} · ${esc(r.kind_label||source)}</span>${r.note?`<small>${esc(r.note)}</small>`:''}</div>
+      ${r.has_file?`<div class="approved-record-actions"><button data-record-file="${esc(r.id)}" data-download="0">Öffnen</button><button data-record-file="${esc(r.id)}" data-download="1" aria-label="Download">↓</button></div>`:''}
+    </article>`;
+  }
+
+
   function bindRecordActions(){
     const form=root.querySelector('[data-upload]');if(!form)return;const fileInput=form.querySelector('input[type=file]');root.querySelector('[data-native-photo]')?.addEventListener('click',async()=>{try{await nativePhotoToInput(fileInput);}catch(err){form.insertAdjacentHTML('beforebegin',errorBox(new Error('Kamera konnte nicht geöffnet werden.')));}});
     form.onsubmit=async e=>{e.preventDefault();const btn=form.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Wird gespeichert …';try{const headers=new Headers({'Authorization':`Bearer ${state.token}`});const response=await fetch(`${API}/patient-records/upload/`,{method:'POST',headers,body:new FormData(form)});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Upload fehlgeschlagen');await renderRecords();}catch(err){btn.disabled=false;btn.textContent='In Akte speichern';form.insertAdjacentHTML('beforebegin',errorBox(err));}};
