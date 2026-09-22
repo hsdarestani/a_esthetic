@@ -277,10 +277,16 @@ def award_referrer_first_booking(email, booking_public_id=""):
 @csrf_exempt
 @require_http_methods(["GET"])
 def auth_config(request):
+    google_enabled = bool(getattr(settings, "GOOGLE_SOCIAL_LOGIN_ENABLED", False))
+    apple_enabled = bool(getattr(settings, "APPLE_SOCIAL_LOGIN_ENABLED", False))
     return JsonResponse({
         "ok": True,
-        "google": bool(getattr(settings, "GOOGLE_SOCIAL_LOGIN_ENABLED", False)),
-        "apple": bool(getattr(settings, "APPLE_SOCIAL_LOGIN_ENABLED", False)),
+        "google": google_enabled,
+        "apple": apple_enabled,
+        # OAuth client identifiers are public by design and are needed by the
+        # providers' official web button libraries. Secrets remain server-only.
+        "google_client_id": settings.GOOGLE_CLIENT_ID if google_enabled else "",
+        "apple_client_id": settings.APPLE_CLIENT_ID if apple_enabled else "",
     })
 
 
