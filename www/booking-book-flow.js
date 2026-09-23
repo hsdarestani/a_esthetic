@@ -312,14 +312,29 @@
     }).join('') : '<div class="book-slot-empty">Zurzeit sind keine Online-Termine freigeschaltet.</div>';
 
     const filters=host.querySelector('[data-service-filters]');
-    filters?.querySelectorAll('[data-service-filter]').forEach(filterButton=>filterButton.addEventListener('click',()=>{
-      const filter=filterButton.dataset.serviceFilter;
-      filters.querySelectorAll('[data-service-filter]').forEach(item=>item.classList.toggle('is-active',item===filterButton));
-      services.querySelectorAll('[data-service-id]').forEach(card=>{
-        const category=card.dataset.serviceCategory||'all';
-        card.hidden=filter!=='all'&&category!==filter;
+    const applyServiceFilter = (filterButton) => {
+      if (!filters || !filterButton) return;
+      const filter = filterButton.dataset.serviceFilter || 'all';
+      filters.querySelectorAll('[data-service-filter]').forEach(item => {
+        item.classList.toggle('is-active', item === filterButton);
+        item.setAttribute('aria-pressed', item === filterButton ? 'true' : 'false');
       });
-    }));
+      services.querySelectorAll('[data-service-id]').forEach(card => {
+        const category = card.dataset.serviceCategory || 'all';
+        const visible = filter === 'all' || category === filter;
+        card.hidden = !visible;
+        card.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        // Several late visual layers give treatment cards an explicit display
+        // value. Force the filtered state inline so those layers cannot make a
+        // hidden card visible again on Android WebView.
+        if (visible) card.style.removeProperty('display');
+        else card.style.setProperty('display', 'none', 'important');
+      });
+    };
+    filters?.querySelectorAll('[data-service-filter]').forEach(filterButton => {
+      filterButton.setAttribute('aria-pressed', filterButton.classList.contains('is-active') ? 'true' : 'false');
+      filterButton.addEventListener('click', () => applyServiceFilter(filterButton));
+    });
 
     services.querySelectorAll('[data-service-id]').forEach(button => button.addEventListener('click', () => {
       state.service = state.data.services.find(item => Number(item.id) === Number(button.dataset.serviceId));
