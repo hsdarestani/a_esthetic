@@ -34,9 +34,13 @@ def _json(request):
         return {}
 
 
+REFERRAL_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
 def _new_code():
+    """Create a short, human-friendly referral code while keeping legacy codes valid."""
     while True:
-        code = "APLUS-" + secrets.token_hex(5).upper()
+        code = "".join(secrets.choice(REFERRAL_ALPHABET) for _ in range(6))
         if not Referral.objects.filter(code=code).exists():
             return code
 
