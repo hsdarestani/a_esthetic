@@ -51,7 +51,7 @@ class CustomerOpsTests(TestCase):
         referral = sender.call_args.args[0]
         request = sender.call_args.args[1]
         self.assertEqual(referral.invited_email, "friend@example.de")
-        self.assertTrue(referral.code.startswith("APLUS-"))
+        self.assertRegex(referral.code, r"^[A-HJ-NP-Z2-9]{6}$")
         self.assertTrue(request.headers.get("Authorization", "").startswith("Bearer "))
 
     def test_reward_redemption_has_fulfillment_and_admin_can_complete(self):
