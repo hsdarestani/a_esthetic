@@ -74,7 +74,7 @@
       '</div>' +
       field('E-Mail','<input name="email" type="email" autocomplete="email" required>') +
       field('Telefon','<input name="phone" type="tel" autocomplete="tel" placeholder="+49 …" required>') +
-      field('Empfehlungscode <small>optional</small>','<input name="referral_code" autocomplete="off" placeholder="APLUS-…">') +
+      field('Empfehlungscode <small>optional</small>','<input name="referral_code" autocomplete="off" placeholder="z. B. A7K9Q2">') +
       field('Passwort','<input name="password" type="password" minlength="12" autocomplete="new-password" required>') +
       field('Passwort bestätigen','<input name="password2" type="password" minlength="12" autocomplete="new-password" required>') +
       '<button class="primary wide" type="submit">Konto erstellen</button>' +
@@ -161,7 +161,7 @@
       field('Nachname','<input name="last_name" value="' + esc(profile.last_name || '') + '" required>') +
       '</div>' +
       field('Telefon','<input name="phone" type="tel" value="' + esc(profile.phone || '') + '" required>') +
-      (profile.referral_code ? '' : field('Empfehlungscode <small>optional</small>','<input name="referral_code" placeholder="APLUS-…">')) +
+      (profile.referral_code ? '' : field('Empfehlungscode <small>optional</small>','<input name="referral_code" placeholder="z. B. A7K9Q2">')) +
       '<button class="secondary wide" type="submit">Profil speichern</button></form>' +
       '<div class="verification-grid">' +
       verificationCard('email', Boolean(account.email_verified), profile.email) +
@@ -304,10 +304,15 @@
     const ready = await initializeNativeSocial(config);
     if (!plugin || !ready) throw new Error('native_social_unavailable');
 
+    const platform = nativePlatform();
     const response = await plugin.login({
       provider,
+      // @capgo/capacitor-social-login requires an Android MainActivity
+      // customization when custom Google scopes are supplied. We only need
+      // the standard Google identity claims, so keep Android on the plugin's
+      // default scopes and avoid the native "CANNOT use scopes" failure.
       options: provider === 'google'
-        ? {scopes:['email','profile']}
+        ? (platform === 'android' ? {} : {scopes:['email','profile']})
         : {scopes:['email','name']}
     });
     const result = response?.result || {};
