@@ -1,3 +1,4 @@
+import secrets
 import json
 from datetime import timedelta
 
@@ -203,7 +204,11 @@ def club(request):
         invited_email = str(data.get('invited_email') or '').strip()
         if not invited_email or '@' not in invited_email:
             return JsonResponse({'ok': False, 'error': 'valid_email_required'}, status=400)
-        code = f'APLUS-{user.pk}-{Referral.objects.count() + 1}'
+        alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+        while True:
+            code = ''.join(secrets.choice(alphabet) for _ in range(6))
+            if not Referral.objects.filter(code=code).exists():
+                break
         Referral.objects.create(
             referrer=user,
             code=code,
