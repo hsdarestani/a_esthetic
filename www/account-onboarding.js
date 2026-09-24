@@ -27,6 +27,13 @@
   }
 
   function errorText(error) {
+    const message = String(error?.message || '');
+    if (/\[16\]\s*Account reauth failed/i.test(message)) {
+      return 'Die Google Anmeldung konnte nicht abgeschlossen werden. Bitte wählen Sie Ihr Google Konto erneut oder versuchen Sie es später noch einmal.';
+    }
+    if (/28444|Developer console is not set up correctly/i.test(message)) {
+      return 'Die Google Anmeldung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.';
+    }
     const map = {
       invalid_phone:'Bitte geben Sie eine gültige Telefonnummer mit Ländervorwahl ein.',
       invalid_salutation:'Bitte wählen Sie Herr, Frau oder Divers.',
@@ -312,7 +319,11 @@
       // the standard Google identity claims, so keep Android on the plugin's
       // default scopes and avoid the native "CANNOT use scopes" failure.
       options: provider === 'google'
-        ? (platform === 'android' ? {} : {scopes:['email','profile']})
+        ? (
+            platform === 'android'
+              ? {filterByAuthorizedAccounts:false}
+              : {scopes:['email','profile']}
+          )
         : {scopes:['email','name']}
     });
     const result = response?.result || {};
