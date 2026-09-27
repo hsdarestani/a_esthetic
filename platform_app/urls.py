@@ -38,6 +38,7 @@ urlpatterns = [
     path('api/mobile/verification/sms/confirm/', account_onboarding.sms_confirm, name='mobile_sms_confirm'),
     path('api/mobile/social-token/', account_onboarding.social_token, name='mobile_social_token'),
     path('api/mobile/social-browser/exchange/', account_onboarding.social_browser_exchange, name='mobile_social_browser_exchange'),
+    path('mobile-social/dispatch/', account_onboarding.social_login_dispatch, name='mobile_social_dispatch'),
     path('mobile-social/finish/', account_onboarding.social_browser_finish, name='mobile_social_browser_finish'),
     path('api/mobile/social-session/', account_onboarding.social_session, name='mobile_social_session'),
     path('api/mobile/me/', mobile_api.me, name='mobile_me'),
