@@ -350,6 +350,78 @@
     await completeSocialLogin(provider, credential, user);
   }
 
+  async function handleBrowserSocialCallback(rawUrl) {
+    const value = String(rawUrl || '');
+    if (!value) return false;
+
+    let callback;
+    try {
+      callback = new URL(value);
+    } catch (_) {
+      return false;
+    }
+    if (callback.protocol !== 'de.aplusesthetic.app:' || callback.host !== 'social-login') {
+      return false;
+    }
+
+    const browser = window.Capacitor?.Plugins?.Browser;
+    try {
+      await browser?.close?.();
+    } catch (_) {}
+
+    const errorCode = callback.searchParams.get('error') || '';
+    if (errorCode) {
+      const error = new Error(errorCode);
+      error.code = errorCode;
+      throw error;
+    }
+
+    const code = callback.searchParams.get('code') || '';
+    if (!code) throw new Error('social_credential_required');
+
+    const result = await api('/social-browser/exchange/', {
+      method:'POST',
+      json:{code}
+    });
+    localStorage.setItem('aplus_token', result.token);
+    if (result.account?.profile_complete) {
+      location.reload();
+      return true;
+    }
+    await showOnboarding();
+    return true;
+  }
+
+  let socialDeepLinkBound = false;
+  async function bindBrowserSocialCallback() {
+    if (nativePlatform() !== 'android' || socialDeepLinkBound) return;
+    const appPlugin = window.Capacitor?.Plugins?.App;
+    if (!appPlugin) return;
+    socialDeepLinkBound = true;
+
+    await appPlugin.addListener('appUrlOpen', event => {
+      handleBrowserSocialCallback(event?.url).catch(error => showSignup(errorText(error)));
+    });
+
+    try {
+      const launch = await appPlugin.getLaunchUrl();
+      if (launch?.url) {
+        await handleBrowserSocialCallback(launch.url);
+      }
+    } catch (_) {}
+  }
+
+  async function browserGoogleLogin(config) {
+    const browser = window.Capacitor?.Plugins?.Browser;
+    const appPlugin = window.Capacitor?.Plugins?.App;
+    if (!browser || !appPlugin) {
+      return nativeSocialLogin('google', config);
+    }
+    await bindBrowserSocialCallback();
+    const url = 'https://esthetic.smarbiz.sbs/accounts/google/login/?process=login&next=%2Fmobile-social%2Ffinish%2F';
+    await browser.open({url});
+  }
+
   function renderNativeSocialButtons(config, wrapper) {
     const platform = nativePlatform();
     if (!platform || !wrapper) return false;
@@ -386,7 +458,11 @@
         if (button.disabled) return;
         button.disabled = true;
         try {
-          await nativeSocialLogin(button.dataset.nativeSocial, config);
+          if (button.dataset.nativeSocial === 'google' && platform === 'android') {
+            await browserGoogleLogin(config);
+          } else {
+            await nativeSocialLogin(button.dataset.nativeSocial, config);
+          }
         } catch (error) {
           await showSignup(errorText(error));
         } finally {
@@ -560,12 +636,14 @@
 
   new MutationObserver(() => enhanceLogin()).observe(document.documentElement, {childList:true,subtree:true});
   document.addEventListener('DOMContentLoaded', () => {
+    bindBrowserSocialCallback().catch(() => {});
     enhanceLogin();
     finishSocial();
     hideSplash();
   }, {once:true});
   window.addEventListener('pageshow', hideSplash);
   setTimeout(() => {
+    bindBrowserSocialCallback().catch(() => {});
     enhanceLogin();
     finishSocial();
     hideSplash();
