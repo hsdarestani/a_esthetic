@@ -1,4 +1,5 @@
 from django.http import HttpResponse
+from django.shortcuts import redirect
 
 from .models import AuditLog
 
@@ -68,4 +69,32 @@ class MobileSocialRedirectMiddleware:
         ):
             request.session[self.SESSION_KEY] = True
             request.session.modified = True
-        return self.get_response(request)
+
+        response = self.get_response(request)
+
+        if not request.session.get(self.SESSION_KEY):
+            return response
+
+        # django-allauth can prefer its stored post-login redirect over our
+        # adapter hook. If that happens, rewrite the redirect before Chrome
+        # ever reaches the plain Django root page.
+        location = str(response.get("Location") or "")
+        if response.status_code in {301, 302, 303, 307, 308} and location in {
+            "/",
+            "/?social=1",
+            "https://esthetic.smarbiz.sbs/",
+            "https://esthetic.smarbiz.sbs/?social=1",
+        }:
+            return redirect(self.MOBILE_FINISH_PATH)
+
+        # Recovery for the exact failure observed on Android: OAuth completed,
+        # the browser is authenticated, but allauth already rendered the root.
+        user = getattr(request, "user", None)
+        if (
+            request.path == "/"
+            and user is not None
+            and user.is_authenticated
+        ):
+            return redirect(self.MOBILE_FINISH_PATH)
+
+        return response
