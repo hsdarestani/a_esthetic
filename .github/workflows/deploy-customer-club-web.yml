@@ -153,7 +153,7 @@ jobs:
             grep -q 'booking-final-rules.js' /tmp/aesthetic-focused-local-index.html
             grep -q 'mobile-polish.js' /tmp/aesthetic-focused-local-index.html
             grep -q 'global-loading.js?v=20260923-intro-v24' /tmp/aesthetic-focused-local-index.html
-            grep -q 'account-onboarding.js?v=20260923-intro-v24' /tmp/aesthetic-focused-local-index.html
+            grep -q 'account-onboarding.js?v=20260927-google-browser-v1' /tmp/aesthetic-focused-local-index.html
             grep -q 'ferrari-v18.css?v=20260922-v18' /tmp/aesthetic-focused-local-index.html
             grep -q 'client-v19.css?v=20260923-progress-v21' /tmp/aesthetic-focused-local-index.html
             grep -q 'approved-v22.css?v=20260923-finalcrop-v27' /tmp/aesthetic-focused-local-index.html
@@ -164,7 +164,7 @@ jobs:
               certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
               curl -fsSL --max-time 20 "https://$DOMAIN/?release=20260923-finalcrop-v27" -o /tmp/aesthetic-focused-index.html
             fi
-            grep -q 'account-onboarding.js?v=20260923-intro-v24' /tmp/aesthetic-focused-index.html
+            grep -q 'account-onboarding.js?v=20260927-google-browser-v1' /tmp/aesthetic-focused-index.html
             grep -q 'global-loading.js?v=20260923-intro-v24' /tmp/aesthetic-focused-index.html
             grep -q 'ferrari-v18.css?v=20260922-v18' /tmp/aesthetic-focused-index.html
             grep -q 'client-v19.css?v=20260923-progress-v21' /tmp/aesthetic-focused-index.html
