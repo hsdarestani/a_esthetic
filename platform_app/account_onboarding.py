@@ -22,6 +22,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
+from django.shortcuts import redirect
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -717,6 +718,13 @@ def _social_browser_html(deep_link, message):
     response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response["Pragma"] = "no-cache"
     return response
+
+
+@require_http_methods(["GET"])
+def social_login_dispatch(request):
+    if request.session.get("aesthetic_mobile_social"):
+        return social_browser_finish(request)
+    return redirect("/?social=1")
 
 
 @require_http_methods(["GET"])
