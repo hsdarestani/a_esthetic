@@ -671,18 +671,27 @@ def social_token(request):
 
 
 def _prepare_browser_social_user(user):
-    profile, _ = UserProfile.objects.get_or_create(
+    profile, created = UserProfile.objects.get_or_create(
         user=user, defaults={"role": "customer"}
     )
     if profile.role != "customer":
         raise ValueError("social_account_conflict")
+
+    update_fields = ["auth_provider"]
     profile.auth_provider = "google"
-    profile.onboarding_required = True
+
+    # A brand-new Google identity must finish the customer profile. Existing
+    # accounts keep their previous completion state and should sign in directly.
+    if created:
+        profile.onboarding_required = True
+        update_fields.append("onboarding_required")
+
+    # Google has already verified ownership of this email address.
     if user.email and not profile.email_verified_at:
         profile.email_verified_at = timezone.now()
-    profile.save(
-        update_fields=["auth_provider", "onboarding_required", "email_verified_at"]
-    )
+        update_fields.append("email_verified_at")
+
+    profile.save(update_fields=update_fields)
     return profile
 
 
@@ -712,6 +721,7 @@ def _social_browser_html(deep_link, message):
 
 @require_http_methods(["GET"])
 def social_browser_finish(request):
+    request.session.pop("aesthetic_mobile_social", None)
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         deep_link = "de.aplusesthetic.app://social-login?error=social_session_required"
         return _social_browser_html(

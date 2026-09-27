@@ -5,6 +5,7 @@ from django.utils import timezone
 from .account_onboarding import (
     _attach_referral,
     _maybe_complete,
+    _prepare_browser_social_user,
     award_referrer_first_booking,
 )
 from .models import Referral, UserProfile, WalletAccount
@@ -57,3 +58,47 @@ class AccountOnboardingTests(TestCase):
 
         second = award_referrer_first_booking(newcomer.email, "booking-2")
         self.assertFalse(second["awarded"])
+
+
+    def test_google_browser_new_account_requires_profile_but_email_is_verified(self):
+        user = User.objects.create_user(
+            "google-new",
+            "new-google@example.com",
+            None,
+            first_name="Google",
+            last_name="User",
+        )
+        profile = _prepare_browser_social_user(user)
+        state = _maybe_complete(user)
+
+        self.assertTrue(profile.onboarding_required)
+        self.assertIsNotNone(profile.email_verified_at)
+        self.assertTrue(state["email_verified"])
+        self.assertFalse(state["profile_complete"])
+        self.assertIn("phone", state["missing"])
+        self.assertNotIn("email_verification", state["missing"])
+
+    def test_google_browser_existing_completed_account_stays_complete(self):
+        user = User.objects.create_user(
+            "google-existing",
+            "existing-google@example.com",
+            "StrongPass-123!",
+            first_name="Existing",
+            last_name="Member",
+        )
+        profile = UserProfile.objects.create(
+            user=user,
+            role="customer",
+            phone="+491701234567",
+            salutation="frau",
+            onboarding_required=False,
+        )
+
+        _prepare_browser_social_user(user)
+        profile.refresh_from_db()
+        state = _maybe_complete(user)
+
+        self.assertFalse(profile.onboarding_required)
+        self.assertEqual(profile.auth_provider, "google")
+        self.assertIsNotNone(profile.email_verified_at)
+        self.assertTrue(state["profile_complete"])

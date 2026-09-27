@@ -63,6 +63,7 @@ MIDDLEWARE = [
     "platform_app.middleware.MobileApiCorsMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "platform_app.middleware.MobileSocialRedirectMiddleware",
     "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -160,6 +161,7 @@ ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_SESSION_REMEMBER = True
 ACCOUNT_LOGOUT_ON_GET = False
 ACCOUNT_EMAIL_SUBJECT_PREFIX = "[A+ Esthetic] "
+ACCOUNT_ADAPTER = "platform_app.adapters.AestheticAccountAdapter"
 
 SOCIALACCOUNT_LOGIN_ON_GET = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
