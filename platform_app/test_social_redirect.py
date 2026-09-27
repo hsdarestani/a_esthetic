@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AnonymousUser, User
 from django.contrib.sessions.middleware import SessionMiddleware
+from django.http import HttpResponse, HttpResponseRedirect
 from django.test import RequestFactory, TestCase
 
 from .adapters import AestheticAccountAdapter
@@ -61,3 +62,36 @@ class MobileSocialRedirectTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/?social=1")
+
+
+    def test_mobile_oauth_root_redirect_is_rewritten_to_finish(self):
+        request = self._request(
+            "/accounts/google/login/?process=login&next=%2Fmobile-social%2Ffinish%2F"
+        )
+        middleware = MobileSocialRedirectMiddleware(
+            lambda req: HttpResponseRedirect("/?social=1")
+        )
+
+        response = middleware(request)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/mobile-social/finish/")
+        self.assertTrue(request.session.get("aesthetic_mobile_social"))
+
+    def test_authenticated_mobile_oauth_root_page_is_recovered(self):
+        user = User.objects.create_user(
+            "root-recovery",
+            "root-recovery@example.com",
+            "StrongPass-123!",
+        )
+        request = self._request("/")
+        request.user = user
+        request.session["aesthetic_mobile_social"] = True
+        request.session.save()
+
+        response = MobileSocialRedirectMiddleware(
+            lambda req: HttpResponse("plain root")
+        )(request)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/mobile-social/finish/")
