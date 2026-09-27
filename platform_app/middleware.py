@@ -72,7 +72,7 @@ class MobileSocialRedirectMiddleware:
 
         response = self.get_response(request)
 
-        if not request.session.get(self.SESSION_KEY):
+        if response is None or not request.session.get(self.SESSION_KEY):
             return response
 
         # django-allauth can prefer its stored post-login redirect over our
