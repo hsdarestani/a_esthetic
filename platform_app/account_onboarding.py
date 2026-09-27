@@ -5,6 +5,7 @@ import secrets
 from datetime import timedelta
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import requests
@@ -16,10 +17,11 @@ from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
+from django.core import signing
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -32,6 +34,7 @@ from .models import AccountVerification, AuditLog, Referral, UserProfile, Wallet
 VERIFY_TTL = timedelta(minutes=15)
 REFERRAL_POINTS = 300
 MAIL_RELAY_URL = "https://book.a-esthetic.de/api/internal/app-mail/"
+SOCIAL_BROWSER_SALT = "aesthetic-social-browser-v1"
 
 
 def _json(request):
@@ -659,6 +662,119 @@ def social_token(request):
         if user.email and not profile.email_verified_at:
             profile.email_verified_at = timezone.now()
         profile.save(update_fields=["auth_provider", "onboarding_required", "email_verified_at"])
+
+    return JsonResponse({
+        "ok": True,
+        "token": mobile_api._token_for(user),
+        "account": _maybe_complete(user),
+    })
+
+
+def _prepare_browser_social_user(user):
+    profile, _ = UserProfile.objects.get_or_create(
+        user=user, defaults={"role": "customer"}
+    )
+    if profile.role != "customer":
+        raise ValueError("social_account_conflict")
+    profile.auth_provider = "google"
+    profile.onboarding_required = True
+    if user.email and not profile.email_verified_at:
+        profile.email_verified_at = timezone.now()
+    profile.save(
+        update_fields=["auth_provider", "onboarding_required", "email_verified_at"]
+    )
+    return profile
+
+
+def _social_browser_html(deep_link, message):
+    target = json.dumps(deep_link)
+    response = HttpResponse(
+        f"""<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <title>A+ Esthetic</title>
+</head>
+<body style="font-family:Arial,sans-serif;text-align:center;padding:48px 20px;background:#f6f3ec;color:#211e19">
+  <p>{message}</p>
+  <p><a href="{deep_link}">Zur App zurückkehren</a></p>
+  <script>window.location.replace({target});</script>
+</body>
+</html>""",
+        content_type="text/html; charset=utf-8",
+    )
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response["Pragma"] = "no-cache"
+    return response
+
+
+@require_http_methods(["GET"])
+def social_browser_finish(request):
+    if not getattr(request, "user", None) or not request.user.is_authenticated:
+        deep_link = "de.aplusesthetic.app://social-login?error=social_session_required"
+        return _social_browser_html(
+            deep_link,
+            "Die Anmeldung konnte nicht abgeschlossen werden. Bitte kehren Sie zur App zurück.",
+        )
+
+    user = request.user
+    try:
+        _prepare_browser_social_user(user)
+    except ValueError as exc:
+        deep_link = (
+            "de.aplusesthetic.app://social-login?error="
+            + quote(str(exc), safe="")
+        )
+        return _social_browser_html(
+            deep_link,
+            "Dieses Konto kann nicht für die Anmeldung verwendet werden.",
+        )
+
+    code = signing.dumps(
+        {"uid": user.pk, "password_marker": user.password[-16:]},
+        salt=SOCIAL_BROWSER_SALT,
+        compress=True,
+    )
+    deep_link = (
+        "de.aplusesthetic.app://social-login?code="
+        + quote(code, safe="")
+    )
+    return _social_browser_html(
+        deep_link,
+        "Anmeldung erfolgreich. Sie werden zur App zurückgeleitet.",
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def social_browser_exchange(request):
+    code = str(_json(request).get("code") or "").strip()
+    if not code:
+        return JsonResponse(
+            {"ok": False, "error": "social_credential_required"}, status=400
+        )
+    try:
+        payload = signing.loads(
+            code,
+            salt=SOCIAL_BROWSER_SALT,
+            max_age=300,
+        )
+        user = User.objects.get(pk=payload["uid"], is_active=True)
+        if payload.get("password_marker") != user.password[-16:]:
+            raise signing.BadSignature("password_marker_changed")
+        _prepare_browser_social_user(user)
+    except User.DoesNotExist:
+        return JsonResponse(
+            {"ok": False, "error": "social_session_required"}, status=401
+        )
+    except (signing.BadSignature, signing.SignatureExpired, KeyError):
+        return JsonResponse(
+            {"ok": False, "error": "social_session_required"}, status=401
+        )
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=409)
 
     return JsonResponse({
         "ok": True,
