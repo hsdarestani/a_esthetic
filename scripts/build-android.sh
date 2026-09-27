@@ -38,6 +38,46 @@ fi
 
 npx cap sync android
 
+# The Android Google login is completed in the system browser and returns to
+# the app with a short-lived signed bridge code. Register the callback URI on
+# the generated Capacitor MainActivity before Gradle packages the app.
+python3 - <<'PY'
+from pathlib import Path
+import re
+
+manifest = Path('android/app/src/main/AndroidManifest.xml')
+text = manifest.read_text(encoding='utf-8')
+scheme = 'de.aplusesthetic.app'
+host = 'social-login'
+
+activity = re.search(
+    r'(<activity\b[^>]*android:name="[^"]*MainActivity"[^>]*>)(.*?)(</activity>)',
+    text,
+    flags=re.S,
+)
+if not activity:
+    raise SystemExit('Could not locate generated MainActivity in AndroidManifest.xml')
+
+block = activity.group(0)
+if f'android:scheme="{scheme}"' not in block:
+    intent = f'''
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="{scheme}" android:host="{host}" />
+            </intent-filter>
+'''
+    block = activity.group(1) + activity.group(2) + intent + activity.group(3)
+    text = text[:activity.start()] + block + text[activity.end():]
+    manifest.write_text(text, encoding='utf-8')
+
+updated = manifest.read_text(encoding='utf-8')
+if f'android:scheme="{scheme}"' not in updated or f'android:host="{host}"' not in updated:
+    raise SystemExit('Android social-login callback intent filter was not installed')
+print('Android Google OAuth callback intent filter verified.')
+PY
+
 # Android 15+ enforces edge-to-edge drawing. Insets exposed to CSS are not
 # reliable in all WebView/OEM combinations, so shrink the native content view
 # to the actual system-bar safe rectangle. Fixed web navigation then uses the
