@@ -49,3 +49,23 @@ class AuditRequestMiddleware:
             except Exception:
                 pass
         return response
+
+
+class MobileSocialRedirectMiddleware:
+    """Remember Android app social OAuth so allauth returns to the app bridge."""
+
+    GOOGLE_LOGIN_PATH = "/accounts/google/login/"
+    MOBILE_FINISH_PATH = "/mobile-social/finish/"
+    SESSION_KEY = "aesthetic_mobile_social"
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if (
+            request.path == self.GOOGLE_LOGIN_PATH
+            and request.GET.get("next") == self.MOBILE_FINISH_PATH
+        ):
+            request.session[self.SESSION_KEY] = True
+            request.session.modified = True
+        return self.get_response(request)
