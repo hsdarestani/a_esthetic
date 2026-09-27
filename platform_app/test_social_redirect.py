@@ -1,4 +1,4 @@
-from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.models import AnonymousUser, User
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.test import RequestFactory, TestCase
 
@@ -30,3 +30,34 @@ class MobileSocialRedirectTests(TestCase):
         request = self._request("/accounts/google/login/?process=login")
         MobileSocialRedirectMiddleware(lambda req: None)(request)
         self.assertFalse(request.session.get("aesthetic_mobile_social", False))
+
+
+    def test_mobile_dispatch_returns_app_deep_link(self):
+        user = User.objects.create_user(
+            "dispatch-google",
+            "dispatch-google@example.com",
+            "StrongPass-123!",
+        )
+        self.client.force_login(user)
+        session = self.client.session
+        session["aesthetic_mobile_social"] = True
+        session.save()
+
+        response = self.client.get("/mobile-social/dispatch/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("de.aplusesthetic.app://social-login?code=", response.content.decode())
+        self.assertNotIn("aesthetic_mobile_social", self.client.session)
+
+    def test_regular_dispatch_preserves_web_social_flow(self):
+        user = User.objects.create_user(
+            "dispatch-web",
+            "dispatch-web@example.com",
+            "StrongPass-123!",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get("/mobile-social/dispatch/")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/?social=1")

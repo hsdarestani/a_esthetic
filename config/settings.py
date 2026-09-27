@@ -147,7 +147,7 @@ MEDIA_URL = "/protected-media/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "/accounts/login/"
-LOGIN_REDIRECT_URL = "/?social=1"
+LOGIN_REDIRECT_URL = "/mobile-social/dispatch/"
 LOGOUT_REDIRECT_URL = "/accounts/login/"
 
 ACCOUNT_LOGIN_METHODS = {"email"}
