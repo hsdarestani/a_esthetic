@@ -95,3 +95,19 @@ class MobileSocialRedirectTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/mobile-social/finish/")
+
+
+    def test_finish_page_has_explicit_app_button(self):
+        user = User.objects.create_user(
+            "handoff-button",
+            "handoff-button@example.com",
+            "StrongPass-123!",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get("/mobile-social/finish/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("A+ Esthetic App öffnen", body)
+        self.assertIn("de.aplusesthetic.app://social-login?code=", body)

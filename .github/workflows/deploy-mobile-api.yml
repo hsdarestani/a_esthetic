@@ -215,6 +215,7 @@ jobs:
             marker='''    # BEGIN CUSTOMER_CLUB_DJANGO
                 location ^~ /api/mobile/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location ^~ /accounts/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location ^~ /mobile-social/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location = /login/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location = /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location ^~ /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
@@ -248,7 +249,7 @@ jobs:
                         return response.status,response.read().decode('utf-8','replace')
                 except HTTPError as exc: return exc.code,exc.read().decode('utf-8','replace')
                 except URLError as exc: raise SystemExit(f'Smoke request failed for {url}: {exc}')
-            checks=[('http://127.0.0.1:8770/api/mobile/status/',None,200,'customer club'),('http://127.0.0.1/api/mobile/status/','esthetic.smarbiz.sbs',200,'customer club'),('http://127.0.0.1/datenschutz/','esthetic.smarbiz.sbs',200,'Kundenclub')]
+            checks=[('http://127.0.0.1:8770/api/mobile/status/',None,200,'customer club'),('http://127.0.0.1/api/mobile/status/','esthetic.smarbiz.sbs',200,'customer club'),('http://127.0.0.1/datenschutz/','esthetic.smarbiz.sbs',200,'Kundenclub'),('http://127.0.0.1/mobile-social/finish/','esthetic.smarbiz.sbs',200,'Zur App zurückkehren')]
             for url,host,expected,needle in checks:
                 status,body=fetch(url,host)
                 if status!=expected or needle.lower() not in body.lower(): raise SystemExit(f'Smoke check failed: {url} returned {status}')
