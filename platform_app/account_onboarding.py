@@ -705,12 +705,32 @@ def _social_browser_html(deep_link, message):
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-store">
+  <meta name="theme-color" content="#f6f3ec">
   <title>A+ Esthetic</title>
+  <style>
+    *{{box-sizing:border-box}}
+    body{{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:linear-gradient(160deg,#f7f2e8,#fff 58%,#efe7d7);font-family:Arial,sans-serif;color:#211e19}}
+    .card{{width:min(100%,440px);background:rgba(255,255,255,.94);border:1px solid #eadfca;border-radius:28px;padding:34px 28px;text-align:center;box-shadow:0 24px 70px rgba(54,44,28,.12)}}
+    .brand{{font-family:Georgia,serif;font-size:26px;letter-spacing:.04em;margin-bottom:8px}}
+    .caption{{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:#9a7a37;margin-bottom:28px}}
+    h1{{font:600 27px/1.2 Georgia,serif;margin:0 0 12px}}
+    p{{font-size:15px;line-height:1.55;color:#5b554b;margin:0 0 24px}}
+    .open{{display:block;width:100%;padding:16px 20px;border-radius:16px;background:#211e19;color:#fff;text-decoration:none;font-weight:700;font-size:16px}}
+    .hint{{font-size:12px;color:#8d8578;margin-top:16px}}
+  </style>
 </head>
-<body style="font-family:Arial,sans-serif;text-align:center;padding:48px 20px;background:#f6f3ec;color:#211e19">
-  <p>{message}</p>
-  <p><a href="{deep_link}">Zur App zurückkehren</a></p>
-  <script>window.location.replace({target});</script>
+<body>
+  <main class="card">
+    <div class="brand">A+ ESTHETIC</div>
+    <div class="caption">Ästhetik · Präzision · Ruhe</div>
+    <h1>Zur App zurückkehren</h1>
+    <p>{message}</p>
+    <a class="open" href="{deep_link}">A+ Esthetic App öffnen</a>
+    <div class="hint">Falls die App nicht automatisch geöffnet wird, tippen Sie auf die Schaltfläche.</div>
+  </main>
+  <script>
+    setTimeout(function(){{ window.location.href = {target}; }}, 350);
+  </script>
 </body>
 </html>""",
         content_type="text/html; charset=utf-8",
