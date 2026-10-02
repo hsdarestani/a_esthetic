@@ -128,6 +128,39 @@ def _send_email_code(user):
     })
 
 
+def _twilio_verify_credentials():
+    client_id = str(os.environ.get("TWILIO_API_CLIENTID") or "").strip()
+    client_secret = str(os.environ.get("TWILIO_API_CLIENTSECRET") or "").strip()
+    service_sid = str(os.environ.get("TWILIO_VERIFY_SERVICE_SID") or "").strip()
+    if not (client_id and client_secret and service_sid):
+        return None
+    return client_id, client_secret, service_sid
+
+
+def _twilio_verify_post(resource, data):
+    credentials = _twilio_verify_credentials()
+    if not credentials:
+        raise RuntimeError("twilio_verify_not_configured")
+    client_id, client_secret, service_sid = credentials
+    response = requests.post(
+        f"https://verify.twilio.com/v2/Services/{service_sid}/{resource}",
+        data=data,
+        auth=(client_id, client_secret),
+        timeout=15,
+    )
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
+    if not response.ok:
+        if response.status_code == 404:
+            raise RuntimeError("verification_expired")
+        if response.status_code == 429:
+            raise RuntimeError("too_many_attempts")
+        raise RuntimeError(f"twilio_verify_{response.status_code}")
+    return payload
+
+
 def _send_sms(phone, code):
     webhook = str(os.environ.get("SMS_WEBHOOK_URL") or "").strip()
     if webhook:
@@ -170,6 +203,28 @@ def _send_sms_code(user):
     profile, _ = UserProfile.objects.get_or_create(user=user)
     if not profile.phone:
         raise RuntimeError("phone_required")
+
+    if _twilio_verify_credentials():
+        payload = _twilio_verify_post(
+            "Verifications",
+            {"To": profile.phone, "Channel": "sms"},
+        )
+        verification_sid = str(payload.get("sid") or "")
+        AccountVerification.objects.update_or_create(
+            user=user,
+            channel="sms",
+            defaults={
+                "code_digest": f"twilio:{verification_sid}",
+                "expires_at": timezone.now() + timedelta(minutes=10),
+                "verified_at": None,
+                "attempts": 0,
+            },
+        )
+        return {
+            "provider": "twilio_verify",
+            "status": str(payload.get("status") or "pending"),
+        }
+
     code = _issue_challenge(user, "sms")
     return _send_sms(profile.phone, code)
 
@@ -516,7 +571,31 @@ def sms_confirm(request):
         return JsonResponse({"ok": False, "error": "verification_expired"}, status=400)
     if item.attempts >= 6:
         return JsonResponse({"ok": False, "error": "too_many_attempts"}, status=429)
-    if not check_password(code, item.code_digest):
+    if not code:
+        return JsonResponse({"ok": False, "error": "invalid_code"}, status=400)
+
+    if item.code_digest.startswith("twilio:"):
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        if not profile.phone:
+            return JsonResponse({"ok": False, "error": "phone_required"}, status=400)
+        try:
+            payload = _twilio_verify_post(
+                "VerificationCheck",
+                {"To": profile.phone, "Code": code},
+            )
+        except RuntimeError as exc:
+            error_code = str(exc)
+            if error_code == "verification_expired":
+                return JsonResponse({"ok": False, "error": error_code}, status=400)
+            if error_code == "too_many_attempts":
+                return JsonResponse({"ok": False, "error": error_code}, status=429)
+            return JsonResponse({"ok": False, "error": error_code}, status=503)
+
+        if str(payload.get("status") or "").lower() != "approved":
+            item.attempts += 1
+            item.save(update_fields=["attempts"])
+            return JsonResponse({"ok": False, "error": "invalid_code"}, status=400)
+    elif not check_password(code, item.code_digest):
         item.attempts += 1
         item.save(update_fields=["attempts"])
         return JsonResponse({"ok": False, "error": "invalid_code"}, status=400)
