@@ -37,6 +37,9 @@ jobs:
       TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
       TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
       TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+      TWILIO_API_CLIENTID: ${{ secrets.TWILIO_API_CLIENTID }}
+      TWILIO_API_CLIENTSECRET: ${{ secrets.TWILIO_API_CLIENTSECRET }}
+      TWILIO_VERIFY_SERVICE_SID: ${{ secrets.TWILIO_VERIFY_SERVICE_SID }}
       ADMINPASS: ${{ secrets.ADMINPASS }}
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +71,7 @@ jobs:
           port: ${{ secrets.SERVER_PORT }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 25m
-          envs: GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,GOOGLE_IOS_CLIENT_ID,APPLE_CLIENT_ID,APPLE_KEY_ID,APPLE_TEAM_ID,APPLE_APP_ID_PREFIX,APPLE_PRIVATE_KEY_B64,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER,ADMINPASS
+          envs: GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,GOOGLE_IOS_CLIENT_ID,APPLE_CLIENT_ID,APPLE_KEY_ID,APPLE_TEAM_ID,APPLE_APP_ID_PREFIX,APPLE_PRIVATE_KEY_B64,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER,TWILIO_API_CLIENTID,TWILIO_API_CLIENTSECRET,TWILIO_VERIFY_SERVICE_SID,ADMINPASS
           script: |
             set -euo pipefail
             export DEBIAN_FRONTEND=noninteractive
@@ -139,6 +142,9 @@ jobs:
                 "TWILIO_ACCOUNT_SID",
                 "TWILIO_AUTH_TOKEN",
                 "TWILIO_FROM_NUMBER",
+                "TWILIO_API_CLIENTID",
+                "TWILIO_API_CLIENTSECRET",
+                "TWILIO_VERIFY_SERVICE_SID",
             ]
             existing = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
             managed = set(keys)
