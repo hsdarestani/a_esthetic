@@ -163,6 +163,41 @@ jobs:
             set -a
             . "$ENV_FILE"
             set +a
+
+            "$VENV/bin/python" - <<'PY'
+            import os
+            import requests
+
+            service = (os.environ.get("TWILIO_VERIFY_SERVICE_SID") or "").strip()
+            api_id = (os.environ.get("TWILIO_API_CLIENTID") or "").strip()
+            api_secret = (os.environ.get("TWILIO_API_CLIENTSECRET") or "").strip()
+            account_sid = (os.environ.get("TWILIO_ACCOUNT_SID") or "").strip()
+            auth_token = (os.environ.get("TWILIO_AUTH_TOKEN") or "").strip()
+
+            def probe(label, username, password):
+                if not (service and username and password):
+                    print(f"Twilio Verify probe {label}: not configured")
+                    return
+                try:
+                    response = requests.get(
+                        f"https://verify.twilio.com/v2/Services/{service}",
+                        auth=(username, password),
+                        timeout=15,
+                    )
+                    try:
+                        payload = response.json()
+                    except ValueError:
+                        payload = {}
+                    code = payload.get("code", "")
+                    message = str(payload.get("message", ""))[:240]
+                    print(f"Twilio Verify probe {label}: HTTP {response.status_code}; code={code}; message={message}")
+                except Exception as exc:
+                    print(f"Twilio Verify probe {label}: request failed: {type(exc).__name__}")
+
+            probe("api_client", api_id, api_secret)
+            probe("account_auth", account_sid, auth_token)
+            PY
+
             cd "$ROOT"
             "$VENV/bin/python" manage.py migrate platform_app --fake-initial --noinput
             "$VENV/bin/python" manage.py migrate --noinput
