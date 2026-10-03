@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import secrets
@@ -36,6 +37,7 @@ VERIFY_TTL = timedelta(minutes=15)
 REFERRAL_POINTS = 300
 MAIL_RELAY_URL = "https://book.a-esthetic.de/api/internal/app-mail/"
 SOCIAL_BROWSER_SALT = "aesthetic-social-browser-v1"
+logger = logging.getLogger(__name__)
 
 
 def _json(request):
@@ -153,11 +155,26 @@ def _twilio_verify_post(resource, data):
     except ValueError:
         payload = {}
     if not response.ok:
+        provider_code = str(payload.get("code") or "")
+        provider_message = str(payload.get("message") or "")[:240]
+        logger.warning(
+            "Twilio Verify request failed resource=%s status=%s code=%s message=%s",
+            resource,
+            response.status_code,
+            provider_code,
+            provider_message,
+        )
         if response.status_code == 404:
             raise RuntimeError("verification_expired")
         if response.status_code == 429:
             raise RuntimeError("too_many_attempts")
-        raise RuntimeError(f"twilio_verify_{response.status_code}")
+        if response.status_code == 400 and resource == "VerificationCheck":
+            raise RuntimeError("invalid_code")
+        if response.status_code == 401:
+            raise RuntimeError("sms_provider_auth_failed")
+        if response.status_code in {400, 403}:
+            raise RuntimeError("sms_delivery_unavailable")
+        raise RuntimeError("sms_provider_unavailable")
     return payload
 
 
@@ -493,6 +510,12 @@ def onboarding(request):
                 return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
     state = _maybe_complete(user)
+    state["sms_pending"] = AccountVerification.objects.filter(
+        user=user,
+        channel="sms",
+        verified_at__isnull=True,
+        expires_at__gt=timezone.now(),
+    ).exists()
     return JsonResponse({
         "ok": True,
         "account": state,
@@ -585,7 +608,7 @@ def sms_confirm(request):
             )
         except RuntimeError as exc:
             error_code = str(exc)
-            if error_code == "verification_expired":
+            if error_code in {"verification_expired", "invalid_code"}:
                 return JsonResponse({"ok": False, "error": error_code}, status=400)
             if error_code == "too_many_attempts":
                 return JsonResponse({"ok": False, "error": error_code}, status=429)

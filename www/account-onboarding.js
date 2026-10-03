@@ -34,6 +34,9 @@
     if (/28444|Developer console is not set up correctly/i.test(message)) {
       return 'Die Google Anmeldung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.';
     }
+    if (/^twilio_verify_\d+$/.test(String(error?.code || ''))) {
+      return 'Der SMS Code konnte nicht gesendet werden. Bitte prüfen Sie die Telefonnummer oder versuchen Sie es später erneut.';
+    }
     const map = {
       invalid_phone:'Bitte geben Sie eine gültige Telefonnummer mit Ländervorwahl ein.',
       invalid_salutation:'Bitte wählen Sie Herr, Frau oder Divers.',
@@ -45,7 +48,11 @@
       invalid_code:'Der Bestätigungscode ist nicht korrekt.',
       verification_expired:'Der Bestätigungscode ist abgelaufen. Bitte fordern Sie einen neuen an.',
       too_many_attempts:'Zu viele Versuche. Bitte fordern Sie einen neuen Code an.',
-      sms_not_configured:'SMS-Bestätigung ist serverseitig noch nicht konfiguriert.',
+      sms_not_configured:'Die SMS Bestätigung ist momentan nicht verfügbar.',
+      twilio_verify_not_configured:'Die SMS Bestätigung ist momentan nicht verfügbar.',
+      sms_delivery_unavailable:'Der SMS Code konnte nicht gesendet werden. Bitte prüfen Sie die Telefonnummer oder versuchen Sie es später erneut.',
+      sms_provider_auth_failed:'Die SMS Bestätigung ist momentan nicht verfügbar. Bitte versuchen Sie es später erneut.',
+      sms_provider_unavailable:'Die SMS Bestätigung ist momentan nicht erreichbar. Bitte versuchen Sie es später erneut.',
       mail_relay_not_configured:'Der E-Mail-Versand ist momentan nicht verfügbar.',
       mail_relay_unavailable:'Der E-Mail-Versand ist momentan nicht erreichbar.',
       social_session_required:'Die Social-Anmeldung konnte nicht abgeschlossen werden.',
@@ -122,7 +129,7 @@
     });
   }
 
-  function verificationCard(kind, done, value) {
+  function verificationCard(kind, done, value, pending=false) {
     if (done) {
       return '<article class="verify-card is-done"><strong>' +
         (kind === 'email' ? 'E-Mail bestätigt ✓' : 'Telefon bestätigt ✓') +
@@ -130,11 +137,14 @@
     }
     const formAttr = kind === 'email' ? 'data-email-confirm' : 'data-sms-confirm';
     const resendAttr = kind === 'email' ? 'data-resend-email' : 'data-resend-sms';
+    const resendLabel = kind === 'sms'
+      ? (pending ? 'SMS Code erneut senden' : 'SMS Code senden')
+      : 'Code erneut senden';
     return '<article class="verify-card"><strong>' +
       (kind === 'email' ? 'E-Mail bestätigen' : 'Telefon bestätigen') +
       '</strong><span>' + esc(value || '') + '</span>' +
       '<form ' + formAttr + '><input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-stelliger Code" required><button type="submit">Bestätigen</button></form>' +
-      '<button class="text-btn" type="button" ' + resendAttr + '>Code erneut senden</button></article>';
+      '<button class="text-btn" type="button" ' + resendAttr + '>' + resendLabel + '</button></article>';
   }
 
   async function showOnboarding(message='') {
@@ -169,30 +179,40 @@
       '</div>' +
       field('Telefon','<input name="phone" type="tel" value="' + esc(profile.phone || '') + '" required>') +
       (profile.referral_code ? '' : field('Empfehlungscode <small>optional</small>','<input name="referral_code" placeholder="z. B. A7K9Q2">')) +
-      '<button class="secondary wide" type="submit">Profil speichern</button></form>' +
+      '<button class="secondary wide" type="submit">' + (account.phone_verified ? 'Profil speichern' : 'Weiter und SMS Code senden') + '</button></form>' +
       '<div class="verification-grid">' +
       verificationCard('email', Boolean(account.email_verified), profile.email) +
-      verificationCard('sms', Boolean(account.phone_verified), profile.phone) +
+      verificationCard('sms', Boolean(account.phone_verified), profile.phone, Boolean(account.sms_pending)) +
       '</div>' +
       '<p class="onboarding-bonus">Mit einem gültigen Empfehlungscode erhalten Sie nach vollständiger Bestätigung automatisch 300 A+ Punkte.</p>' +
       '<button class="text-btn wide" type="button" data-onboarding-logout>Abmelden</button>' +
       '</section></div>';
 
-    host.querySelector('[data-profile-completion]').addEventListener('submit', async event => {
+    const profileForm = host.querySelector('[data-profile-completion]');
+    const saveProfile = async () => {
+      const fd = new FormData(profileForm);
+      return api('/onboarding/', {
+        method:'POST',
+        json:{
+          salutation:fd.get('salutation'),
+          first_name:fd.get('first_name'),
+          last_name:fd.get('last_name'),
+          phone:fd.get('phone'),
+          referral_code:fd.get('referral_code') || ''
+        }
+      });
+    };
+
+    profileForm.addEventListener('submit', async event => {
       event.preventDefault();
-      const fd = new FormData(event.currentTarget);
       try {
-        const result = await api('/onboarding/', {
-          method:'POST',
-          json:{
-            salutation:fd.get('salutation'),
-            first_name:fd.get('first_name'),
-            last_name:fd.get('last_name'),
-            phone:fd.get('phone'),
-            referral_code:fd.get('referral_code') || ''
-          }
-        });
+        const result = await saveProfile();
         if (result.account?.profile_complete) return location.reload();
+        if (!result.account?.phone_verified) {
+          await api('/verification/sms/request/', {method:'POST'});
+          await showOnboarding('SMS Code wurde gesendet.');
+          return;
+        }
         await showOnboarding('Profil wurde gespeichert.');
       } catch (error) {
         await showOnboarding(errorText(error));
@@ -233,7 +253,10 @@
     });
 
     host.querySelector('[data-resend-sms]')?.addEventListener('click', async () => {
+      if (!profileForm.reportValidity()) return;
       try {
+        const result = await saveProfile();
+        if (result.account?.profile_complete) return location.reload();
         await api('/verification/sms/request/', {method:'POST'});
         await showOnboarding('Eine neue SMS wurde versendet.');
       } catch (error) {
