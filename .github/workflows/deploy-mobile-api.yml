@@ -279,6 +279,11 @@ jobs:
             sleep 3
             systemctl is-active --quiet a-esthetic-mobile.service
 
+            echo "Recent Twilio Verify failures:"
+            journalctl -u a-esthetic-mobile.service --since "2 hours ago" --no-pager \
+              | grep -F "Twilio Verify request failed" \
+              | tail -n 20 || true
+
             python3 - <<'PY'
             from urllib.error import HTTPError, URLError
             from urllib.request import Request, urlopen
