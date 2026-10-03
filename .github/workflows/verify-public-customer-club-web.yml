@@ -26,7 +26,7 @@ jobs:
           domain = 'esthetic.smarbiz.sbs'
           required_markers = (
               'core-app.js?v=20260923-finalcrop-v27',
-              'account-onboarding.js?v=20260923-intro-v24',
+              'account-onboarding.js?v=20261003-onboarding-sms-v2',
               'ferrari-v18.css?v=20260922-v18',
               'client-v19.css?v=20260923-progress-v21',
               'approved-v22.css?v=20260923-finalcrop-v27',
