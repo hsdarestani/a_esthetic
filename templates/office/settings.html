@@ -80,7 +80,7 @@
           <div class="field"><label>Präfix</label><input name="invoice_prefix" value="{{ invoice_settings.invoice_prefix }}" maxlength="20" required></div>
           <div class="field"><label>Nächste laufende Nummer</label><input type="number" min="1" name="next_sequence" value="{{ invoice_settings.next_sequence }}" required></div>
         </div>
-        <div class="hint">Beispiel: Präfix RE und laufende Nummer 125 erzeugt RE{{ now|date:"Y" }}-0125.</div>
+        <div class="hint">Beispiel: Präfix RE und laufende Nummer 125 erzeugt RE{{ current_year }}-0125.</div>
         <div class="savebar"><button class="btn gold" type="submit">Rechnungsdaten speichern</button></div>
       </form>
     </section>
