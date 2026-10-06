@@ -1,5 +1,6 @@
 import json
 import uuid
+from urllib.parse import urlsplit
 from unittest import mock
 
 from django.contrib.auth.models import User
@@ -36,6 +37,35 @@ class CustomerPatientDocumentTests(TestCase):
         sent_identity = gateway.call_args.args[1]
         self.assertEqual(sent_identity["email"], self.user.email)
         self.assertEqual(sent_identity["phone"], "+49123456789")
+
+    def test_file_records_get_short_lived_open_and_download_links(self):
+        record_id = uuid.uuid4()
+        book_payload = {
+            "ok": True,
+            "patient_found": True,
+            "customer": {"id": 10, "name": "Paula Patient", "email": self.user.email},
+            "records": [{
+                "id": str(record_id),
+                "title": "Befund",
+                "has_file": True,
+                "customer_uploaded": False,
+            }],
+        }
+        with mock.patch("platform_app.patient_documents._book_json", return_value=(book_payload, None, 200)):
+            response = self.client.get("/api/mobile/patient-records/", **self.auth)
+        self.assertEqual(response.status_code, 200, response.content)
+        item = response.json()["records"][0]
+        self.assertIn("signed-file", item["open_url"])
+        self.assertIn("download=1", item["download_url"])
+
+        signed_path = urlsplit(item["download_url"]).path + "?" + urlsplit(item["download_url"]).query
+        with mock.patch(
+            "platform_app.patient_documents._book_binary",
+            return_value=(200, {"Content-Type": "application/pdf", "Content-Disposition": 'attachment; filename="befund.pdf"'}, b"%PDF"),
+        ):
+            file_response = self.client.get(signed_path)
+        self.assertEqual(file_response.status_code, 200)
+        self.assertIn("attachment", file_response["Content-Disposition"])
 
     def test_upload_requires_explicit_health_data_consent_first_time(self):
         response = self.client.post(
