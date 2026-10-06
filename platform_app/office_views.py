@@ -2,6 +2,7 @@ import re
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
+from urllib.parse import urlencode
 
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.models import User
@@ -41,7 +42,7 @@ def _office_allowed(user):
 
 def _office_login_redirect(request):
     next_path = request.get_full_path()
-    return redirect(f"/office/admin/login/?next={next_path}")
+    return redirect(f"/office/admin/login/?{urlencode({'next': next_path})}")
 
 
 @require_http_methods(["GET", "POST"])
