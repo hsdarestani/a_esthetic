@@ -4,6 +4,8 @@ from . import account_onboarding, admin_aware_login, legal_views, mobile_api, of
 
 urlpatterns = [
     path('office/', office_views.office_public_intake, name='office_intake'),
+    path('office/admin/login/', office_views.office_staff_login, name='office_staff_login'),
+    path('office/admin/logout/', office_views.office_staff_logout, name='office_staff_logout'),
     path('office/admin/', office_views.office_dashboard, name='office_dashboard'),
     path('office/checkin/<uuid:token>/', office_views.office_checkin, name='office_checkin'),
     path('office/invoices/<int:invoice_id>/', office_views.office_invoice_detail, name='office_invoice_detail'),
