@@ -100,6 +100,7 @@ def sync_service_catalog_from_book():
             slug=slug,
             defaults={
                 "name": name[:140],
+                "category": "medical",
                 "description": str(item.get("description") or ""),
                 "duration_minutes": int(item.get("duration_minutes") or 30),
                 "buffer_minutes": int(item.get("buffer_minutes") or 10),
