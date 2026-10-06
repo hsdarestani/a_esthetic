@@ -1,4 +1,8 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth.models import User
+from django.urls import reverse
+from django.utils.html import format_html
 
 from .models import (
     Appointment,
@@ -25,6 +29,186 @@ from .models import (
     WalletTransaction,
     WorkingHour,
 )
+
+
+class UserProfileInline(admin.StackedInline):
+    model = UserProfile
+    extra = 0
+    can_delete = False
+    fk_name = "user"
+    fields = (
+        "role",
+        "phone",
+        "salutation",
+        "preferred_language",
+        "marketing_consent",
+        "health_data_consent",
+        "onboarding_required",
+        "auth_provider",
+        "email_verified_at",
+        "phone_verified_at",
+        "profile_completed_at",
+        "referral_code_used",
+        "created_at",
+    )
+    readonly_fields = (
+        "email_verified_at",
+        "phone_verified_at",
+        "profile_completed_at",
+        "created_at",
+    )
+
+
+class MemberAccountInline(admin.StackedInline):
+    model = MemberAccount
+    extra = 0
+    can_delete = False
+    fields = ("member_number", "tier", "status", "valid_until", "joined_at")
+    readonly_fields = ("member_number", "joined_at")
+
+
+class WalletAccountInline(admin.StackedInline):
+    model = WalletAccount
+    extra = 0
+    can_delete = False
+    fields = ("balance_cents", "coin_balance", "updated_at")
+    readonly_fields = ("balance_cents", "coin_balance", "updated_at")
+
+
+class AestheticUserAdmin(DjangoUserAdmin):
+    list_display = (
+        "email",
+        "full_name",
+        "customer_phone",
+        "customer_role",
+        "membership_status",
+        "email_verified",
+        "is_active",
+        "last_login",
+        "password_action",
+        "customer_links",
+    )
+    list_filter = (
+        "is_active",
+        "is_staff",
+        "is_superuser",
+        "profile__role",
+        "member_account__status",
+        "date_joined",
+        "last_login",
+    )
+    search_fields = (
+        "email",
+        "username",
+        "first_name",
+        "last_name",
+        "profile__phone",
+        "member_account__member_number",
+    )
+    ordering = ("-date_joined",)
+    list_select_related = ("profile", "member_account", "wallet")
+    inlines = (UserProfileInline, MemberAccountInline, WalletAccountInline)
+    actions = ("activate_customer_accounts", "deactivate_customer_accounts")
+    save_on_top = True
+
+    @admin.display(description="Name")
+    def full_name(self, obj):
+        return obj.get_full_name() or obj.username
+
+    @admin.display(description="Telefon")
+    def customer_phone(self, obj):
+        try:
+            return obj.profile.phone or "—"
+        except UserProfile.DoesNotExist:
+            return "—"
+
+    @admin.display(description="Rolle")
+    def customer_role(self, obj):
+        try:
+            return obj.profile.get_role_display()
+        except UserProfile.DoesNotExist:
+            return "—"
+
+    @admin.display(description="Mitgliedschaft")
+    def membership_status(self, obj):
+        try:
+            account = obj.member_account
+        except MemberAccount.DoesNotExist:
+            return "—"
+        return f"{account.member_number} · {account.get_status_display()}"
+
+    @admin.display(description="E-Mail bestätigt", boolean=True)
+    def email_verified(self, obj):
+        try:
+            return bool(obj.profile.email_verified_at)
+        except UserProfile.DoesNotExist:
+            return False
+
+    @admin.display(description="Passwort")
+    def password_action(self, obj):
+        if not obj.pk:
+            return "—"
+        url = reverse("admin:auth_user_password_change", args=[obj.pk])
+        return format_html('<a class="button" href="{}">Passwort ändern</a>', url)
+
+    @admin.display(description="Kundendaten")
+    def customer_links(self, obj):
+        if not obj.pk:
+            return "—"
+        links = [
+            (
+                reverse("admin:platform_app_appointment_changelist")
+                + f"?user__id__exact={obj.pk}",
+                "Termine",
+            ),
+            (
+                reverse("admin:platform_app_wallettransaction_changelist")
+                + f"?user__id__exact={obj.pk}",
+                "Wallet",
+            ),
+            (
+                reverse("admin:platform_app_memberpackage_changelist")
+                + f"?user__id__exact={obj.pk}",
+                "Pakete",
+            ),
+            (
+                reverse("admin:p0_app_devicesession_changelist")
+                + f"?user__id__exact={obj.pk}",
+                "Geräte",
+            ),
+        ]
+        return format_html(
+            " · ".join('<a href="{}">{}</a>' for _ in links),
+            *[value for pair in links for value in pair],
+        )
+
+    @admin.action(description="Ausgewählte Kundenkonten aktivieren")
+    def activate_customer_accounts(self, request, queryset):
+        eligible = queryset.filter(is_staff=False, is_superuser=False)
+        updated = eligible.update(is_active=True)
+        self.message_user(
+            request,
+            f"{updated} Kundenkonto/Kundenkonten aktiviert.",
+            level=messages.SUCCESS,
+        )
+
+    @admin.action(description="Ausgewählte Kundenkonten deaktivieren")
+    def deactivate_customer_accounts(self, request, queryset):
+        eligible = queryset.filter(is_staff=False, is_superuser=False)
+        updated = eligible.update(is_active=False)
+        self.message_user(
+            request,
+            f"{updated} Kundenkonto/Kundenkonten deaktiviert.",
+            level=messages.SUCCESS,
+        )
+
+
+try:
+    admin.site.unregister(User)
+except admin.sites.NotRegistered:
+    pass
+
+admin.site.register(User, AestheticUserAdmin)
 
 
 @admin.register(FeatureModule)
