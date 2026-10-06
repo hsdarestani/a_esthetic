@@ -11,7 +11,7 @@ on:
       - "p2_app/**"
       - "p3_app/**"
       - "config/**"
-      - "templates/legal.html"
+      - "templates/**"
       - "requirements.txt"
       - ".github/workflows/deploy-mobile-api.yml"
 
@@ -81,6 +81,7 @@ jobs:
             ENV_FILE="$ROOT/mobile.env"
             PACKAGE="/tmp/a-esthetic-mobile-package.tar.gz"
             DOMAIN="esthetic.smarbiz.sbs"
+            OFFICE_DOMAIN="office.a-esthetic.de"
             WEBROOT="/opt/a-esthetic-web/site"
             CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
 
@@ -118,8 +119,8 @@ jobs:
               cat > "$ENV_FILE" <<EOF
             DJANGO_SECRET_KEY=$SECRET
             DJANGO_DEBUG=0
-            DJANGO_ALLOWED_HOSTS=$DOMAIN,127.0.0.1,localhost
-            CSRF_TRUSTED_ORIGINS=https://$DOMAIN
+            DJANGO_ALLOWED_HOSTS=$DOMAIN,$OFFICE_DOMAIN,127.0.0.1,localhost
+            CSRF_TRUSTED_ORIGINS=https://$DOMAIN,https://$OFFICE_DOMAIN
             EOF
             fi
             chmod 600 "$ENV_FILE"
@@ -157,6 +158,17 @@ jobs:
                 if value:
                     kept.append(f"{key}={shlex.quote(value)}")
             path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+            PY
+            OFFICE_DOMAIN="$OFFICE_DOMAIN" DOMAIN="$DOMAIN" ENV_FILE="$ENV_FILE" python3 - <<'PY'
+            import os
+            from pathlib import Path
+            path=Path(os.environ["ENV_FILE"])
+            lines=path.read_text(encoding="utf-8").splitlines()
+            lines=[line for line in lines if not line.startswith("DJANGO_ALLOWED_HOSTS=") and not line.startswith("CSRF_TRUSTED_ORIGINS=")]
+            domain=os.environ["DOMAIN"]; office=os.environ["OFFICE_DOMAIN"]
+            lines.append(f"DJANGO_ALLOWED_HOSTS={domain},{office},127.0.0.1,localhost")
+            lines.append(f"CSRF_TRUSTED_ORIGINS=https://{domain},https://{office}")
+            path.write_text("\n".join(lines)+"\n",encoding="utf-8")
             PY
             chmod 600 "$ENV_FILE"
 
@@ -273,7 +285,28 @@ jobs:
             p.write_text(s[:pos+1]+'\n'+marker+s[pos+1:])
             PY
 
+            OFFICE_CONF="/etc/nginx/sites-available/a-esthetic-office.conf"
+            cat > "$OFFICE_CONF" <<NGINX
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name $OFFICE_DOMAIN;
+              client_max_body_size 30m;
+
+              location = / { return 302 /office/; }
+              location / {
+                proxy_pass http://127.0.0.1:8770;
+                proxy_http_version 1.1;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+              }
+            }
+            NGINX
+
             ln -sfn "$CONF" /etc/nginx/sites-enabled/a-esthetic-connected.conf
+            ln -sfn "$OFFICE_CONF" /etc/nginx/sites-enabled/a-esthetic-office.conf
             rm -f /etc/nginx/sites-enabled/default
             nginx -t
             systemctl enable --now nginx
@@ -312,5 +345,10 @@ jobs:
             PY
 
             certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+            if getent ahosts "$OFFICE_DOMAIN" >/dev/null 2>&1; then
+              certbot --nginx -d "$OFFICE_DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+            else
+              echo "DNS for $OFFICE_DOMAIN is not live yet; SSL will be retried after the A record is added."
+            fi
             rm -rf "$RELEASE" "$PACKAGE"
             echo 'A+ Esthetic Customer Club API is prepared on the new STRATO origin.'

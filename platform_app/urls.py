@@ -1,8 +1,13 @@
 from django.urls import path
 
-from . import account_onboarding, admin_aware_login, legal_views, mobile_api, patient_documents, views
+from . import account_onboarding, admin_aware_login, legal_views, mobile_api, office_views, patient_documents, views
 
 urlpatterns = [
+    path('office/', office_views.office_dashboard, name='office_dashboard'),
+    path('office/checkin/<uuid:token>/', office_views.office_checkin, name='office_checkin'),
+    path('office/invoices/<int:invoice_id>/', office_views.office_invoice_detail, name='office_invoice_detail'),
+    path('office/invoices/<int:invoice_id>/finalize/', office_views.office_invoice_finalize, name='office_invoice_finalize'),
+    path('office/invoices/<int:invoice_id>/pdf/', office_views.office_invoice_pdf, name='office_invoice_pdf'),
     path('', views.dashboard, name='dashboard'),
     path('club/', views.club, name='club'),
     path('status/', views.status, name='status'),

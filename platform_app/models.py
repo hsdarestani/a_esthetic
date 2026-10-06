@@ -1,4 +1,5 @@
 import secrets
+import uuid
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -10,7 +11,7 @@ class FeatureModule(models.Model):
 class UserProfile(models.Model):
     ROLE_CHOICES=[('customer','Kundin/Kunde'),('reception','Empfang'),('specialist','Behandler/in'),('manager','Management'),('admin','Administrator/in')]
     SALUTATION_CHOICES=[('herr','Herr'),('frau','Frau'),('divers','Divers')]
-    user=models.OneToOneField(User,on_delete=models.CASCADE,related_name='profile'); role=models.CharField(max_length=20,choices=ROLE_CHOICES,default='customer'); phone=models.CharField(max_length=40,blank=True); salutation=models.CharField(max_length=12,choices=SALUTATION_CHOICES,blank=True); preferred_language=models.CharField(max_length=10,default='de'); marketing_consent=models.BooleanField(default=False); health_data_consent=models.BooleanField(default=False); onboarding_required=models.BooleanField(default=False); auth_provider=models.CharField(max_length=20,default='password'); email_verified_at=models.DateTimeField(null=True,blank=True); phone_verified_at=models.DateTimeField(null=True,blank=True); profile_completed_at=models.DateTimeField(null=True,blank=True); referral_code_used=models.CharField(max_length=32,blank=True); created_at=models.DateTimeField(auto_now_add=True)
+    user=models.OneToOneField(User,on_delete=models.CASCADE,related_name='profile'); role=models.CharField(max_length=20,choices=ROLE_CHOICES,default='customer'); phone=models.CharField(max_length=40,blank=True); salutation=models.CharField(max_length=12,choices=SALUTATION_CHOICES,blank=True); street=models.CharField(max_length=180,blank=True); postal_code=models.CharField(max_length=20,blank=True); city=models.CharField(max_length=120,blank=True); country=models.CharField(max_length=2,default='DE'); preferred_language=models.CharField(max_length=10,default='de'); marketing_consent=models.BooleanField(default=False); health_data_consent=models.BooleanField(default=False); onboarding_required=models.BooleanField(default=False); auth_provider=models.CharField(max_length=20,default='password'); email_verified_at=models.DateTimeField(null=True,blank=True); phone_verified_at=models.DateTimeField(null=True,blank=True); profile_completed_at=models.DateTimeField(null=True,blank=True); referral_code_used=models.CharField(max_length=32,blank=True); created_at=models.DateTimeField(auto_now_add=True)
     def __str__(self): return f'{self.user.username} – {self.get_role_display()}'
 class AuditLog(models.Model):
     actor=models.ForeignKey(User,null=True,blank=True,on_delete=models.SET_NULL); action=models.CharField(max_length=120); entity_type=models.CharField(max_length=100,blank=True); entity_id=models.CharField(max_length=100,blank=True); metadata=models.JSONField(default=dict,blank=True); ip_address=models.GenericIPAddressField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
@@ -67,7 +68,7 @@ class MemberPackage(models.Model):
     def __str__(self): return f'{self.user.username} – {self.definition.name}'
 class Service(models.Model):
     CATEGORY=[('medical','Medizinische Ästhetik'),('nonmedical','Kosmetische Leistung'),('consultation','Beratung')]
-    name=models.CharField(max_length=140); slug=models.SlugField(unique=True); description=models.TextField(blank=True); category=models.CharField(max_length=20,choices=CATEGORY); duration_minutes=models.PositiveIntegerField(default=30); buffer_minutes=models.PositiveIntegerField(default=10); price_label=models.CharField(max_length=80,blank=True); active=models.BooleanField(default=True); bookable_in_app=models.BooleanField(default=True); requires_medical_confirmation=models.BooleanField(default=False); doctor_revenue_tracked=models.BooleanField(default=False,editable=False)
+    name=models.CharField(max_length=140); slug=models.SlugField(unique=True); description=models.TextField(blank=True); category=models.CharField(max_length=20,choices=CATEGORY); duration_minutes=models.PositiveIntegerField(default=30); buffer_minutes=models.PositiveIntegerField(default=10); price_label=models.CharField(max_length=80,blank=True); price_cents=models.PositiveIntegerField(null=True,blank=True); vat_rate=models.DecimalField(max_digits=5,decimal_places=2,null=True,blank=True); active=models.BooleanField(default=True); bookable_in_app=models.BooleanField(default=True); requires_medical_confirmation=models.BooleanField(default=False); doctor_revenue_tracked=models.BooleanField(default=False,editable=False)
     def __str__(self): return self.name
 class StaffMember(models.Model):
     ROLE=[('doctor','Arzt/Ärztin'),('specialist','Spezialist/in'),('reception','Empfang')]
@@ -128,3 +129,72 @@ class IntegrationConfig(models.Model):
 class SyncEvent(models.Model):
     integration=models.ForeignKey(IntegrationConfig,on_delete=models.CASCADE,related_name='events'); direction=models.CharField(max_length=20); entity_type=models.CharField(max_length=60); external_id=models.CharField(max_length=120,blank=True); status=models.CharField(max_length=30); message=models.TextField(blank=True); created_at=models.DateTimeField(auto_now_add=True)
     class Meta: ordering=['-created_at']
+
+
+class InvoiceSettings(models.Model):
+    company_name=models.CharField(max_length=180,default='A+ Esthetic GmbH')
+    street=models.CharField(max_length=180,default='Stiftstraße 14')
+    postal_code=models.CharField(max_length=20,default='60313')
+    city=models.CharField(max_length=120,default='Frankfurt am Main')
+    country=models.CharField(max_length=2,default='DE')
+    email=models.EmailField(default='info@a-esthetic.de')
+    phone=models.CharField(max_length=40,default='069 71417012')
+    tax_number=models.CharField(max_length=80,blank=True)
+    vat_id=models.CharField(max_length=80,blank=True)
+    iban=models.CharField(max_length=64,blank=True)
+    bic=models.CharField(max_length=32,blank=True)
+    bank_name=models.CharField(max_length=120,blank=True)
+    invoice_prefix=models.CharField(max_length=20,default='RE')
+    next_sequence=models.PositiveIntegerField(default=1)
+    updated_at=models.DateTimeField(auto_now=True)
+    class Meta:
+        verbose_name='Rechnungseinstellungen'
+        verbose_name_plural='Rechnungseinstellungen'
+    def __str__(self): return 'A+ Esthetic Rechnungseinstellungen'
+    @property
+    def ready_for_issue(self): return bool(self.tax_number or self.vat_id)
+
+class CheckInSession(models.Model):
+    token=models.UUIDField(default=uuid.uuid4,unique=True,editable=False)
+    created_by=models.ForeignKey(User,on_delete=models.PROTECT,related_name='created_checkins')
+    customer=models.ForeignKey(User,null=True,blank=True,on_delete=models.SET_NULL,related_name='checkin_sessions')
+    expires_at=models.DateTimeField()
+    completed_at=models.DateTimeField(null=True,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    class Meta: ordering=['-created_at']
+    def __str__(self): return str(self.token)
+
+class Invoice(models.Model):
+    STATUS=[('draft','Entwurf'),('issued','Ausgestellt'),('cancelled','Storniert')]
+    user=models.ForeignKey(User,on_delete=models.PROTECT,related_name='invoices')
+    appointment=models.ForeignKey(Appointment,null=True,blank=True,on_delete=models.SET_NULL,related_name='invoices')
+    number=models.CharField(max_length=40,null=True,blank=True,unique=True)
+    status=models.CharField(max_length=20,choices=STATUS,default='draft')
+    service_date=models.DateField()
+    issued_on=models.DateField(null=True,blank=True)
+    customer_name=models.CharField(max_length=180)
+    customer_email=models.EmailField(blank=True)
+    customer_street=models.CharField(max_length=180,blank=True)
+    customer_postal_code=models.CharField(max_length=20,blank=True)
+    customer_city=models.CharField(max_length=120,blank=True)
+    subtotal_cents=models.PositiveIntegerField(default=0)
+    tax_cents=models.PositiveIntegerField(default=0)
+    total_cents=models.PositiveIntegerField(default=0)
+    document=models.OneToOneField(SecureDocument,null=True,blank=True,on_delete=models.SET_NULL,related_name='invoice_record')
+    created_by=models.ForeignKey(User,on_delete=models.PROTECT,related_name='created_invoices')
+    created_at=models.DateTimeField(auto_now_add=True)
+    issued_at=models.DateTimeField(null=True,blank=True)
+    class Meta: ordering=['-created_at']
+    def __str__(self): return self.number or f'Entwurf #{self.pk}'
+
+class InvoiceItem(models.Model):
+    invoice=models.ForeignKey(Invoice,on_delete=models.CASCADE,related_name='items')
+    service=models.ForeignKey(Service,null=True,blank=True,on_delete=models.SET_NULL)
+    description=models.CharField(max_length=220)
+    quantity=models.DecimalField(max_digits=8,decimal_places=2,default=1)
+    unit_gross_cents=models.PositiveIntegerField()
+    vat_rate=models.DecimalField(max_digits=5,decimal_places=2)
+    net_cents=models.PositiveIntegerField()
+    tax_cents=models.PositiveIntegerField()
+    gross_cents=models.PositiveIntegerField()
+    def __str__(self): return self.description
