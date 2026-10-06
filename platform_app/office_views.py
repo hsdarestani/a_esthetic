@@ -1,5 +1,5 @@
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
 from urllib.parse import urlencode
@@ -122,7 +122,7 @@ def _parse_service_date(value):
     raw = str(value or "").strip()
     for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
         try:
-            return timezone.datetime.strptime(raw, fmt).date()
+            return datetime.strptime(raw, fmt).date()
         except ValueError:
             continue
     return None
@@ -490,16 +490,22 @@ def office_settings(request):
         elif action == "service_prices":
             parsed = []
             for service in services:
-                price_raw = request.POST.get(f"service_{service.pk}_price", "")
-                vat_raw = request.POST.get(f"service_{service.pk}_vat", "")
+                price_raw = str(request.POST.get(f"service_{service.pk}_price", "") or "").strip()
+                vat_raw = str(request.POST.get(f"service_{service.pk}_vat", "") or "").strip()
+
+                # Both empty means "not configured yet". One empty and one filled is invalid.
+                if not price_raw and not vat_raw:
+                    parsed.append((service, None, None))
+                    continue
+                if not price_raw or not vat_raw:
+                    error = f"Bitte Preis und MwSt für „{service.name}“ zusammen eintragen."
+                    break
+
                 try:
                     cents = _parse_eur_cents(price_raw)
-                    vat = Decimal(str(vat_raw).strip().replace(",", ".")) if str(vat_raw).strip() else None
+                    vat = Decimal(vat_raw.replace(",", "."))
                 except (ValueError, InvalidOperation):
                     error = f"Preis oder MwSt für „{service.name}“ ist ungültig."
-                    break
-                if cents is None or vat is None:
-                    error = f"Bitte Preis und MwSt für „{service.name}“ vollständig eintragen."
                     break
                 if vat < 0 or vat > 100:
                     error = f"Die MwSt für „{service.name}“ muss zwischen 0 und 100 liegen."
@@ -507,21 +513,24 @@ def office_settings(request):
                 parsed.append((service, cents, vat))
 
             if not error:
+                configured = 0
                 with transaction.atomic():
                     for service, cents, vat in parsed:
                         service.price_cents = cents
                         service.vat_rate = vat
-                        service.price_label = f"{_format_eur_input(cents)} €"
+                        service.price_label = f"{_format_eur_input(cents)} €" if cents is not None else ""
                         service.save(update_fields=["price_cents", "vat_rate", "price_label"])
+                        if cents is not None and vat is not None:
+                            configured += 1
                     AuditLog.objects.create(
                         actor=request.user,
                         action="Behandlungspreise geändert",
                         entity_type="Service",
                         entity_id="bulk",
-                        metadata={"services": len(parsed)},
+                        metadata={"services": len(parsed), "configured": configured},
                         ip_address=request.META.get("REMOTE_ADDR"),
                     )
-                notice = "Preise und MwSt wurden gespeichert."
+                notice = f"Preise und MwSt wurden gespeichert. {configured} Behandlung(en) sind für Rechnungen konfiguriert."
                 services = list(Service.objects.filter(active=True).order_by("name"))
 
     service_rows = [
