@@ -12,6 +12,9 @@ from .models import (
     FeatureModule,
     GiftCard,
     IntegrationConfig,
+    Invoice,
+    InvoiceItem,
+    InvoiceSettings,
     MemberAccount,
     MemberPackage,
     MembershipTier,
@@ -40,6 +43,10 @@ class UserProfileInline(admin.StackedInline):
         "role",
         "phone",
         "salutation",
+        "street",
+        "postal_code",
+        "city",
+        "country",
         "preferred_language",
         "marketing_consent",
         "health_data_consent",
@@ -305,7 +312,7 @@ class CampaignAdmin(admin.ModelAdmin):
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
-    list_display = ('name', 'duration_minutes', 'price_label', 'active', 'bookable_in_app')
+    list_display = ('name', 'duration_minutes', 'price_label', 'price_cents', 'vat_rate', 'active', 'bookable_in_app')
     list_filter = ('active', 'bookable_in_app')
     prepopulated_fields = {'slug': ('name',)}
     exclude = ('category', 'requires_medical_confirmation', 'doctor_revenue_tracked')
@@ -376,3 +383,26 @@ class MessageAdmin(admin.ModelAdmin):
 class IntegrationConfigAdmin(admin.ModelAdmin):
     list_display = ('provider', 'enabled', 'sync_enabled', 'status', 'credential_reference', 'last_sync_at')
     list_editable = ('enabled', 'sync_enabled')
+
+
+class InvoiceItemInline(admin.TabularInline):
+    model = InvoiceItem
+    extra = 0
+    readonly_fields = ('net_cents', 'tax_cents', 'gross_cents')
+
+
+@admin.register(Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    list_display = ('number', 'status', 'user', 'service_date', 'total_cents', 'created_at')
+    list_filter = ('status', 'service_date', 'created_at')
+    search_fields = ('number', 'user__email', 'user__first_name', 'user__last_name', 'customer_name')
+    readonly_fields = ('created_at', 'issued_at', 'document')
+    inlines = (InvoiceItemInline,)
+
+
+@admin.register(InvoiceSettings)
+class InvoiceSettingsAdmin(admin.ModelAdmin):
+    list_display = ('company_name', 'invoice_prefix', 'next_sequence', 'tax_number', 'vat_id', 'updated_at')
+
+    def has_add_permission(self, request):
+        return not InvoiceSettings.objects.exists()
