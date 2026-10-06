@@ -2,6 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
   <title>Kundenaufnahme · A+ Esthetic</title>
   <style>
     :root{--bg:#f5f1eb;--ink:#202629;--gold:#b79862;--line:#ddd3c7}*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Arial,sans-serif;color:var(--ink)}
@@ -9,18 +10,18 @@
     .card{background:#fff;border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:0 16px 45px rgba(0,0,0,.05)}h1{margin:0 0 8px;font-size:32px}.muted{color:#6e7376}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:grid;gap:6px;font-weight:700}input,select{width:100%;padding:15px;border:1px solid var(--line);border-radius:14px;font-size:18px;background:#fff}
     button{width:100%;border:0;border-radius:14px;padding:16px;background:var(--gold);color:#fff;font-size:18px;font-weight:800;margin-top:18px}.error{background:#fff1f1;border:1px solid #e7c6c6;padding:13px;border-radius:12px;margin:14px 0}
-    .success{text-align:center;padding:30px 4px}.success .check{font-size:48px;margin-bottom:10px}@media(max-width:650px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.card{padding:20px}h1{font-size:27px}}
+    .success{text-align:center;padding:30px 4px}.success .check{font-size:48px;margin-bottom:10px}.next{display:inline-block;margin-top:16px;padding:14px 18px;border-radius:14px;background:var(--ink);color:#fff;text-decoration:none;font-weight:800}.hp{position:absolute;left:-9999px;opacity:0;pointer-events:none}@media(max-width:650px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.card{padding:20px}h1{font-size:27px}}
   </style>
 </head>
 <body><div class="wrap"><div class="brand"><span>A+</span>A+ ESTHETIC</div><div class="card">
 {% if completed %}
-  <div class="success"><div class="check">✓</div><h1>Vielen Dank</h1><p>Ihre Daten wurden gespeichert.</p>{% if member_number %}<p class="muted">Kundennummer: <strong>{{ member_number }}</strong></p>{% endif %}<p class="muted">Bitte geben Sie das iPad jetzt zurück.</p></div>
+  <div class="success"><div class="check">✓</div><h1>Vielen Dank</h1><p>Ihre Daten wurden gespeichert.</p>{% if member_number %}<p class="muted">Kundennummer: <strong>{{ member_number }}</strong></p>{% endif %}<p class="muted">Bitte geben Sie das iPad jetzt zurück.</p>{% if public_intake %}<a class="next" href="{% url 'office_intake' %}">Nächsten Kunden erfassen</a>{% endif %}</div>
 {% elif expired %}
   <div class="success"><h1>Link abgelaufen</h1><p class="muted">Bitte wenden Sie sich an den Empfang.</p></div>
 {% else %}
   <h1>Ihre Daten</h1><p class="muted">Bitte prüfen Sie die Angaben sorgfältig. Für Texteingaben können Sie auch die Diktierfunktion der iPad Tastatur verwenden.</p>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
-  <form method="post">{% csrf_token %}<div class="grid">
+  <form method="post">{% csrf_token %}<div class="hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div><div class="grid">
     <label>Anrede<select name="salutation"><option value="">Bitte wählen</option><option value="frau">Frau</option><option value="herr">Herr</option><option value="divers">Divers</option></select></label>
     <div></div>
     <label>Vorname<input name="first_name" autocomplete="given-name" required></label>
