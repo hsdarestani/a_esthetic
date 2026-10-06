@@ -222,12 +222,13 @@
       return;
     }
 
-    const memberName = String(state.profile?.member?.name || '').trim();
+    const profileData = state.profile?.profile || {};
+    const memberName = String(profileData.name || '').trim();
     const nameParts = memberName.split(/\s+/).filter(Boolean);
-    const firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : (nameParts[0] || '');
-    const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : (nameParts[0] || '');
-    const email = state.profile?.profile?.email || '';
-    const phone = state.profile?.profile?.phone || '';
+    const firstName = String(profileData.first_name || (nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : (nameParts[0] || ''))).trim();
+    const lastName = String(profileData.last_name || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : '')).trim();
+    const email = profileData.email || '';
+    const phone = profileData.phone || '';
 
     card.innerHTML = `
       <div class="book-flow" data-book-root>
