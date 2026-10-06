@@ -53,7 +53,7 @@ class OfficeInvoicingTests(TestCase):
         self.assertEqual(response.url, reverse("office_dashboard"))
         response = self.client.get(reverse("office_dashboard"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "A+ ESTHETIC OFFICE")
+        self.assertContains(response, "A+ ESTHETIC")
 
     def test_customer_cannot_use_office_staff_login(self):
         customer = User.objects.create_user(

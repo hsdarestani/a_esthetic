@@ -3,6 +3,7 @@ from django.urls import path
 from . import (
     admin_content_views,
     admin_mobile_views,
+    billing_admin_views,
     admin_wallet_history_views,
     book_admin_proxy_views,
     canonical_booking_views,
@@ -53,6 +54,11 @@ urlpatterns = [
     path("api/mobile/admin/book/blocks/", book_admin_proxy_views.block_action, name="p0_mobile_book_admin_blocks"),
     path("api/mobile/admin/book/services/<int:service_id>/", book_admin_proxy_views.service_action, name="p0_mobile_book_admin_service"),
     path("api/mobile/admin/book/day-override/", book_admin_proxy_views.day_override_action, name="p0_mobile_book_admin_override"),
+    path("api/mobile/admin/billing/", billing_admin_views.billing_overview, name="p0_mobile_admin_billing"),
+    path("api/mobile/admin/billing/settings/", billing_admin_views.billing_settings, name="p0_mobile_admin_billing_settings"),
+    path("api/mobile/admin/billing/services/<int:service_id>/", billing_admin_views.billing_service, name="p0_mobile_admin_billing_service"),
+    path("api/mobile/admin/billing/invoices/", billing_admin_views.billing_invoices, name="p0_mobile_admin_billing_invoices"),
+    path("api/mobile/admin/billing/invoices/<int:invoice_id>/finalize/", billing_admin_views.billing_invoice_finalize, name="p0_mobile_admin_billing_invoice_finalize"),
 
     path("api/mobile/admin/packages/", admin_mobile_views.mobile_admin_packages, name="p0_mobile_admin_packages"),
     path("api/mobile/admin/rewards/", admin_mobile_views.mobile_admin_rewards, name="p0_mobile_admin_rewards"),
