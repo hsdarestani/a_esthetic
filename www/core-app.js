@@ -72,7 +72,7 @@
     root.innerHTML=`<div class="core-shell">
       <header class="core-header">
         <span class="core-header-spacer"></span>
-        <div class="core-brand"><img src="./assets/logo.svg" alt="A+ Esthetic"></div>
+        <div class="core-brand"><span class="core-brand-emblem"><img src="./assets/logo.svg" alt="A+ Esthetic"></span><span class="core-brand-name"><b>A+ ESTHETIC</b><small>CUSTOMER CLUB</small></span></div>
         <button class="core-icon-btn" data-settings aria-label="Einstellungen"><span class="header-icon">${NAV_ICONS.settings}</span></button>
       </header>
       <main class="core-main">${content}</main>
@@ -91,7 +91,7 @@
       <a class="settings-link" href="${LEGAL.privacy}" target="_blank" rel="noopener">Datenschutz <span>›</span></a>
       <a class="settings-link" href="${LEGAL.terms}" target="_blank" rel="noopener">Nutzungsbedingungen <span>›</span></a>
       <a class="settings-link" href="${LEGAL.imprint}" target="_blank" rel="noopener">Impressum <span>›</span></a>
-      <a class="settings-link" href="${LEGAL.deletion}" target="_blank" rel="noopener">Konto löschen <span>›</span></a>
+      <details class="settings-more"><summary>Weitere Kontoeinstellungen</summary><a class="settings-link" href="${LEGAL.deletion}" target="_blank" rel="noopener">Konto löschen <span>›</span></a></details>
       <button class="danger wide" data-logout style="margin-top:18px">Abmelden</button></div>`;
     document.body.appendChild(node);
     const close=()=>{node.classList.add('is-closing');setTimeout(()=>node.remove(),120);};
@@ -262,6 +262,12 @@
           <b>Datei auswählen</b>
           <small>Fotos, PDF oder Dokumente</small>
         </label>
+        <div class="approved-file-preview" data-upload-preview hidden>
+          <img data-upload-preview-image alt="" hidden>
+          <span class="approved-file-preview-icon" data-upload-preview-icon>▤</span>
+          <div><strong data-upload-preview-name>Datei ausgewählt</strong><small data-upload-preview-meta>Bereit zum Speichern</small></div>
+          <button type="button" data-upload-preview-clear aria-label="Auswahl entfernen">×</button>
+        </div>
         <button type="button" class="approved-photo-button" data-native-photo>Foto aufnehmen</button>
         <label class="approved-note-field"><span>Notiz <small>optional</small></span><textarea name="note" placeholder="Zusätzliche Information …"></textarea></label>
         ${!data.health_data_consent?`<label class="approved-consent"><input name="health_data_consent" type="checkbox" value="1" required><span>Ich willige ein, dass diese Gesundheitsdaten zur Behandlung und Dokumentation verarbeitet werden.</span></label>`:'<input type="hidden" name="health_data_consent" value="1">'}
@@ -283,7 +289,12 @@
       root.querySelectorAll('[data-record-filter]').forEach(item=>item.classList.toggle('is-active',item===button));
       root.querySelectorAll('[data-record-kind]').forEach(row=>{
         const kind=String(row.dataset.recordKind||'').toLowerCase();
-        const visible=filter==='all'||kind.includes(filter)||(filter==='image'&&(kind.includes('photo')||kind.includes('bild')));
+        const imageKinds=['photo','image','bild'];
+        const documentKinds=['document','form','other'];
+        const visible=filter==='all'
+          || (filter==='image' && imageKinds.some(value=>kind.includes(value)))
+          || (filter==='document' && documentKinds.some(value=>kind.includes(value)))
+          || (filter==='note' && kind.includes('note'));
         row.hidden=!visible;
       });
     }));
@@ -297,15 +308,83 @@
     return `<article class="approved-record-row" data-record-kind="${esc(kind)}">
       <span class="approved-record-dot"></span><span class="approved-record-icon">${icon}</span>
       <div class="approved-record-copy"><strong>${esc(r.title||'Akteneintrag')}</strong><span>${fmt(r.captured_at||r.created_at)} · ${esc(r.kind_label||source)}</span>${r.note?`<small>${esc(r.note)}</small>`:''}</div>
-      ${r.has_file?`<div class="approved-record-actions"><button data-record-file="${esc(r.id)}" data-download="0">Öffnen</button><button data-record-file="${esc(r.id)}" data-download="1" aria-label="Download">↓</button></div>`:''}
+      ${r.has_file?`<div class="approved-record-actions"><button data-record-file="${esc(r.id)}" data-record-url="${esc(r.open_url||'')}" data-download="0">Öffnen</button><button data-record-file="${esc(r.id)}" data-record-url="${esc(r.download_url||'')}" data-download="1" aria-label="Download">↓</button></div>`:''}
     </article>`;
   }
 
 
+  async function nativePhotoToInput(input){
+    if(!input) return;
+    const camera=window.Capacitor?.Plugins?.Camera;
+    if(!camera?.getPhoto){input.click();return;}
+    const photo=await camera.getPhoto({quality:84,resultType:'base64',source:'CAMERA',direction:'REAR',correctOrientation:true,saveToGallery:false,allowEditing:false,width:2048});
+    if(!photo?.base64String)return;
+    const format=String(photo.format||'jpeg').toLowerCase();
+    const mime=format.includes('png')?'image/png':format.includes('heic')||format.includes('heif')?'image/heic':'image/jpeg';
+    const ext=mime==='image/png'?'png':mime==='image/heic'?'heic':'jpg';
+    const binary=atob(String(photo.base64String).replace(/\s/g,''));
+    const bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i+=1)bytes[i]=binary.charCodeAt(i);
+    const file=new File([bytes],`APlus-${Date.now()}.${ext}`,{type:mime});
+    const transfer=new DataTransfer();transfer.items.add(file);input.files=transfer.files;
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+
+  async function openRecordUrl(url){
+    if(!url) return false;
+    const browser=window.Capacitor?.Plugins?.Browser;
+    if(browser?.open){await browser.open({url});return true;}
+    const opened=window.open(url,'_blank','noopener');
+    if(opened)return true;
+    location.href=url;
+    return true;
+  }
+
   function bindRecordActions(){
-    const form=root.querySelector('[data-upload]');if(!form)return;const fileInput=form.querySelector('input[type=file]');root.querySelector('[data-native-photo]')?.addEventListener('click',async()=>{try{await nativePhotoToInput(fileInput);}catch(err){form.insertAdjacentHTML('beforebegin',errorBox(new Error('Kamera konnte nicht geöffnet werden.')));}});
-    form.onsubmit=async e=>{e.preventDefault();const btn=form.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Wird gespeichert …';try{const headers=new Headers({'Authorization':`Bearer ${state.token}`});const response=await fetch(`${API}/patient-records/upload/`,{method:'POST',headers,body:new FormData(form)});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Upload fehlgeschlagen');await renderRecords();}catch(err){btn.disabled=false;btn.textContent='In Akte speichern';form.insertAdjacentHTML('beforebegin',errorBox(err));}};
-    root.querySelectorAll('[data-record-file]').forEach(btn=>btn.onclick=async()=>{btn.disabled=true;try{const url=`${API}/patient-records/${encodeURIComponent(btn.dataset.recordFile)}/file/${btn.dataset.download==='1'?'?download=1':''}`;const response=await fetch(url,{headers:{Authorization:`Bearer ${state.token}`}});if(!response.ok)throw new Error('Datei konnte nicht geöffnet werden.');const blob=await response.blob();const object=URL.createObjectURL(blob);if(btn.dataset.download==='1'){const a=document.createElement('a');a.href=object;a.download='APlus-Dokument';document.body.appendChild(a);a.click();a.remove();}else{window.open(object,'_blank');}setTimeout(()=>URL.revokeObjectURL(object),60000);}catch(err){btn.insertAdjacentHTML('afterend',errorBox(err));}finally{btn.disabled=false;}});
+    const form=root.querySelector('[data-upload]');if(!form)return;
+    const fileInput=form.querySelector('input[type=file]');
+    const preview=form.querySelector('[data-upload-preview]');
+    const previewImage=form.querySelector('[data-upload-preview-image]');
+    const previewIcon=form.querySelector('[data-upload-preview-icon]');
+    const previewName=form.querySelector('[data-upload-preview-name]');
+    const previewMeta=form.querySelector('[data-upload-preview-meta]');
+    let previewObjectUrl='';
+
+    const clearPreviewUrl=()=>{if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl='';}};
+    const showPreview=file=>{
+      clearPreviewUrl();
+      if(!file){if(preview)preview.hidden=true;return;}
+      if(preview)preview.hidden=false;
+      if(previewName)previewName.textContent=file.name||'Datei ausgewählt';
+      if(previewMeta)previewMeta.textContent=`${Math.max(1,Math.round((file.size||0)/1024))} KB · bereit zum Speichern`;
+      const image=String(file.type||'').startsWith('image/');
+      if(previewImage){
+        previewImage.hidden=!image;
+        if(image){previewObjectUrl=URL.createObjectURL(file);previewImage.src=previewObjectUrl;}else{previewImage.removeAttribute('src');}
+      }
+      if(previewIcon)previewIcon.hidden=image;
+    };
+    fileInput?.addEventListener('change',()=>showPreview(fileInput.files?.[0]||null));
+    form.querySelector('[data-upload-preview-clear]')?.addEventListener('click',()=>{
+      if(fileInput)fileInput.value='';
+      showPreview(null);
+    });
+    root.querySelector('[data-native-photo]')?.addEventListener('click',async()=>{try{await nativePhotoToInput(fileInput);}catch(err){form.insertAdjacentHTML('beforebegin',errorBox(new Error('Kamera konnte nicht geöffnet werden.')));}});
+
+    form.onsubmit=async e=>{e.preventDefault();const btn=form.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Wird gespeichert …';try{const headers=new Headers({'Authorization':`Bearer ${state.token}`});const response=await fetch(`${API}/patient-records/upload/`,{method:'POST',headers,body:new FormData(form)});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Upload fehlgeschlagen');clearPreviewUrl();await renderRecords();}catch(err){btn.disabled=false;btn.textContent='In Akte speichern';form.insertAdjacentHTML('beforebegin',errorBox(err));}};
+
+    root.querySelectorAll('[data-record-file]').forEach(btn=>btn.onclick=async()=>{
+      btn.disabled=true;
+      try{
+        if(btn.dataset.recordUrl){await openRecordUrl(btn.dataset.recordUrl);return;}
+        const url=`${API}/patient-records/${encodeURIComponent(btn.dataset.recordFile)}/file/${btn.dataset.download==='1'?'?download=1':''}`;
+        const response=await fetch(url,{headers:{Authorization:`Bearer ${state.token}`}});
+        if(!response.ok)throw new Error('Datei konnte nicht geöffnet werden.');
+        const blob=await response.blob();const object=URL.createObjectURL(blob);
+        if(btn.dataset.download==='1'){const a=document.createElement('a');a.href=object;a.download='APlus-Dokument';document.body.appendChild(a);a.click();a.remove();}else{window.open(object,'_blank');}
+        setTimeout(()=>URL.revokeObjectURL(object),60000);
+      }catch(err){btn.insertAdjacentHTML('afterend',errorBox(err));}finally{btn.disabled=false;}
+    });
   }
 
   boot();

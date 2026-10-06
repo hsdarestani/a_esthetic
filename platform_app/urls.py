@@ -63,6 +63,7 @@ urlpatterns = [
     path('api/mobile/patient-records/', patient_documents.mobile_patient_records, name='mobile_patient_records'),
     path('api/mobile/patient-records/upload/', patient_documents.mobile_patient_record_upload, name='mobile_patient_record_upload'),
     path('api/mobile/patient-records/<uuid:record_id>/file/', patient_documents.mobile_patient_record_file, name='mobile_patient_record_file'),
+    path('api/mobile/patient-records/<uuid:record_id>/signed-file/', patient_documents.mobile_patient_record_signed_file, name='mobile_patient_record_signed_file'),
     path('api/mobile/patient-records/<uuid:record_id>/archive/', patient_documents.mobile_patient_record_archive, name='mobile_patient_record_archive'),
     path('api/internal/patient-document/shared/', patient_documents.internal_patient_document_shared, name='internal_patient_document_shared'),
 ]
