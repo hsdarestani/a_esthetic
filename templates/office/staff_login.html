@@ -1,0 +1,101 @@
+{% load static %}
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0c1319">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>Office Anmeldung · A+ Esthetic</title>
+  <style>
+    :root{
+      --ink:#11181d;--night:#0b1218;--night2:#17242d;--gold:#c7a86a;--gold2:#e3ca93;
+      --cream:#f3eee6;--paper:rgba(255,253,249,.94);--muted:#777d7a;--line:rgba(24,31,35,.10);
+      --danger:#984343;--shadow:0 38px 110px rgba(16,22,27,.16)
+    }
+    *{box-sizing:border-box}html,body{min-height:100%}
+    body{
+      margin:0;color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      background:
+        radial-gradient(circle at 12% 10%,rgba(199,168,106,.16),transparent 25rem),
+        radial-gradient(circle at 90% 88%,rgba(102,132,138,.11),transparent 28rem),
+        linear-gradient(145deg,#f8f4ed,#efe8de)
+    }
+    .page{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:minmax(350px,.9fr) minmax(500px,1.1fr);padding:16px;gap:16px}
+    .visual{
+      position:relative;overflow:hidden;border-radius:36px;padding:clamp(34px,5vw,72px);display:flex;flex-direction:column;color:#fff;
+      background:radial-gradient(circle at 78% 16%,rgba(219,186,122,.28),transparent 17rem),linear-gradient(142deg,#091016,#111d25 55%,#1a2932);
+      box-shadow:0 28px 88px rgba(10,16,21,.20)
+    }
+    .visual:before{content:"";position:absolute;width:540px;height:540px;border-radius:50%;right:-290px;top:8%;border:1px solid rgba(231,204,151,.19);box-shadow:0 0 0 50px rgba(199,168,106,.024),0 0 0 100px rgba(199,168,106,.015)}
+    .visual:after{content:"A+";position:absolute;right:-18px;bottom:-78px;font:500 clamp(160px,21vw,310px)/1 Georgia,serif;letter-spacing:-.11em;color:rgba(255,255,255,.035)}
+    .visual>*{position:relative;z-index:1}
+    .brand{display:flex;align-items:center;gap:15px}.brand img{width:58px;height:58px;object-fit:contain}.brand b{display:block;font-size:14px;letter-spacing:.17em}.brand small{display:block;margin-top:4px;color:rgba(255,255,255,.48);font-size:9px;letter-spacing:.15em}
+    .copy{margin:auto 0;max-width:650px}.eyebrow{display:inline-flex;padding:8px 12px;border-radius:999px;border:1px solid rgba(229,203,151,.22);background:rgba(199,168,106,.075);color:#e7d0a1;font-size:10px;font-weight:850;letter-spacing:.16em;text-transform:uppercase}
+    .copy h1{margin:24px 0 18px;font:500 clamp(52px,6vw,84px)/.95 "Iowan Old Style",Baskerville,Georgia,serif;letter-spacing:-.06em}.copy h1 em{display:block;color:#dec086;font-style:normal}.copy p{max-width:540px;color:rgba(255,255,255,.62);font-size:15px;line-height:1.72}
+    .foot{display:flex;justify-content:space-between;gap:18px;color:rgba(255,255,255,.34);font-size:10px;letter-spacing:.06em}
+    .main{display:grid;place-items:center;padding:clamp(18px,4vw,58px)}
+    .card{width:min(560px,100%);padding:clamp(30px,4vw,48px);border-radius:34px;background:var(--paper);border:1px solid rgba(255,255,255,.88);box-shadow:var(--shadow);backdrop-filter:blur(24px)}
+    .mobilebrand{display:none;align-items:center;gap:11px;margin-bottom:28px}.mobilebrand img{width:44px;height:44px;object-fit:contain}.mobilebrand b{display:block;font-size:12px;letter-spacing:.13em}.mobilebrand small{display:block;color:var(--muted);font-size:9px;letter-spacing:.10em;margin-top:2px}
+    .kicker{color:#8c7242;font-size:10px;font-weight:900;letter-spacing:.15em;text-transform:uppercase;margin-bottom:13px}
+    h2{margin:0 0 11px;font:500 clamp(40px,4.4vw,56px)/1 "Iowan Old Style",Baskerville,Georgia,serif;letter-spacing:-.05em}.lead{margin:0 0 26px;color:var(--muted);font-size:14px;line-height:1.65}
+    .error{margin:0 0 18px;padding:13px 15px;border-radius:15px;background:#fff2f2;border:1px solid #edcece;color:#7d3131;font-size:12px;line-height:1.5}
+    form{display:grid;gap:15px}.field{display:grid;gap:7px}.field label{font-size:11px;font-weight:850;color:#41484a}.field input{width:100%;min-height:58px;padding:14px 15px;border:1px solid rgba(28,35,40,.11);border-radius:17px;background:#fff;color:var(--ink);font-size:16px;outline:none;transition:.18s ease}.field input:focus{border-color:var(--gold);box-shadow:0 0 0 4px rgba(199,168,106,.13),0 12px 28px rgba(20,25,28,.055)}
+    .submit{margin-top:4px;min-height:56px;border:0;border-radius:17px;padding:14px 20px;background:linear-gradient(135deg,#19262f,#0e161c);color:#fff;font-weight:900;font-size:15px;cursor:pointer;box-shadow:0 15px 34px rgba(14,22,28,.18)}.submit span{color:#dbbf83;margin-left:8px}
+    .note{display:flex;gap:9px;align-items:flex-start;margin-top:18px;color:var(--muted);font-size:10px;line-height:1.5}.note i{font-style:normal;width:27px;height:27px;border-radius:9px;display:grid;place-items:center;background:#edf4ef;color:#39735a;flex:0 0 auto}
+    .links{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:24px;padding-top:18px;border-top:1px solid var(--line);font-size:11px}.links a{color:#786642;text-decoration:none}.links a:hover{color:#4f4028}
+    @media(max-width:980px){.page{grid-template-columns:1fr}.visual{display:none}.main{padding:18px}.mobilebrand{display:flex}.card{max-width:620px}}
+    @media(max-width:620px){.page{padding:0}.main{display:block;padding:0}.card{min-height:100vh;min-height:100dvh;border-radius:0;border:0;box-shadow:none;padding:30px 22px}.links{flex-direction:column;align-items:flex-start}}
+  </style>
+</head>
+<body>
+<div class="page">
+  <aside class="visual">
+    <div class="brand">
+      <img src="{% static 'assets/logo.svg' %}" alt="A+ Esthetic">
+      <div><b>A+ ESTHETIC</b><small>OFFICE</small></div>
+    </div>
+    <div class="copy">
+      <span class="eyebrow">Interner Bereich</span>
+      <h1>Praxisverwaltung.<em>Einfach und sicher.</em></h1>
+      <p>Verwalten Sie Kunden, Behandlungen und Rechnungen zentral im A+ Esthetic Office.</p>
+    </div>
+    <div class="foot"><span>A+ Esthetic GmbH</span><span>Nur für autorisierte Mitarbeiter</span></div>
+  </aside>
+
+  <main class="main">
+    <section class="card">
+      <div class="mobilebrand">
+        <img src="{% static 'assets/logo.svg' %}" alt="A+ Esthetic">
+        <div><b>A+ ESTHETIC</b><small>OFFICE</small></div>
+      </div>
+      <div class="kicker">Office Zugang</div>
+      <h2>Anmelden</h2>
+      <p class="lead">Bitte melden Sie sich mit Ihrem Mitarbeiterkonto an.</p>
+
+      {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+      <form method="post" autocomplete="on">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="field">
+          <label for="email">E Mail Adresse</label>
+          <input id="email" name="email" type="email" autocomplete="username" inputmode="email" required autofocus>
+        </div>
+        <div class="field">
+          <label for="password">Passwort</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="submit" type="submit">Office öffnen <span>→</span></button>
+      </form>
+
+      <div class="note"><i>✓</i><span>Dieser Zugang ist ausschließlich für autorisierte Mitarbeiter und Administratoren vorgesehen.</span></div>
+      <div class="links">
+        <a href="{% url 'office_intake' %}">Zur Kundenaufnahme</a>
+        <a href="{% url 'support' %}">Support</a>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>
