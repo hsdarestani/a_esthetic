@@ -1,6 +1,6 @@
 import re
 from datetime import date, timedelta
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
 from urllib.parse import urlencode
 
@@ -38,6 +38,17 @@ def _office_allowed(user):
         return True
     profile = UserProfile.objects.filter(user=user).only("role").first()
     return bool(profile and profile.role in OFFICE_ROLES)
+
+
+def _office_settings_allowed(user):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    profile = UserProfile.objects.filter(user=user).only("role").first()
+    return bool(user.is_staff and (not profile or profile.role in {"admin", "manager"})) or bool(
+        profile and profile.role in {"admin", "manager"}
+    )
 
 
 def _office_login_redirect(request):
@@ -105,6 +116,42 @@ def _unique_username(email):
         suffix += 1
         candidate = f"{base[:110]}-{suffix}"
     return candidate
+
+
+def _parse_service_date(value):
+    raw = str(value or "").strip()
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
+        try:
+            return timezone.datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_eur_cents(value):
+    raw = str(value or "").strip().replace("€", "").replace("EUR", "").replace(" ", "")
+    if not raw:
+        return None
+    if "," in raw and "." in raw:
+        if raw.rfind(",") > raw.rfind("."):
+            raw = raw.replace(".", "").replace(",", ".")
+        else:
+            raw = raw.replace(",", "")
+    else:
+        raw = raw.replace(",", ".")
+    try:
+        amount = Decimal(raw)
+    except InvalidOperation as exc:
+        raise ValueError("invalid_price") from exc
+    if amount < 0:
+        raise ValueError("invalid_price")
+    return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _format_eur_input(cents):
+    if cents is None:
+        return ""
+    return f"{Decimal(cents) / Decimal(100):.2f}".replace(".", ",")
 
 
 def _money(cents):
@@ -322,10 +369,7 @@ def office_dashboard(request):
         if action == "new_invoice":
             customer = User.objects.filter(pk=request.POST.get("customer_id"), is_active=True).first()
             service = Service.objects.filter(pk=request.POST.get("service_id"), active=True).first()
-            try:
-                service_date = date.fromisoformat(request.POST.get("service_date") or "")
-            except ValueError:
-                service_date = None
+            service_date = _parse_service_date(request.POST.get("service_date"))
             if not customer or not service or not service_date:
                 error = "Kunde, Behandlung und Leistungsdatum sind erforderlich."
             elif service.price_cents is None or service.vat_rate is None:
@@ -392,6 +436,108 @@ def office_dashboard(request):
         "notice": notice,
         "error": error,
         "query": query,
+    })
+
+
+@require_http_methods(["GET", "POST"])
+def office_settings(request):
+    if not request.user.is_authenticated:
+        return _office_login_redirect(request)
+    if not _office_settings_allowed(request.user):
+        return HttpResponseForbidden("Kein Zugriff.")
+
+    settings, _ = InvoiceSettings.objects.get_or_create(pk=1)
+    services = list(Service.objects.filter(active=True).order_by("name"))
+    error = ""
+    notice = ""
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+
+        if action == "invoice_settings":
+            invoice_prefix = (request.POST.get("invoice_prefix") or "RE").strip()[:20] or "RE"
+            try:
+                next_sequence = int(request.POST.get("next_sequence") or "1")
+                if next_sequence < 1:
+                    raise ValueError
+            except ValueError:
+                error = "Die nächste Rechnungsnummer muss eine positive Zahl sein."
+            if not error:
+                settings.company_name = (request.POST.get("company_name") or settings.company_name).strip()[:180]
+                settings.street = (request.POST.get("street") or settings.street).strip()[:180]
+                settings.postal_code = (request.POST.get("postal_code") or settings.postal_code).strip()[:20]
+                settings.city = (request.POST.get("city") or settings.city).strip()[:120]
+                settings.email = (request.POST.get("email") or settings.email).strip()[:254]
+                settings.phone = (request.POST.get("phone") or settings.phone).strip()[:40]
+                settings.tax_number = (request.POST.get("tax_number") or "").strip()[:80]
+                settings.vat_id = (request.POST.get("vat_id") or "").strip()[:80]
+                settings.iban = (request.POST.get("iban") or "").strip().replace(" ", "")[:64]
+                settings.bic = (request.POST.get("bic") or "").strip().upper()[:32]
+                settings.bank_name = (request.POST.get("bank_name") or "").strip()[:120]
+                settings.invoice_prefix = invoice_prefix
+                settings.next_sequence = next_sequence
+                settings.save()
+                AuditLog.objects.create(
+                    actor=request.user,
+                    action="Rechnungseinstellungen geändert",
+                    entity_type="InvoiceSettings",
+                    entity_id=str(settings.pk),
+                    metadata={"invoice_prefix": settings.invoice_prefix, "next_sequence": settings.next_sequence},
+                    ip_address=request.META.get("REMOTE_ADDR"),
+                )
+                notice = "Rechnungseinstellungen wurden gespeichert."
+
+        elif action == "service_prices":
+            parsed = []
+            for service in services:
+                price_raw = request.POST.get(f"service_{service.pk}_price", "")
+                vat_raw = request.POST.get(f"service_{service.pk}_vat", "")
+                try:
+                    cents = _parse_eur_cents(price_raw)
+                    vat = Decimal(str(vat_raw).strip().replace(",", ".")) if str(vat_raw).strip() else None
+                except (ValueError, InvalidOperation):
+                    error = f"Preis oder MwSt für „{service.name}“ ist ungültig."
+                    break
+                if cents is None or vat is None:
+                    error = f"Bitte Preis und MwSt für „{service.name}“ vollständig eintragen."
+                    break
+                if vat < 0 or vat > 100:
+                    error = f"Die MwSt für „{service.name}“ muss zwischen 0 und 100 liegen."
+                    break
+                parsed.append((service, cents, vat))
+
+            if not error:
+                with transaction.atomic():
+                    for service, cents, vat in parsed:
+                        service.price_cents = cents
+                        service.vat_rate = vat
+                        service.price_label = f"{_format_eur_input(cents)} €"
+                        service.save(update_fields=["price_cents", "vat_rate", "price_label"])
+                    AuditLog.objects.create(
+                        actor=request.user,
+                        action="Behandlungspreise geändert",
+                        entity_type="Service",
+                        entity_id="bulk",
+                        metadata={"services": len(parsed)},
+                        ip_address=request.META.get("REMOTE_ADDR"),
+                    )
+                notice = "Preise und MwSt wurden gespeichert."
+                services = list(Service.objects.filter(active=True).order_by("name"))
+
+    service_rows = [
+        {
+            "service": service,
+            "price_input": _format_eur_input(service.price_cents),
+            "vat_input": "" if service.vat_rate is None else str(service.vat_rate).replace(".", ","),
+            "configured": service.price_cents is not None and service.vat_rate is not None,
+        }
+        for service in services
+    ]
+    return render(request, "office/settings.html", {
+        "invoice_settings": settings,
+        "service_rows": service_rows,
+        "error": error,
+        "notice": notice,
     })
 
 
