@@ -91,6 +91,7 @@
       <a class="settings-link" href="${LEGAL.privacy}" target="_blank" rel="noopener">Datenschutz <span>›</span></a>
       <a class="settings-link" href="${LEGAL.terms}" target="_blank" rel="noopener">Nutzungsbedingungen <span>›</span></a>
       <a class="settings-link" href="${LEGAL.imprint}" target="_blank" rel="noopener">Impressum <span>›</span></a>
+      <details class="settings-more"><summary>Weitere Kontoeinstellungen</summary><a class="settings-link" href="${LEGAL.deletion}" target="_blank" rel="noopener">Konto löschen <span>›</span></a></details>
       <button class="danger wide" data-logout style="margin-top:18px">Abmelden</button></div>`;
     document.body.appendChild(node);
     const close=()=>{node.classList.add('is-closing');setTimeout(()=>node.remove(),120);};
