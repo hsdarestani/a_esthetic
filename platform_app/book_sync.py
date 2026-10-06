@@ -58,7 +58,7 @@ def sync_customer_to_book(user):
             BOOK_CUSTOMER_SYNC_URL,
             json=payload,
             headers=_headers(),
-            timeout=6,
+            timeout=3,
         )
         body = response.json() if response.content else {}
         return bool(response.ok and body.get("ok")), body
@@ -76,7 +76,7 @@ def sync_service_catalog_from_book():
         response = requests.get(
             BOOK_BILLING_CATALOG_URL,
             headers=_headers(),
-            timeout=6,
+            timeout=3,
         )
         body = response.json() if response.content else {}
     except (requests.RequestException, ValueError):
