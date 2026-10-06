@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.db import models, transaction
@@ -37,6 +37,59 @@ def _office_allowed(user):
         return True
     profile = UserProfile.objects.filter(user=user).only("role").first()
     return bool(profile and profile.role in OFFICE_ROLES)
+
+
+def _office_login_redirect(request):
+    next_path = request.get_full_path()
+    return redirect(f"/office/admin/login/?next={next_path}")
+
+
+@require_http_methods(["GET", "POST"])
+def office_staff_login(request):
+    if _office_allowed(request.user):
+        return redirect("office_dashboard")
+
+    error = ""
+    next_path = (request.GET.get("next") or request.POST.get("next") or "/office/admin/").strip()
+    if not next_path.startswith("/office/"):
+        next_path = "/office/admin/"
+
+    if request.method == "POST":
+        identifier = (request.POST.get("email") or "").strip()
+        password = request.POST.get("password") or ""
+        username = identifier
+        if "@" in identifier:
+            match = User.objects.filter(email__iexact=identifier).order_by("pk").first()
+            if match:
+                username = match.username
+
+        user = authenticate(request, username=username, password=password)
+        if not user or not user.is_active:
+            error = "E Mail Adresse oder Passwort ist nicht korrekt."
+        elif not _office_allowed(user):
+            error = "Dieses Konto hat keinen Zugriff auf A+ Esthetic Office."
+        else:
+            auth_login(request, user)
+            AuditLog.objects.create(
+                actor=user,
+                action="Office Login",
+                entity_type="AdminAccount",
+                entity_id=str(user.pk),
+                metadata={"channel": "office_web"},
+                ip_address=request.META.get("REMOTE_ADDR"),
+            )
+            return redirect(next_path)
+
+    response = render(request, "office/staff_login.html", {"error": error, "next": next_path})
+    response["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    return response
+
+
+@require_POST
+def office_staff_logout(request):
+    if request.user.is_authenticated:
+        auth_logout(request)
+    return redirect("office_staff_login")
 
 
 def _normalize_phone(value):
@@ -247,9 +300,10 @@ def office_public_intake(request):
     return response
 
 
-@login_required
 @require_http_methods(["GET", "POST"])
 def office_dashboard(request):
+    if not request.user.is_authenticated:
+        return _office_login_redirect(request)
     if not _office_allowed(request.user):
         return HttpResponseForbidden("Kein Zugriff.")
 
@@ -425,8 +479,9 @@ def office_checkin(request, token):
     return render(request, "office/checkin.html", {"session": session, "error": error})
 
 
-@login_required
 def office_invoice_detail(request, invoice_id):
+    if not request.user.is_authenticated:
+        return _office_login_redirect(request)
     if not _office_allowed(request.user):
         return HttpResponseForbidden("Kein Zugriff.")
     invoice = get_object_or_404(Invoice.objects.prefetch_related("items"), pk=invoice_id)
@@ -439,9 +494,10 @@ def office_invoice_detail(request, invoice_id):
     })
 
 
-@login_required
 @require_POST
 def office_invoice_finalize(request, invoice_id):
+    if not request.user.is_authenticated:
+        return _office_login_redirect(request)
     if not _office_allowed(request.user):
         return HttpResponseForbidden("Kein Zugriff.")
     with transaction.atomic():
@@ -486,8 +542,9 @@ def office_invoice_finalize(request, invoice_id):
     return redirect("office_invoice_detail", invoice_id=invoice.pk)
 
 
-@login_required
 def office_invoice_pdf(request, invoice_id):
+    if not request.user.is_authenticated:
+        return _office_login_redirect(request)
     if not _office_allowed(request.user):
         return HttpResponseForbidden("Kein Zugriff.")
     invoice = get_object_or_404(Invoice.objects.prefetch_related("items"), pk=invoice_id)
