@@ -255,6 +255,8 @@ jobs:
                 nl=s.find('\n',b); s=s[:a]+s[(nl+1 if nl>=0 else len(s)):]
             marker='''    # BEGIN CUSTOMER_CLUB_DJANGO
                 location ^~ /api/mobile/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location ^~ /secure-admin/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; }
+                location ^~ /static/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location ^~ /accounts/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location ^~ /mobile-social/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
                 location = /login/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
@@ -296,6 +298,10 @@ jobs:
                 except HTTPError as exc: return exc.code,exc.read().decode('utf-8','replace')
                 except URLError as exc: raise SystemExit(f'Smoke request failed for {url}: {exc}')
             checks=[('http://127.0.0.1:8770/api/mobile/status/',None,200,'customer club'),('http://127.0.0.1/api/mobile/status/','esthetic.smarbiz.sbs',200,'customer club'),('http://127.0.0.1/datenschutz/','esthetic.smarbiz.sbs',200,'Kundenclub'),('http://127.0.0.1/mobile-social/finish/','esthetic.smarbiz.sbs',200,'Zur App zurückkehren')]
+            admin_status,admin_body=fetch('http://127.0.0.1/secure-admin/','esthetic.smarbiz.sbs')
+            if admin_status not in {200,302}: raise SystemExit(f'Admin proxy smoke failed: HTTP {admin_status}')
+            static_status,static_body=fetch('http://127.0.0.1/static/admin/css/base.css','esthetic.smarbiz.sbs')
+            if static_status != 200 or '--primary' not in static_body: raise SystemExit(f'Admin static smoke failed: HTTP {static_status}')
             for url,host,expected,needle in checks:
                 status,body=fetch(url,host)
                 if status!=expected or needle.lower() not in body.lower(): raise SystemExit(f'Smoke check failed: {url} returned {status}')
