@@ -1,36 +1,538 @@
+{% load static %}
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="theme-color" content="#101820">
   <title>Kundenaufnahme · A+ Esthetic</title>
   <style>
-    :root{--bg:#f5f1eb;--ink:#202629;--gold:#b79862;--line:#ddd3c7}*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Arial,sans-serif;color:var(--ink)}
-    .wrap{max-width:760px;margin:auto;padding:28px 18px 60px}.brand{text-align:center;font-weight:800;letter-spacing:.08em;margin-bottom:24px}.brand span{display:inline-grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--ink);color:#fff;margin-right:10px}
-    .card{background:#fff;border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:0 16px 45px rgba(0,0,0,.05)}h1{margin:0 0 8px;font-size:32px}.muted{color:#6e7376}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:grid;gap:6px;font-weight:700}input,select{width:100%;padding:15px;border:1px solid var(--line);border-radius:14px;font-size:18px;background:#fff}
-    button{width:100%;border:0;border-radius:14px;padding:16px;background:var(--gold);color:#fff;font-size:18px;font-weight:800;margin-top:18px}.error{background:#fff1f1;border:1px solid #e7c6c6;padding:13px;border-radius:12px;margin:14px 0}
-    .success{text-align:center;padding:30px 4px}.success .check{font-size:48px;margin-bottom:10px}.next{display:inline-block;margin-top:16px;padding:14px 18px;border-radius:14px;background:var(--ink);color:#fff;text-decoration:none;font-weight:800}.hp{position:absolute;left:-9999px;opacity:0;pointer-events:none}@media(max-width:650px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.card{padding:20px}h1{font-size:27px}}
+    :root{
+      --ink:#111920;
+      --ink2:#1a2832;
+      --gold:#c9aa6c;
+      --gold2:#e4c98f;
+      --gold3:#f4ead4;
+      --cream:#f4f0e9;
+      --paper:rgba(255,253,249,.94);
+      --line:rgba(33,39,43,.10);
+      --muted:#737977;
+      --ok:#2f7457;
+      --danger:#9e4545;
+      --shadow:0 32px 90px rgba(18,24,28,.14);
+      --radius:30px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{min-height:100%}
+    body{
+      margin:0;
+      color:var(--ink);
+      font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      background:
+        radial-gradient(circle at 12% 8%,rgba(207,175,111,.18),transparent 26rem),
+        radial-gradient(circle at 90% 88%,rgba(97,126,132,.12),transparent 28rem),
+        linear-gradient(145deg,#f7f3ed 0%,#f1ebe2 48%,#ece4d9 100%);
+      -webkit-font-smoothing:antialiased;
+    }
+
+    body:before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      opacity:.3;
+      background-image:
+        linear-gradient(rgba(255,255,255,.35) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(255,255,255,.28) 1px,transparent 1px);
+      background-size:72px 72px;
+      mask-image:linear-gradient(to bottom,rgba(0,0,0,.55),transparent 82%);
+    }
+
+    .page{
+      min-height:100vh;
+      min-height:100dvh;
+      display:grid;
+      grid-template-columns:minmax(310px,.78fr) minmax(520px,1.22fr);
+      padding:18px;
+      position:relative;
+      z-index:1;
+    }
+
+    .brandpanel{
+      min-height:calc(100vh - 36px);
+      min-height:calc(100dvh - 36px);
+      position:relative;
+      overflow:hidden;
+      border-radius:34px;
+      padding:clamp(30px,4vw,64px);
+      display:flex;
+      flex-direction:column;
+      color:#fff;
+      background:
+        radial-gradient(circle at 82% 16%,rgba(220,188,124,.28),transparent 16rem),
+        radial-gradient(circle at 18% 86%,rgba(101,132,138,.22),transparent 22rem),
+        linear-gradient(142deg,#0b1218 0%,#111d25 54%,#1a2831 100%);
+      box-shadow:0 28px 90px rgba(10,16,21,.18);
+    }
+
+    .brandpanel:before{
+      content:"";
+      position:absolute;
+      width:440px;
+      height:440px;
+      border-radius:50%;
+      right:-210px;
+      top:8%;
+      border:1px solid rgba(224,198,145,.20);
+      box-shadow:
+        0 0 0 48px rgba(207,174,108,.024),
+        0 0 0 96px rgba(207,174,108,.016);
+    }
+
+    .brandpanel:after{
+      content:"A+";
+      position:absolute;
+      right:-18px;
+      bottom:-70px;
+      font:500 clamp(150px,22vw,310px)/1 Georgia,serif;
+      letter-spacing:-.10em;
+      color:rgba(255,255,255,.035);
+      pointer-events:none;
+    }
+
+    .brandtop,.brandcopy,.brandfoot{position:relative;z-index:2}
+    .brandtop{display:flex;align-items:center;gap:15px}
+    .brandtop img{
+      width:58px;height:58px;object-fit:contain;
+      border-radius:18px;
+      background:rgba(255,255,255,.07);
+      border:1px solid rgba(255,255,255,.14);
+      padding:4px;
+      backdrop-filter:blur(12px);
+    }
+    .brandtop b{display:block;font-size:14px;letter-spacing:.16em}
+    .brandtop small{display:block;margin-top:4px;color:rgba(255,255,255,.52);font-size:10px;letter-spacing:.15em}
+
+    .brandcopy{margin:auto 0}
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:9px;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid rgba(226,199,146,.22);
+      background:rgba(201,170,108,.08);
+      color:#ead5aa;
+      font-size:10px;
+      font-weight:850;
+      letter-spacing:.16em;
+      text-transform:uppercase;
+      margin-bottom:22px;
+    }
+    .eyebrow:before{
+      content:"";
+      width:7px;height:7px;border-radius:50%;
+      background:#d9b873;
+      box-shadow:0 0 16px #d9b873;
+    }
+    .brandcopy h2{
+      margin:0 0 22px;
+      max-width:640px;
+      font:500 clamp(47px,6vw,82px)/.96 "Iowan Old Style",Baskerville,Georgia,serif;
+      letter-spacing:-.055em;
+    }
+    .brandcopy h2 em{font-style:normal;color:#dfc285}
+    .brandcopy p{
+      margin:0;
+      max-width:570px;
+      color:rgba(255,255,255,.64);
+      font-size:clamp(15px,1.35vw,18px);
+      line-height:1.7;
+    }
+    .trustrow{display:flex;flex-wrap:wrap;gap:9px;margin-top:28px}
+    .trust{
+      display:flex;align-items:center;gap:8px;
+      padding:10px 12px;
+      border-radius:999px;
+      background:rgba(255,255,255,.055);
+      border:1px solid rgba(255,255,255,.09);
+      color:rgba(255,255,255,.78);
+      font-size:12px;
+    }
+    .trust i{width:6px;height:6px;border-radius:50%;background:#d9b873}
+
+    .brandfoot{
+      display:flex;align-items:center;justify-content:space-between;gap:18px;
+      padding-top:24px;
+      color:rgba(255,255,255,.38);
+      font-size:11px;
+      letter-spacing:.06em;
+    }
+
+    .formside{
+      display:grid;
+      place-items:center;
+      padding:clamp(20px,4vw,58px);
+    }
+
+    .formcard{
+      width:min(780px,100%);
+      border-radius:var(--radius);
+      background:var(--paper);
+      border:1px solid rgba(255,255,255,.82);
+      box-shadow:var(--shadow);
+      backdrop-filter:blur(22px);
+      overflow:hidden;
+      position:relative;
+    }
+
+    .formcard:before{
+      content:"";
+      position:absolute;
+      left:34px;right:34px;top:0;height:1px;
+      background:linear-gradient(90deg,transparent,var(--gold),transparent);
+    }
+
+    .cardhead{padding:clamp(28px,4vw,46px) clamp(24px,4vw,48px) 20px}
+    .mobilebrand{display:none;align-items:center;gap:11px;margin-bottom:26px}
+    .mobilebrand img{width:42px;height:42px;object-fit:contain}
+    .mobilebrand b{display:block;letter-spacing:.13em;font-size:12px}
+    .mobilebrand small{display:block;color:var(--muted);font-size:9px;letter-spacing:.10em;margin-top:2px}
+
+    .stepmeta{
+      display:flex;align-items:center;justify-content:space-between;gap:16px;
+      color:#8f7545;
+      font-size:10px;
+      font-weight:850;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+      margin-bottom:12px;
+    }
+    .stepmeta span:last-child{color:#9ca09e;font-weight:750;letter-spacing:.08em}
+
+    h1{
+      margin:0;
+      font:500 clamp(38px,4.5vw,58px)/1 "Iowan Old Style",Baskerville,Georgia,serif;
+      letter-spacing:-.05em;
+    }
+    .lead{margin:15px 0 0;color:var(--muted);font-size:15px;line-height:1.65;max-width:650px}
+
+    .voicehint{
+      display:flex;align-items:flex-start;gap:12px;
+      margin-top:20px;
+      padding:13px 15px;
+      border-radius:16px;
+      border:1px solid rgba(201,170,108,.22);
+      background:linear-gradient(135deg,#fbf7ee,#fffdf9);
+      color:#675b48;
+      font-size:12px;
+      line-height:1.5;
+    }
+    .voiceicon{
+      flex:0 0 auto;
+      width:31px;height:31px;border-radius:10px;
+      display:grid;place-items:center;
+      background:linear-gradient(145deg,#17242d,#0f171e);
+      color:#e5ca93;
+      font-size:15px;
+    }
+
+    .formbody{padding:6px clamp(24px,4vw,48px) clamp(28px,4vw,44px)}
+    .sectiontitle{
+      display:flex;align-items:center;gap:12px;
+      margin:24px 0 14px;
+      font-size:12px;
+      font-weight:850;
+      letter-spacing:.10em;
+      text-transform:uppercase;
+      color:#4d5354;
+    }
+    .sectiontitle span{
+      display:grid;place-items:center;
+      width:28px;height:28px;border-radius:9px;
+      background:#18242d;
+      color:#e6ca92;
+      font-size:11px;
+      letter-spacing:0;
+    }
+    .sectiontitle:after{content:"";height:1px;flex:1;background:linear-gradient(90deg,var(--line),transparent)}
+
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .full{grid-column:1/-1}
+    .field{display:grid;gap:8px}
+    .field label{font-size:12px;font-weight:760;color:#444b4d;padding-left:2px}
+    .field input,.field select{
+      width:100%;
+      min-height:55px;
+      border:1px solid rgba(36,43,47,.11);
+      border-radius:16px;
+      background:rgba(255,255,255,.86);
+      color:var(--ink);
+      padding:13px 15px;
+      font-size:17px;
+      outline:none;
+      box-shadow:0 7px 18px rgba(25,30,33,.025);
+      transition:border-color .2s ease,box-shadow .2s ease,background .2s ease,transform .15s ease;
+    }
+    .field input:hover,.field select:hover{border-color:rgba(201,170,108,.42);background:#fff}
+    .field input:focus,.field select:focus{
+      border-color:var(--gold);
+      background:#fff;
+      box-shadow:0 0 0 4px rgba(201,170,108,.13),0 12px 28px rgba(24,29,32,.055);
+    }
+    .field input::placeholder{color:#b5b8b7}
+
+    .error{
+      margin:0 0 18px;
+      padding:13px 15px;
+      border-radius:16px;
+      background:#fff2f2;
+      border:1px solid #edcece;
+      color:#813535;
+      font-size:13px;
+      line-height:1.5;
+    }
+
+    .actions{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      margin-top:26px;
+      padding-top:22px;
+      border-top:1px solid var(--line);
+    }
+    .privacy{
+      display:flex;align-items:center;gap:8px;
+      color:var(--muted);
+      font-size:11px;
+      line-height:1.45;
+      max-width:330px;
+    }
+    .privacy svg{flex:0 0 auto}
+    .submit{
+      min-width:230px;
+      min-height:54px;
+      border:0;
+      border-radius:16px;
+      padding:14px 20px;
+      display:flex;align-items:center;justify-content:center;gap:10px;
+      color:#fff;
+      background:linear-gradient(135deg,#19262f,#0e161c);
+      font-weight:850;
+      font-size:15px;
+      cursor:pointer;
+      box-shadow:0 14px 30px rgba(14,22,28,.18);
+      transition:transform .18s ease,box-shadow .18s ease;
+    }
+    .submit:hover{transform:translateY(-1px);box-shadow:0 18px 36px rgba(14,22,28,.22)}
+    .submit:active{transform:none}
+    .submit span{color:#d9bd82;font-size:18px}
+
+    .hp{position:absolute;left:-9999px;opacity:0;pointer-events:none}
+
+    .successwrap{padding:clamp(46px,7vw,86px) clamp(28px,6vw,70px);text-align:center}
+    .successmark{
+      width:82px;height:82px;border-radius:26px;
+      display:grid;place-items:center;
+      margin:0 auto 24px;
+      background:linear-gradient(145deg,#17242d,#0e161c);
+      color:#e1c388;
+      font-size:35px;
+      box-shadow:0 18px 45px rgba(16,23,28,.16),inset 0 0 0 1px rgba(255,255,255,.07);
+    }
+    .successwrap h1{font-size:clamp(43px,5vw,62px)}
+    .successwrap p{color:var(--muted);font-size:15px;line-height:1.65}
+    .membernumber{
+      display:inline-flex;align-items:center;gap:10px;
+      margin:10px 0 8px;
+      padding:11px 14px;
+      border-radius:999px;
+      background:#f7f0e3;
+      border:1px solid rgba(201,170,108,.28);
+      color:#6b5834;
+      font-size:12px;
+    }
+    .membernumber strong{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em}
+    .next{
+      display:inline-flex;align-items:center;justify-content:center;
+      min-height:52px;
+      margin-top:18px;
+      padding:13px 19px;
+      border-radius:15px;
+      background:#18242d;
+      color:#fff;
+      text-decoration:none;
+      font-weight:850;
+      box-shadow:0 14px 30px rgba(14,22,28,.14);
+    }
+
+    .legalrow{
+      display:flex;justify-content:center;gap:15px;flex-wrap:wrap;
+      margin-top:18px;
+      font-size:10px;
+      color:#989c9a;
+    }
+    .legalrow a{color:inherit;text-decoration:none}
+    .legalrow a:hover{color:#6a5a3d}
+
+    @media(max-width:1050px){
+      .page{grid-template-columns:1fr;padding:14px}
+      .brandpanel{display:none}
+      .formside{padding:20px}
+      .mobilebrand{display:flex}
+      .formcard{max-width:820px}
+    }
+    @media(max-width:680px){
+      .page{padding:0}
+      .formside{padding:0;display:block}
+      .formcard{min-height:100vh;min-height:100dvh;border-radius:0;border:0;box-shadow:none}
+      .cardhead{padding:24px 20px 16px}
+      .formbody{padding:4px 20px 30px}
+      .grid{grid-template-columns:1fr}
+      .full{grid-column:auto}
+      .actions{align-items:stretch;flex-direction:column-reverse}
+      .submit{width:100%;min-width:0}
+      .privacy{max-width:none}
+      .voicehint{font-size:11px}
+    }
   </style>
 </head>
-<body><div class="wrap"><div class="brand"><span>A+</span>A+ ESTHETIC</div><div class="card">
-{% if completed %}
-  <div class="success"><div class="check">✓</div><h1>Vielen Dank</h1><p>Ihre Daten wurden gespeichert.</p>{% if member_number %}<p class="muted">Kundennummer: <strong>{{ member_number }}</strong></p>{% endif %}<p class="muted">Bitte geben Sie das iPad jetzt zurück.</p>{% if public_intake %}<a class="next" href="{% url 'office_intake' %}">Nächsten Kunden erfassen</a>{% endif %}</div>
-{% elif expired %}
-  <div class="success"><h1>Link abgelaufen</h1><p class="muted">Bitte wenden Sie sich an den Empfang.</p></div>
-{% else %}
-  <h1>Ihre Daten</h1><p class="muted">Bitte prüfen Sie die Angaben sorgfältig. Für Texteingaben können Sie auch die Diktierfunktion der iPad Tastatur verwenden.</p>
-  {% if error %}<div class="error">{{ error }}</div>{% endif %}
-  <form method="post">{% csrf_token %}<div class="hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div><div class="grid">
-    <label>Anrede<select name="salutation"><option value="">Bitte wählen</option><option value="frau">Frau</option><option value="herr">Herr</option><option value="divers">Divers</option></select></label>
-    <div></div>
-    <label>Vorname<input name="first_name" autocomplete="given-name" required></label>
-    <label>Nachname<input name="last_name" autocomplete="family-name" required></label>
-    <label class="full">E Mail<input type="email" name="email" autocomplete="email" required></label>
-    <label class="full">Telefon<input type="tel" name="phone" autocomplete="tel" required></label>
-    <label class="full">Straße und Hausnummer<input name="street" autocomplete="street-address" required></label>
-    <label>PLZ<input name="postal_code" inputmode="numeric" autocomplete="postal-code" required></label>
-    <label>Ort<input name="city" autocomplete="address-level2" required></label>
-  </div><button type="submit">Daten speichern</button></form>
-{% endif %}
-</div></div></body></html>
+<body>
+<div class="page">
+  <aside class="brandpanel">
+    <div class="brandtop">
+      <img src="{% static 'assets/logo.svg' %}" alt="A+ Esthetic">
+      <div><b>A+ ESTHETIC</b><small>FRANKFURT</small></div>
+    </div>
+
+    <div class="brandcopy">
+      <div class="eyebrow">Willkommen</div>
+      <h2>Schön, dass<br>Sie <em>da sind.</em></h2>
+      <p>Ihre Angaben helfen uns, Ihren Besuch persönlich und reibungslos vorzubereiten. Die Aufnahme dauert nur wenige Minuten.</p>
+      <div class="trustrow">
+        <div class="trust"><i></i> Vertrauliche Behandlung</div>
+        <div class="trust"><i></i> Sichere Speicherung</div>
+        <div class="trust"><i></i> Schnelle Aufnahme</div>
+      </div>
+    </div>
+
+    <div class="brandfoot">
+      <span>A+ Esthetic Frankfurt</span>
+      <span>Private Customer Intake</span>
+    </div>
+  </aside>
+
+  <main class="formside">
+    <section class="formcard">
+      {% if completed %}
+        <div class="successwrap">
+          <div class="mobilebrand">
+            <img src="{% static 'assets/logo.svg' %}" alt="A+ Esthetic">
+            <div><b>A+ ESTHETIC</b><small>FRANKFURT</small></div>
+          </div>
+          <div class="successmark">✓</div>
+          <div class="stepmeta" style="justify-content:center"><span>Aufnahme abgeschlossen</span></div>
+          <h1>Vielen Dank.</h1>
+          <p>Ihre Daten wurden sicher gespeichert und sind jetzt in Ihrer Kundenakte verfügbar.</p>
+          {% if member_number %}<div class="membernumber">Ihre Kundennummer <strong>{{ member_number }}</strong></div>{% endif %}
+          <p>Bitte geben Sie das iPad jetzt wieder an unser Team zurück.</p>
+          {% if public_intake %}<a class="next" href="{% url 'office_intake' %}">Nächsten Kunden erfassen</a>{% endif %}
+        </div>
+
+      {% elif expired %}
+        <div class="successwrap">
+          <div class="successmark">!</div>
+          <h1>Link abgelaufen.</h1>
+          <p>Bitte wenden Sie sich kurz an unser Team am Empfang.</p>
+        </div>
+
+      {% else %}
+        <div class="cardhead">
+          <div class="mobilebrand">
+            <img src="{% static 'assets/logo.svg' %}" alt="A+ Esthetic">
+            <div><b>A+ ESTHETIC</b><small>FRANKFURT</small></div>
+          </div>
+          <div class="stepmeta"><span>Persönliche Daten</span><span>ca. 2 Minuten</span></div>
+          <h1>Ihre Angaben</h1>
+          <p class="lead">Bitte tragen Sie Ihre aktuellen Kontaktdaten ein. Bereits vorhandene Kunden werden automatisch erkannt und nicht doppelt angelegt.</p>
+          <div class="voicehint">
+            <div class="voiceicon">⌁</div>
+            <div><strong>Lieber sprechen als tippen?</strong><br>Sie können jedes Feld über die Mikrofontaste der iPad Tastatur diktieren.</div>
+          </div>
+        </div>
+
+        <div class="formbody">
+          {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+          <form method="post" autocomplete="on">
+            {% csrf_token %}
+            <div class="hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+
+            <div class="sectiontitle"><span>01</span> Persönliche Angaben</div>
+            <div class="grid">
+              <div class="field">
+                <label for="salutation">Anrede</label>
+                <select id="salutation" name="salutation">
+                  <option value="">Bitte wählen</option>
+                  <option value="frau" {% if request.POST.salutation == "frau" %}selected{% endif %}>Frau</option>
+                  <option value="herr" {% if request.POST.salutation == "herr" %}selected{% endif %}>Herr</option>
+                  <option value="divers" {% if request.POST.salutation == "divers" %}selected{% endif %}>Divers</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="phone">Telefon</label>
+                <input id="phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="+49" value="{{ request.POST.phone }}" required>
+              </div>
+              <div class="field">
+                <label for="first_name">Vorname</label>
+                <input id="first_name" name="first_name" autocomplete="given-name" placeholder="Vorname" value="{{ request.POST.first_name }}" required>
+              </div>
+              <div class="field">
+                <label for="last_name">Nachname</label>
+                <input id="last_name" name="last_name" autocomplete="family-name" placeholder="Nachname" value="{{ request.POST.last_name }}" required>
+              </div>
+              <div class="field full">
+                <label for="email">E Mail Adresse</label>
+                <input id="email" type="email" name="email" autocomplete="email" inputmode="email" placeholder="name@beispiel.de" value="{{ request.POST.email }}" required>
+              </div>
+            </div>
+
+            <div class="sectiontitle"><span>02</span> Adresse</div>
+            <div class="grid">
+              <div class="field full">
+                <label for="street">Straße und Hausnummer</label>
+                <input id="street" name="street" autocomplete="street-address" placeholder="Straße und Hausnummer" value="{{ request.POST.street }}" required>
+              </div>
+              <div class="field">
+                <label for="postal_code">PLZ</label>
+                <input id="postal_code" name="postal_code" inputmode="numeric" autocomplete="postal-code" placeholder="60313" value="{{ request.POST.postal_code }}" required>
+              </div>
+              <div class="field">
+                <label for="city">Ort</label>
+                <input id="city" name="city" autocomplete="address-level2" placeholder="Frankfurt am Main" value="{{ request.POST.city }}" required>
+              </div>
+            </div>
+
+            <div class="actions">
+              <div class="privacy">
+                <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Z"/></svg>
+                <span>Ihre Angaben werden vertraulich verarbeitet und ausschließlich für Ihre Kundenakte verwendet.</span>
+              </div>
+              <button class="submit" type="submit">Daten sicher speichern <span>→</span></button>
+            </div>
+          </form>
+
+          <div class="legalrow">
+            <a href="{% url 'datenschutz' %}">Datenschutz</a>
+            <a href="{% url 'impressum' %}">Impressum</a>
+          </div>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+</div>
+</body>
+</html>
