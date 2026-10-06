@@ -6,6 +6,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from allauth.account.models import EmailAddress
 
 from .models import CheckInSession, Invoice, InvoiceSettings, Service, UserProfile
 
@@ -28,6 +29,48 @@ class OfficeInvoicingTests(TestCase):
             is_staff=True,
         )
         UserProfile.objects.create(user=self.staff, role="admin")
+
+    def test_office_staff_login_bypasses_customer_email_verification(self):
+        EmailAddress.objects.create(
+            user=self.staff,
+            email=self.staff.email,
+            primary=True,
+            verified=False,
+        )
+        response = self.client.get(reverse("office_dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/office/admin/login/", response.url)
+
+        response = self.client.post(
+            reverse("office_staff_login"),
+            {
+                "email": self.staff.email,
+                "password": "StrongTestPassword123!",
+                "next": reverse("office_dashboard"),
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("office_dashboard"))
+        response = self.client.get(reverse("office_dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "A+ ESTHETIC OFFICE")
+
+    def test_customer_cannot_use_office_staff_login(self):
+        customer = User.objects.create_user(
+            username="ordinary-customer",
+            email="ordinary@example.com",
+            password="StrongCustomerPassword123!",
+        )
+        UserProfile.objects.create(user=customer, role="customer")
+        response = self.client.post(
+            reverse("office_staff_login"),
+            {
+                "email": customer.email,
+                "password": "StrongCustomerPassword123!",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "keinen Zugriff")
 
     def test_ipad_checkin_creates_customer_and_address(self):
         session = CheckInSession.objects.create(
