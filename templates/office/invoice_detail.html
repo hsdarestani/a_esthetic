@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rechnung · A+ Esthetic</title>
+<style>:root{--bg:#f6f2ec;--ink:#1e2529;--gold:#b69862;--line:#e2d8ca}.wrap{max-width:850px;margin:auto;padding:28px;font-family:Arial,sans-serif;color:var(--ink)}body{margin:0;background:var(--bg)}.card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px;margin-bottom:16px}.top{display:flex;justify-content:space-between;gap:14px;align-items:center}.muted{color:#6e7376}.btn{display:inline-block;text-decoration:none;border:0;border-radius:12px;padding:12px 16px;font-weight:700;background:var(--ink);color:#fff;cursor:pointer}.gold{background:var(--gold)}.warn{background:#fff7e8;border:1px solid #ead3a2;padding:12px;border-radius:12px;margin:10px 0}.row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eee}.row:last-child{border-bottom:0}</style></head>
+<body><div class="wrap"><div class="top"><h1>{{ invoice.number|default:"Rechnungsentwurf" }}</h1><a class="btn" href="{% url 'office_dashboard' %}">Zurück</a></div>
+<div class="card"><h3>{{ invoice.customer_name }}</h3><div>{{ invoice.customer_street }}</div><div>{{ invoice.customer_postal_code }} {{ invoice.customer_city }}</div><div class="muted">{{ invoice.customer_email }}</div><p>Leistungsdatum: <strong>{{ invoice.service_date|date:"d.m.Y" }}</strong></p></div>
+<div class="card"><h3>Positionen</h3>{% for item in invoice.items.all %}<div class="row"><div><strong>{{ item.description }}</strong><div class="muted">MwSt {{ item.vat_rate }}%</div></div><strong>{{ item.gross_cents }} Cent</strong></div>{% endfor %}
+<div class="row"><span>Netto</span><strong>{{ invoice.subtotal_cents }} Cent</strong></div><div class="row"><span>MwSt</span><strong>{{ invoice.tax_cents }} Cent</strong></div><div class="row"><span>Gesamt</span><strong>{{ invoice.total_cents }} Cent</strong></div></div>
+{% if invoice.status == "draft" %}
+  {% if missing_address %}<div class="warn">Die Kundenadresse fehlt noch. Vor dem Ausstellen bitte ergänzen.</div>{% endif %}
+  {% if not invoice_settings.ready_for_issue %}<div class="warn">Steuernummer oder USt IdNr fehlt noch in den Rechnungseinstellungen.</div>{% endif %}
+  <div class="top"><a class="btn" target="_blank" href="{% url 'office_invoice_pdf' invoice.id %}">PDF Entwurf</a>
+  <form method="post" action="{% url 'office_invoice_finalize' invoice.id %}">{% csrf_token %}<button class="btn gold" type="submit" {% if missing_address or not invoice_settings.ready_for_issue %}disabled{% endif %}>Rechnung endgültig ausstellen</button></form></div>
+{% else %}<a class="btn gold" target="_blank" href="{% url 'office_invoice_pdf' invoice.id %}">PDF öffnen</a>{% endif %}
+</div></body></html>
