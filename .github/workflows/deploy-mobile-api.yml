@@ -11,7 +11,7 @@ on:
       - "p2_app/**"
       - "p3_app/**"
       - "config/**"
-      - "templates/legal.html"
+      - "templates/**"
       - "requirements.txt"
       - ".github/workflows/deploy-mobile-api.yml"
 
