@@ -99,10 +99,21 @@
     host.querySelector('[data-signup]').addEventListener('submit', async event => {
       event.preventDefault();
       const fd = new FormData(event.currentTarget);
+      const form = event.currentTarget;
+      form.querySelector('[data-signup-inline-error]')?.remove();
+      const passwordConfirm = form.querySelector('input[name="password2"]');
       if (fd.get('password') !== fd.get('password2')) {
-        return showSignup('Die Passwörter stimmen nicht überein.');
+        const box = document.createElement('div');
+        box.className = 'notice error';
+        box.dataset.signupInlineError = '1';
+        box.textContent = 'Die Passwörter stimmen nicht überein.';
+        form.querySelector('button[type="submit"]')?.insertAdjacentElement('beforebegin', box);
+        passwordConfirm?.setCustomValidity('Die Passwörter stimmen nicht überein.');
+        passwordConfirm?.focus();
+        return;
       }
-      const submit = event.currentTarget.querySelector('button[type=submit]');
+      passwordConfirm?.setCustomValidity('');
+      const submit = form.querySelector('button[type=submit]');
       submit.disabled = true;
       submit.textContent = 'Konto wird erstellt …';
       try {
@@ -124,7 +135,14 @@
           : '';
         await showOnboarding(note);
       } catch (error) {
-        await showSignup(errorText(error));
+        submit.disabled = false;
+        submit.textContent = 'Konto erstellen';
+        form.querySelector('[data-signup-inline-error]')?.remove();
+        const box = document.createElement('div');
+        box.className = 'notice error';
+        box.dataset.signupInlineError = '1';
+        box.textContent = errorText(error);
+        submit.insertAdjacentElement('beforebegin', box);
       }
     });
   }
