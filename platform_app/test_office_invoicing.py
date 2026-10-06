@@ -55,6 +55,33 @@ class OfficeInvoicingTests(TestCase):
         self.assertEqual(session.customer_id, user.pk)
         self.assertIsNotNone(session.completed_at)
 
+
+    def test_public_ipad_intake_needs_no_login(self):
+        response = self.client.get(reverse("office_intake"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ihre Daten")
+        self.assertEqual(response.headers.get("X-Robots-Tag"), "noindex, nofollow, noarchive")
+
+        response = self.client.post(
+            reverse("office_intake"),
+            {
+                "salutation": "herr",
+                "first_name": "Ali",
+                "last_name": "Beispiel",
+                "email": "ali@example.com",
+                "phone": "+49 171 1112233",
+                "street": "Zeil 10",
+                "postal_code": "60313",
+                "city": "Frankfurt am Main",
+                "website": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Vielen Dank")
+        user = User.objects.get(email="ali@example.com")
+        self.assertEqual(user.profile.street, "Zeil 10")
+        self.assertTrue(hasattr(user, "member_account"))
+
     def test_invoice_can_be_issued_to_pdf(self):
         customer = User.objects.create_user(
             username="customer",
