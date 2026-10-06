@@ -6,10 +6,13 @@ import socket
 import uuid
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from django.contrib.auth.models import User
+from django.core import signing
 from django.http import HttpResponse, JsonResponse
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
@@ -122,6 +125,17 @@ def _filename_from_headers(headers, fallback="dokument"):
     return Path(value or fallback).name[:180]
 
 
+def _signed_record_url(request, user, record_id, download=False):
+    token = signing.dumps(
+        {"uid": user.pk, "record_id": str(record_id)},
+        salt="aesthetic-patient-record-file",
+        compress=True,
+    )
+    path = reverse("mobile_patient_record_signed_file", kwargs={"record_id": record_id})
+    query = urlencode({"token": token, "download": "1" if download else "0"})
+    return request.build_absolute_uri(f"{path}?{query}")
+
+
 @csrf_exempt
 @require_http_methods(["GET"])
 def mobile_patient_records(request):
@@ -136,12 +150,20 @@ def mobile_patient_records(request):
     )
     if not payload:
         return _error_from_book(book_error, status)
+    records = []
+    for raw in payload.get("records", []):
+        item = dict(raw)
+        record_id = item.get("id")
+        if item.get("has_file") and record_id:
+            item["open_url"] = _signed_record_url(request, user, record_id, download=False)
+            item["download_url"] = _signed_record_url(request, user, record_id, download=True)
+        records.append(item)
     return JsonResponse({
         "ok": True,
         "health_data_consent": profile.health_data_consent,
         "patient_found": payload.get("patient_found", False),
         "patient": payload.get("customer"),
-        "records": payload.get("records", []),
+        "records": records,
         "upload": {
             "max_bytes": MAX_CUSTOMER_UPLOAD_BYTES,
             "max_mb": MAX_CUSTOMER_UPLOAD_BYTES // (1024 * 1024),
@@ -247,6 +269,37 @@ def mobile_patient_record_upload(request):
         send_push=False,
     )
     return JsonResponse({"ok": True, "record_id": result.get("record_id"), "created": result.get("created", True)}, status=201)
+
+
+@require_http_methods(["GET"])
+def mobile_patient_record_signed_file(request, record_id):
+    token = str(request.GET.get("token") or "")
+    try:
+        data = signing.loads(token, salt="aesthetic-patient-record-file", max_age=10 * 60)
+    except signing.BadSignature:
+        return JsonResponse({"ok": False, "error": "invalid_or_expired_file_link"}, status=403)
+    if str(data.get("record_id") or "") != str(record_id):
+        return JsonResponse({"ok": False, "error": "invalid_file_link"}, status=403)
+    user = User.objects.filter(pk=data.get("uid"), is_active=True).first()
+    if not user:
+        return JsonResponse({"ok": False, "error": "account_not_found"}, status=404)
+
+    download = request.GET.get("download") == "1"
+    status, headers, content = _book_binary(
+        {**_identity(user), "record_id": str(record_id), "download": download},
+    )
+    if not (200 <= status < 300):
+        return JsonResponse(
+            {"ok": False, "error": "record_not_found" if status == 404 else "patient_record_service_unavailable"},
+            status=404 if status == 404 else 503,
+        )
+    content_type = str(headers.get("Content-Type") or "application/octet-stream")
+    filename = _filename_from_headers(headers, str(record_id))
+    response = HttpResponse(content, content_type=content_type)
+    response["Content-Disposition"] = f'{"attachment" if download else "inline"}; filename="{filename}"'
+    response["Cache-Control"] = "private, no-store, max-age=0"
+    response["Pragma"] = "no-cache"
+    return response
 
 
 @csrf_exempt
