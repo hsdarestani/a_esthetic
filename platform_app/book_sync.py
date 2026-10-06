@@ -46,6 +46,8 @@ def _headers():
 
 
 def sync_customer_to_book(user):
+    if not _sync_token():
+        return False, {"error": "sync_not_configured"}
     profile = getattr(user, "profile", None)
     payload = {
         "email": user.email,
@@ -72,6 +74,8 @@ def sync_service_catalog_from_book():
     Billing-specific numeric gross prices and VAT remain local and are never
     overwritten by the booking catalog.
     """
+    if not _sync_token():
+        return {"ok": False, "updated": 0, "error": "sync_not_configured"}
     try:
         response = requests.get(
             BOOK_BILLING_CATALOG_URL,
