@@ -15,6 +15,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
+from .book_sync import sync_customer_to_book, sync_service_catalog_from_book
 from .models import (
     AuditLog,
     CheckInSession,
@@ -327,12 +328,13 @@ def office_public_intake(request):
                     profile.save()
 
                     member, _ = MemberAccount.objects.get_or_create(user=user)
+                    book_synced, _ = sync_customer_to_book(user)
                     AuditLog.objects.create(
                         actor=None,
                         action="iPad Kundenaufnahme abgeschlossen",
                         entity_type="User",
                         entity_id=str(user.pk),
-                        metadata={"created": created, "member_number": member.member_number, "source": "office_public_ipad"},
+                        metadata={"created": created, "member_number": member.member_number, "source": "office_public_ipad", "book_synced": book_synced},
                         ip_address=request.META.get("REMOTE_ADDR"),
                     )
                     response = render(request, "office/checkin.html", {
@@ -355,6 +357,7 @@ def office_dashboard(request):
     if not _office_allowed(request.user):
         return HttpResponseForbidden("Kein Zugriff.")
 
+    sync_service_catalog_from_book()
     notice = ""
     error = ""
     if request.method == "POST":
@@ -451,6 +454,7 @@ def office_settings(request):
     if not _office_settings_allowed(request.user):
         return HttpResponseForbidden("Kein Zugriff.")
 
+    sync_service_catalog_from_book()
     settings, _ = InvoiceSettings.objects.get_or_create(pk=1)
     services = list(Service.objects.filter(active=True).order_by("name"))
     error = ""
@@ -621,6 +625,7 @@ def office_checkin(request, token):
                 profile.save()
 
                 member, _ = MemberAccount.objects.get_or_create(user=user)
+                sync_customer_to_book(user)
                 session.customer = user
                 session.completed_at = timezone.now()
                 session.save(update_fields=["customer", "completed_at"])
