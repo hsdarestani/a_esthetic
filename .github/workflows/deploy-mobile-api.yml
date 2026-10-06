@@ -50,6 +50,8 @@ jobs:
           rm -rf /tmp/aesthetic-mobile-package
           mkdir -p /tmp/aesthetic-mobile-package
           cp -a config platform_app p0_app p1_app p2_app p3_app templates static /tmp/aesthetic-mobile-package/
+          mkdir -p /tmp/aesthetic-mobile-package/static/assets
+          cp -a assets/. /tmp/aesthetic-mobile-package/static/assets/
           cp manage.py requirements.txt /tmp/aesthetic-mobile-package/
           tar -C /tmp/aesthetic-mobile-package -czf a-esthetic-mobile-package.tar.gz .
 
