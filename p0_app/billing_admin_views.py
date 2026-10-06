@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from platform_app.book_sync import sync_service_catalog_from_book
 from platform_app.models import (
     AuditLog,
     Invoice,
@@ -92,6 +93,7 @@ def billing_overview(request):
     if error:
         return error
 
+    sync_service_catalog_from_book()
     settings, _ = InvoiceSettings.objects.get_or_create(pk=1)
     services = Service.objects.filter(active=True).order_by("name")
     invoices = Invoice.objects.select_related("user").order_by("-created_at")[:50]
