@@ -2,6 +2,7 @@
   'use strict';
 
   const API = '/api/mobile/admin/book';
+  const BILLING_API = '/api/mobile/admin/billing';
   const state = {
     tab: 'dashboard',
     date: new Date().toISOString().slice(0, 10),
@@ -48,10 +49,43 @@
     }
   }
 
+  async function billingApi(path = '/', options = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 16000);
+    const headers = { ...(options.headers || {}), Accept: 'application/json' };
+    if (token()) headers.Authorization = `Bearer ${token()}`;
+    if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+    try {
+      const response = await fetch(`${BILLING_API}${path}`, { ...options, headers, signal: controller.signal, cache:'no-store' });
+      let body = {};
+      try { body = await response.json(); } catch (_) {}
+      if (!response.ok || body.ok === false) {
+        const labels = {
+          tax_data_missing:'Steuernummer oder USt IdNr fehlt.',
+          customer_address_missing:'Die Kundenadresse ist noch unvollständig.',
+          service_billing_not_configured:'Für diese Behandlung fehlen Preis oder MwSt.',
+          price_and_vat_required:'Preis und MwSt müssen zusammen eingetragen werden.',
+          invalid_price_or_vat:'Preis oder MwSt ist ungültig.',
+          customer_service_date_required:'Kunde, Behandlung und Leistungsdatum sind erforderlich.'
+        };
+        const code = body.error || '';
+        const error = new Error(labels[code] || body.message || code || `HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      return obj(body);
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('Rechnungen antworten nicht. Bitte erneut versuchen.');
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   function tabs() {
     const items = [
       ['dashboard','Übersicht'], ['calendar','Kalender'], ['bookings','Buchungen'],
-      ['customers','Kunden'], ['services','Behandlungen'], ['settings','Einstellungen']
+      ['customers','Kunden'], ['services','Behandlungen'], ['invoices','Rechnungen'], ['settings','Einstellungen']
     ];
     return `<div class="ba-tabs">${items.map(([key,label]) =>
       `<button type="button" class="ba-tab ${state.tab === key ? 'active' : ''}" data-ba-tab="${key}">${label}</button>`
@@ -247,6 +281,103 @@
     } catch (error) { target.innerHTML = failure(error); }
   }
 
+  function billingInvoiceCard(item) {
+    const draft = item.status === 'draft';
+    return `<div class="ba-booking ba-invoice-card">
+      <div class="ba-booking-top">
+        <strong>${esc(item.number || 'Entwurf')} · ${esc(item.customer_name || 'Kunde')}</strong>
+        <span class="ba-badge ${draft ? '' : 'completed'}">${esc(item.status_label || item.status || '')}</span>
+      </div>
+      <small>${esc(item.service_date || '')} · ${esc(item.total || '0,00')} €</small>
+      ${draft ? `<div class="ba-actions" style="margin-top:9px"><button type="button" class="ba-btn primary" data-ba-finalize-invoice="${esc(item.id)}">Endgültig ausstellen</button></div>` : ''}
+    </div>`;
+  }
+
+  async function renderInvoices(target) {
+    target.innerHTML = loading();
+    try {
+      const data = await billingApi('/');
+      const stats = obj(data.stats);
+      const settings = obj(data.settings);
+      const services = list(data.services);
+      const customers = list(data.customers);
+      const invoices = list(data.invoices);
+      state.cache.billing = data;
+      const configured = services.filter(s => s.configured);
+
+      target.innerHTML = `
+        <section class="ba-billing-hero">
+          <div><small>A+ ESTHETIC · BILLING</small><h2>Rechnungen</h2><p>Kunden, Preise, MwSt und PDF Rechnungen direkt aus derselben A+ Datenbank.</p></div>
+          <span class="ba-billing-ready ${settings.ready_for_issue ? 'ready' : ''}">${settings.ready_for_issue ? 'Bereit' : 'Steuerdaten fehlen'}</span>
+        </section>
+
+        <div class="ba-stats">
+          <div class="ba-stat"><b>${Number(stats.issued || 0)}</b><span>Ausgestellt</span></div>
+          <div class="ba-stat"><b>${Number(stats.drafts || 0)}</b><span>Entwürfe</span></div>
+          <div class="ba-stat"><b>${Number(stats.configured_services || 0)}/${Number(stats.active_services || 0)}</b><span>Preise bereit</span></div>
+          <div class="ba-stat"><b>${esc(settings.invoice_prefix || 'RE')}</b><span>Nächste Nr. ${Number(settings.next_sequence || 1)}</span></div>
+        </div>
+
+        <section class="ba-card">
+          <h3>Neue Rechnung</h3>
+          <form data-ba-new-invoice style="display:grid;gap:9px">
+            <label class="ba-field">Kunde
+              <select name="customer_id" required>
+                <option value="">Bitte wählen</option>
+                ${customers.map(c => `<option value="${esc(c.id)}">${esc(c.name)} · ${esc(c.email || c.member_number || '')}${c.address_complete ? '' : ' · Adresse fehlt'}</option>`).join('')}
+              </select>
+            </label>
+            <div class="ba-toolbar">
+              <label class="ba-field">Leistungsdatum<input name="service_date" inputmode="numeric" placeholder="TT.MM.JJJJ" maxlength="10" required></label>
+              <label class="ba-field">Behandlung
+                <select name="service_id" required>
+                  <option value="">Bitte wählen</option>
+                  ${services.map(s => `<option value="${esc(s.id)}" ${s.configured ? '' : 'disabled'}>${esc(s.name)} · ${s.configured ? esc(s.price_label || '') : 'Preis/MwSt offen'}</option>`).join('')}
+                </select>
+              </label>
+            </div>
+            <button class="ba-btn primary" type="submit">Rechnungsentwurf erstellen</button>
+          </form>
+        </section>
+
+        <section class="ba-card">
+          <div class="ba-booking-top"><div><h3 style="margin:0">Rechnungsdaten</h3><div class="ba-muted">Steuerdaten, Bank und Nummerierung</div></div><button type="button" class="ba-btn" data-ba-billing-settings-toggle>Bearbeiten</button></div>
+          <form data-ba-billing-settings hidden style="display:grid;gap:8px;margin-top:12px">
+            <label class="ba-field">Steuernummer<input name="tax_number" value="${esc(settings.tax_number || '')}"></label>
+            <label class="ba-field">USt IdNr<input name="vat_id" value="${esc(settings.vat_id || '')}"></label>
+            <label class="ba-field">Bank<input name="bank_name" value="${esc(settings.bank_name || '')}"></label>
+            <label class="ba-field">IBAN<input name="iban" value="${esc(settings.iban || '')}"></label>
+            <div class="ba-toolbar">
+              <label class="ba-field">BIC<input name="bic" value="${esc(settings.bic || '')}"></label>
+              <label class="ba-field">Präfix<input name="invoice_prefix" value="${esc(settings.invoice_prefix || 'RE')}"></label>
+            </div>
+            <label class="ba-field">Nächste laufende Nummer<input type="number" min="1" name="next_sequence" value="${Number(settings.next_sequence || 1)}"></label>
+            <button class="ba-btn primary" type="submit">Rechnungsdaten speichern</button>
+          </form>
+        </section>
+
+        <section class="ba-card">
+          <h3>Preise & MwSt</h3>
+          <div class="ba-muted" style="margin-bottom:10px">Bruttopreis und MwSt werden in der A+ App Datenbank gespeichert.</div>
+          <div class="ba-list">
+            ${services.length ? services.map(s => `<form class="ba-booking" data-ba-billing-service="${esc(s.id)}">
+              <div class="ba-booking-top"><strong>${esc(s.name)}</strong><span class="ba-badge ${s.configured ? 'completed' : ''}">${s.configured ? 'Bereit' : 'Offen'}</span></div>
+              <div class="ba-toolbar" style="margin-top:8px">
+                <label class="ba-field">Brutto €<input name="price" inputmode="decimal" value="${esc(s.price_input || '')}" placeholder="119,00"></label>
+                <label class="ba-field">MwSt %<input name="vat_rate" inputmode="decimal" value="${esc(s.vat_rate || '')}" placeholder="19"></label>
+              </div>
+              <button class="ba-btn" style="margin-top:8px" type="submit">Speichern</button>
+            </form>`).join('') : '<div class="ba-empty">Keine Behandlungen.</div>'}
+          </div>
+        </section>
+
+        <section class="ba-card">
+          <h3>Letzte Rechnungen</h3>
+          <div class="ba-list">${invoices.length ? invoices.map(billingInvoiceCard).join('') : '<div class="ba-empty">Noch keine Rechnungen.</div>'}</div>
+        </section>`;
+    } catch (error) { target.innerHTML = failure(error); }
+  }
+
   async function renderSettings(target) {
     target.innerHTML = loading();
     try {
@@ -268,11 +399,13 @@
     if (state.tab === 'bookings') return renderBookings(target);
     if (state.tab === 'customers') return renderCustomers(target);
     if (state.tab === 'services') return renderServices(target);
+    if (state.tab === 'invoices') return renderInvoices(target);
     if (state.tab === 'settings') return renderSettings(target);
   }
 
-  async function openBookAdmin() {
+  async function openBookAdmin(initialTab) {
     const target = content(); if (!target) return;
+    if (initialTab) state.tab = initialTab;
     closeSheet(); target.innerHTML = shell(); await renderTab();
   }
 
@@ -305,6 +438,18 @@
     const customer = event.target.closest('[data-ba-customer]');
     if (customer) { await renderCustomerDetail(view(), customer.dataset.baCustomer); return; }
     if (event.target.closest('[data-ba-back-customers]')) { await renderCustomers(view()); return; }
+    if (event.target.closest('[data-ba-billing-settings-toggle]')) {
+      const form = document.querySelector('[data-ba-billing-settings]');
+      if (form) form.hidden = !form.hidden;
+      return;
+    }
+    const finalize = event.target.closest('[data-ba-finalize-invoice]');
+    if (finalize) {
+      if (!confirm('Rechnung endgültig ausstellen? Die Rechnungsnummer wird vergeben.')) return;
+      try { await billingApi(`/invoices/${finalize.dataset.baFinalizeInvoice}/finalize/`, {method:'POST',body:'{}'}); await renderInvoices(view()); }
+      catch(e) { alert(e.message); }
+      return;
+    }
     const delAppt = event.target.closest('[data-ba-delete-appointment]');
     if (delAppt) { if (!confirm('Termin wirklich löschen?')) return; await api(`/appointments/${delAppt.dataset.baDeleteAppointment}/`, { method:'POST', body:JSON.stringify({action:'delete'}) }); closeSheet(); await renderTab(); return; }
     const delBlock = event.target.closest('[data-ba-delete-block]');
@@ -325,6 +470,39 @@
       try { await api('/blocks/', {method:'POST',body:JSON.stringify({staff_id:Number(state.staff),date:state.date,start:fd.get('start'),end:fd.get('end'),kind:fd.get('kind'),text:fd.get('text')})}); await renderCalendar(view()); } catch(e) { alert(e.message); }
       return;
     }
+    if (event.target.matches('[data-ba-new-invoice]')) {
+      event.preventDefault();
+      const fd = new FormData(event.target);
+      try {
+        await billingApi('/invoices/', {method:'POST',body:JSON.stringify({customer_id:Number(fd.get('customer_id')),service_id:Number(fd.get('service_id')),service_date:fd.get('service_date')})});
+        await renderInvoices(view());
+      } catch(e) { alert(e.message); }
+      return;
+    }
+    if (event.target.matches('[data-ba-billing-settings]')) {
+      event.preventDefault();
+      const fd = new FormData(event.target);
+      const current = obj(state.cache.billing?.settings);
+      try {
+        await billingApi('/settings/', {method:'POST',body:JSON.stringify({
+          company_name:current.company_name,street:current.street,postal_code:current.postal_code,city:current.city,email:current.email,phone:current.phone,
+          tax_number:fd.get('tax_number'),vat_id:fd.get('vat_id'),bank_name:fd.get('bank_name'),iban:fd.get('iban'),bic:fd.get('bic'),
+          invoice_prefix:fd.get('invoice_prefix'),next_sequence:Number(fd.get('next_sequence'))
+        })});
+        await renderInvoices(view());
+      } catch(e) { alert(e.message); }
+      return;
+    }
+    const billingService = event.target.closest('[data-ba-billing-service]');
+    if (billingService) {
+      event.preventDefault();
+      const fd = new FormData(billingService);
+      try {
+        await billingApi(`/services/${billingService.dataset.baBillingService}/`, {method:'POST',body:JSON.stringify({price:fd.get('price'),vat_rate:fd.get('vat_rate')})});
+        await renderInvoices(view());
+      } catch(e) { alert(e.message); }
+      return;
+    }
     const service = event.target.closest('[data-ba-service]');
     if (service) {
       event.preventDefault(); const fd = new FormData(service);
@@ -337,5 +515,5 @@
     }
   });
 
-  window.APlusBookAdmin = { open: openBookAdmin };
+  window.APlusBookAdmin = { open: openBookAdmin, openBilling: () => openBookAdmin('invoices') };
 })();
