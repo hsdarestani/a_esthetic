@@ -1,0 +1,133 @@
+{% load static %}
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="theme-color" content="#111920">
+  <title>Rechnungseinstellungen · A+ Esthetic Office</title>
+  <style>
+    :root{
+      --bg:#f4efe7;--paper:#fffdfa;--ink:#182129;--muted:#777d7a;--gold:#bd9d61;--gold2:#ddc187;
+      --line:#e3dbcf;--danger:#994848;--ok:#2f7457;--soft:#f7f3ec;--shadow:0 18px 50px rgba(18,25,30,.07)
+    }
+    *{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#f7f3ed,#eee7dd);color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+    a{text-decoration:none;color:inherit}.wrap{max-width:1180px;margin:auto;padding:26px 18px 60px}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:22px}
+    .brand{display:flex;align-items:center;gap:12px;font-weight:900;letter-spacing:.11em}.logo{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;background:#17222b;color:#fff;font-size:20px}
+    .topactions{display:flex;gap:9px;align-items:center}.btn{border:0;border-radius:13px;padding:12px 15px;font:inherit;font-weight:800;cursor:pointer;background:#17222b;color:#fff}.btn.light{background:#eee8df;color:var(--ink)}.btn.gold{background:var(--gold);color:#fff}
+    .hero{background:linear-gradient(135deg,#111a21,#1d2b34);color:#fff;border-radius:26px;padding:24px;box-shadow:var(--shadow);margin-bottom:18px;position:relative;overflow:hidden}.hero:after{content:"A+";position:absolute;right:18px;bottom:-38px;font:500 120px/1 Georgia,serif;color:rgba(255,255,255,.035)}.hero h1{margin:0 0 8px;font:500 38px/1 Georgia,serif}.hero p{margin:0;color:rgba(255,255,255,.62);max-width:720px;line-height:1.6}
+    .alert,.ok{padding:13px 15px;border-radius:14px;margin:0 0 14px}.alert{background:#fff1f1;border:1px solid #ebcaca;color:var(--danger)}.ok{background:#eef8f1;border:1px solid #cce3d2;color:var(--ok)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{background:var(--paper);border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:var(--shadow)}.full{grid-column:1/-1}.card h2{margin:0 0 5px;font-size:22px}.sub{color:var(--muted);font-size:13px;line-height:1.55;margin-bottom:18px}
+    .fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:grid;gap:6px}.field.full{grid-column:1/-1}.field label{font-size:12px;font-weight:800;color:#464d50}.field input{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:13px;background:#fff;font:inherit;font-size:15px;outline:none}.field input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(189,157,97,.12)}
+    .statusline{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 16px}.pill{padding:7px 10px;border-radius:999px;font-size:11px;font-weight:800;background:#f0ece5;color:#686d6c}.pill.okpill{background:#ebf6ee;color:#2f7457}.pill.warnpill{background:#fff4df;color:#8b6931}
+    .tablewrap{overflow:auto;border:1px solid var(--line);border-radius:16px}.servicetable{width:100%;border-collapse:collapse;min-width:690px}.servicetable th,.servicetable td{padding:12px;border-bottom:1px solid #eee8df;text-align:left}.servicetable th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#7d827f;background:#faf7f2}.servicetable tr:last-child td{border-bottom:0}.service{font-weight:800}.priceinput,.vatinput{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:11px;background:#fff;font:inherit}.vatwrap{display:flex;align-items:center;gap:6px}.vatwrap span{color:var(--muted)}
+    .state{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800}.dot{width:8px;height:8px;border-radius:50%;background:#c5bdb1}.state.yes .dot{background:#3f8b64}.savebar{display:flex;justify-content:flex-end;margin-top:16px}.hint{font-size:11px;color:var(--muted);margin-top:7px}
+    @media(max-width:800px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.fields{grid-template-columns:1fr}.field.full{grid-column:auto}.top{align-items:flex-start;flex-direction:column}.topactions{width:100%;flex-wrap:wrap}.hero h1{font-size:32px}.wrap{padding:16px 12px 40px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><span class="logo">A+</span><span>A+ ESTHETIC OFFICE</span></div>
+    <div class="topactions">
+      <a class="btn light" href="{% url 'office_dashboard' %}">Zurück zum Office</a>
+      <form method="post" action="{% url 'office_staff_logout' %}" style="margin:0">{% csrf_token %}<button class="btn light" type="submit">Abmelden</button></form>
+    </div>
+  </div>
+
+  <section class="hero">
+    <h1>Rechnungseinstellungen</h1>
+    <p>Hier werden Preise, MwSt, Unternehmensdaten und die Rechnungsnummerierung zentral gepflegt.</p>
+  </section>
+
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  {% if notice %}<div class="ok">{{ notice }}</div>{% endif %}
+
+  <div class="grid">
+    <section class="card">
+      <h2>Unternehmensdaten</h2>
+      <div class="sub">Diese Angaben erscheinen auf den Rechnungen.</div>
+      <form method="post">
+        {% csrf_token %}<input type="hidden" name="action" value="invoice_settings">
+        <div class="fields">
+          <div class="field full"><label>Firmenname</label><input name="company_name" value="{{ invoice_settings.company_name }}" required></div>
+          <div class="field full"><label>Straße und Hausnummer</label><input name="street" value="{{ invoice_settings.street }}" required></div>
+          <div class="field"><label>PLZ</label><input name="postal_code" value="{{ invoice_settings.postal_code }}" required></div>
+          <div class="field"><label>Ort</label><input name="city" value="{{ invoice_settings.city }}" required></div>
+          <div class="field"><label>E Mail</label><input type="email" name="email" value="{{ invoice_settings.email }}" required></div>
+          <div class="field"><label>Telefon</label><input name="phone" value="{{ invoice_settings.phone }}" required></div>
+          <div class="field"><label>Steuernummer</label><input name="tax_number" value="{{ invoice_settings.tax_number }}"></div>
+          <div class="field"><label>USt IdNr</label><input name="vat_id" value="{{ invoice_settings.vat_id }}"></div>
+        </div>
+
+        <div class="statusline">
+          {% if invoice_settings.ready_for_issue %}<span class="pill okpill">Rechnungsausstellung freigeschaltet</span>{% else %}<span class="pill warnpill">Steuernummer oder USt IdNr fehlt</span>{% endif %}
+        </div>
+
+        <h2 style="margin-top:22px">Bankverbindung</h2>
+        <div class="sub">Optional. Wird im PDF Footer ausgegeben, sobald Angaben vorhanden sind.</div>
+        <div class="fields">
+          <div class="field full"><label>Bank</label><input name="bank_name" value="{{ invoice_settings.bank_name }}"></div>
+          <div class="field full"><label>IBAN</label><input name="iban" value="{{ invoice_settings.iban }}" autocomplete="off"></div>
+          <div class="field"><label>BIC</label><input name="bic" value="{{ invoice_settings.bic }}" autocomplete="off"></div>
+          <div></div>
+        </div>
+
+        <h2 style="margin-top:22px">Nummerierung</h2>
+        <div class="sub">Die nächste endgültig ausgestellte Rechnung verwendet diese Einstellung.</div>
+        <div class="fields">
+          <div class="field"><label>Präfix</label><input name="invoice_prefix" value="{{ invoice_settings.invoice_prefix }}" maxlength="20" required></div>
+          <div class="field"><label>Nächste laufende Nummer</label><input type="number" min="1" name="next_sequence" value="{{ invoice_settings.next_sequence }}" required></div>
+        </div>
+        <div class="hint">Beispiel: Präfix RE und laufende Nummer 125 erzeugt RE{{ current_year }}-0125.</div>
+        <div class="savebar"><button class="btn gold" type="submit">Rechnungsdaten speichern</button></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Was fehlt noch?</h2>
+      <div class="sub">Eine Rechnung kann nur endgültig ausgestellt werden, wenn die Pflichtdaten vollständig sind.</div>
+      <div class="statusline">
+        {% if invoice_settings.tax_number or invoice_settings.vat_id %}<span class="pill okpill">Steuerdaten vorhanden</span>{% else %}<span class="pill warnpill">Steuerdaten fehlen</span>{% endif %}
+        {% if invoice_settings.company_name and invoice_settings.street and invoice_settings.postal_code and invoice_settings.city %}<span class="pill okpill">Firmenadresse vorhanden</span>{% else %}<span class="pill warnpill">Firmenadresse unvollständig</span>{% endif %}
+      </div>
+      <div class="sub" style="margin-top:18px">Bei den Behandlungen unten müssen Preis und MwSt gemeinsam eingetragen werden. Nicht benötigte Leistungen dürfen leer bleiben.</div>
+      <a class="btn light" href="#services">Zu Preise und MwSt</a>
+    </section>
+
+    <section class="card full" id="services">
+      <h2>Preise und MwSt pro Behandlung</h2>
+      <div class="sub">Preis als Bruttobetrag in Euro eintragen. Die Steuer wird beim Erstellen der Rechnung automatisch in Netto und MwSt aufgeteilt. Die MwSt Werte bitte nicht schätzen, sondern nach den tatsächlichen steuerlichen Vorgaben hinterlegen.</div>
+
+      <form method="post">
+        {% csrf_token %}<input type="hidden" name="action" value="service_prices">
+        <div class="tablewrap">
+          <table class="servicetable">
+            <thead><tr><th>Behandlung</th><th>Bruttopreis</th><th>MwSt</th><th>Status</th></tr></thead>
+            <tbody>
+              {% for row in service_rows %}
+              <tr>
+                <td><div class="service">{{ row.service.name }}</div>{% if row.service.price_label %}<div class="hint">Aktuell: {{ row.service.price_label }}</div>{% endif %}</td>
+                <td><input class="priceinput" name="service_{{ row.service.id }}_price" value="{{ row.price_input }}" inputmode="decimal" placeholder="z. B. 119,00"></td>
+                <td>
+                  <div class="vatwrap">
+                    <input class="vatinput" name="service_{{ row.service.id }}_vat" value="{{ row.vat_input }}" inputmode="decimal" placeholder="19">
+                    <span>%</span>
+                  </div>
+                </td>
+                <td>{% if row.configured %}<span class="state yes"><i class="dot"></i>Bereit</span>{% else %}<span class="state"><i class="dot"></i>Offen</span>{% endif %}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="4">Keine aktiven Behandlungen gefunden.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="savebar"><button class="btn gold" type="submit">Preise und MwSt speichern</button></div>
+      </form>
+    </section>
+  </div>
+</div>
+</body>
+</html>

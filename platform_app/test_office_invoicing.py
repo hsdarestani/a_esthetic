@@ -125,6 +125,89 @@ class OfficeInvoicingTests(TestCase):
         self.assertEqual(user.profile.street, "Zeil 10")
         self.assertTrue(hasattr(user, "member_account"))
 
+    def test_admin_can_save_billing_settings_and_service_tax(self):
+        service = Service.objects.create(
+            name="Hydra Test",
+            slug="hydra-test",
+            category="medical",
+            price_label="",
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            reverse("office_settings"),
+            {
+                "action": "invoice_settings",
+                "company_name": "A+ Esthetic GmbH",
+                "street": "Stiftstraße 14",
+                "postal_code": "60313",
+                "city": "Frankfurt am Main",
+                "email": "info@a-esthetic.de",
+                "phone": "069 71417012",
+                "tax_number": "TEST-99",
+                "vat_id": "",
+                "bank_name": "Testbank",
+                "iban": "DE001234",
+                "bic": "TESTDEFF",
+                "invoice_prefix": "RE",
+                "next_sequence": "42",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        settings = InvoiceSettings.objects.get(pk=1)
+        self.assertEqual(settings.tax_number, "TEST-99")
+        self.assertEqual(settings.next_sequence, 42)
+
+        response = self.client.post(
+            reverse("office_settings"),
+            {
+                "action": "service_prices",
+                f"service_{service.pk}_price": "119,00",
+                f"service_{service.pk}_vat": "19",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        service.refresh_from_db()
+        self.assertEqual(service.price_cents, 11900)
+        self.assertEqual(str(service.vat_rate), "19.00")
+        self.assertEqual(service.price_label, "119,00 €")
+
+    def test_invoice_accepts_german_service_date(self):
+        customer = User.objects.create_user(
+            username="german-date-customer",
+            email="date@example.com",
+            first_name="Datum",
+            last_name="Test",
+        )
+        UserProfile.objects.create(
+            user=customer,
+            role="customer",
+            street="Testweg 1",
+            postal_code="60313",
+            city="Frankfurt am Main",
+        )
+        service = Service.objects.create(
+            name="Datum Behandlung",
+            slug="datum-behandlung",
+            category="medical",
+            price_label="119,00 €",
+            price_cents=11900,
+            vat_rate="19.00",
+        )
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("office_dashboard"),
+            {
+                "action": "new_invoice",
+                "customer_id": customer.pk,
+                "service_id": service.pk,
+                "service_date": "06.10.2026",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        invoice = Invoice.objects.get(user=customer)
+        self.assertEqual(invoice.service_date.isoformat(), "2026-10-06")
+
     def test_invoice_can_be_issued_to_pdf(self):
         customer = User.objects.create_user(
             username="customer",
