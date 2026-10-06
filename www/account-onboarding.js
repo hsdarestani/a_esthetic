@@ -102,6 +102,7 @@
       const form = event.currentTarget;
       form.querySelector('[data-signup-inline-error]')?.remove();
       const passwordConfirm = form.querySelector('input[name="password2"]');
+      passwordConfirm?.addEventListener('input', () => passwordConfirm.setCustomValidity(''), {once:true});
       if (fd.get('password') !== fd.get('password2')) {
         const box = document.createElement('div');
         box.className = 'notice error';
