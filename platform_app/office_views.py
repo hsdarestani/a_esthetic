@@ -547,6 +547,7 @@ def office_settings(request):
         "service_rows": service_rows,
         "error": error,
         "notice": notice,
+        "current_year": timezone.localdate().year,
     })
 
 
