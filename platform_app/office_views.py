@@ -436,6 +436,11 @@ def office_dashboard(request):
         "notice": notice,
         "error": error,
         "query": query,
+        "customer_count": User.objects.filter(is_active=True, is_superuser=False, profile__role="customer").count(),
+        "configured_services": Service.objects.filter(active=True, price_cents__isnull=False, vat_rate__isnull=False).count(),
+        "active_services": Service.objects.filter(active=True).count(),
+        "draft_count": Invoice.objects.filter(status="draft").count(),
+        "issued_count": Invoice.objects.filter(status="issued").count(),
     })
 
 
