@@ -74,10 +74,12 @@
   function shell(content){
     const email=state.me?.profile?.email||'';
     root.innerHTML=`<div class="core-shell">
-      <header class="core-header">
-        <span class="core-header-spacer"></span>
-        <div class="core-brand" aria-label="A+ Esthetic"><span class="core-brand-emblem"><img src="./assets/logo.svg" alt="A+ Esthetic"></span><span class="core-brand-name"><b>A+ ESTHETIC</b></span></div>
-        <button class="core-icon-btn" data-settings aria-label="Einstellungen"><span class="header-icon">${NAV_ICONS.settings}</span></button>
+      <header class="core-header premium-brand-header">
+        <div class="core-brand" aria-label="A+ Esthetic">
+          <span class="core-brand-emblem"><img src="./assets/logo.svg" alt="A+ Esthetic"></span>
+          <span class="core-brand-name"><b>A+ ESTHETIC</b><small>FRANKFURT AM MAIN</small></span>
+        </div>
+        <button class="core-icon-btn premium-brand-settings" data-settings aria-label="Einstellungen"><span class="header-icon">${NAV_ICONS.settings}</span></button>
       </header>
       <main class="core-main">${content}</main>
       <nav class="core-nav" aria-label="Hauptnavigation">${routes.map(([key,,label])=>`<button class="nav-btn ${state.route===key?'is-active':''}" data-route="${key}" aria-label="${label}"><span class="nav-icon">${navIcon(key)}</span><span class="nav-label">${label}</span></button>`).join('')}</nav>
