@@ -461,7 +461,7 @@
       return nativeSocialLogin('google', config);
     }
     await bindBrowserSocialCallback();
-    const url = 'https://esthetic.smarbiz.sbs/accounts/google/login/?process=login&next=%2Fmobile-social%2Ffinish%2F';
+    const url = `${APP_ORIGIN}/accounts/google/login/?process=login&next=%2Fmobile-social%2Ffinish%2F`;
     await browser.open({url});
   }
 
@@ -581,7 +581,7 @@
       window.AppleID.auth.init({
         clientId: config.apple_client_id,
         scope: 'name email',
-        redirectURI: 'https://esthetic.smarbiz.sbs/accounts/apple/login/callback/',
+        redirectURI: `${APP_ORIGIN}/accounts/apple/login/callback/`,
         state,
         usePopup: true
       });
