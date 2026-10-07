@@ -22,17 +22,17 @@ jobs:
           from urllib.error import HTTPError, URLError
           from urllib.request import Request, urlopen
 
-          release = '20260923-finalcrop-v27'
+          release = '20261007-polish-v31'
           domain = 'esthetic.smarbiz.sbs'
           required_markers = (
-              'core-app.js?v=20260923-finalcrop-v27',
-              'account-onboarding.js?v=20261003-onboarding-sms-v2',
+              'core-app.js?v=20261007-polish-v31',
+              'account-onboarding.js?v=20261006-signup-v3',
               'ferrari-v18.css?v=20260922-v18',
               'client-v19.css?v=20260923-progress-v21',
-              'approved-v22.css?v=20260923-finalcrop-v27',
+              'approved-v22.css?v=20261007-polish-v31',
               'global-loading.js?v=20260923-intro-v24',
               'booking-direct-api.js?v=20260906-sams-v1',
-              'booking-book-flow.js?v=20260923-approvedassets-v26',
+              'booking-book-flow.js?v=20261007-lazy-v29',
               'focused-upgrade.js?v=20260922-onboarding-v1',
               'focused-upgrade.css?v=20260906-sams-v1',
           )
@@ -76,7 +76,7 @@ jobs:
           _, booking_flow = fetch(f'https://{domain}/booking-book-flow.js?release={release}')
           if 'Behandlung wählen' not in booking_flow or 'Freien Termin wählen' not in booking_flow:
               raise SystemExit('Canonical Book-style four-step booking flow is missing.')
-          for marker in ('./assets/site/botox.png','./assets/site/hyaluron.png','./assets/site/skinbooster.png','./assets/site/prp.png','./assets/site/infusion.jpeg','./assets/site/lipolyse.png','./assets/site/rf-microneedling.png','./assets/site/laser.png'):
+          for marker in ('./assets/site/erstberatung.png','./assets/site/botox-neupatient.png','./assets/site/botox-bestandspatient.png','./assets/site/hyaluron-premium.png','./assets/site/skinbooster.png','./assets/site/prp.png','./assets/site/infusion-premium.png','./assets/site/injektionslipolyse.png','./assets/site/rf-microneedling-premium.png','./assets/site/laser-haarentfernung.png','./assets/site/kontrolltermin.png'):
               if marker not in booking_flow:
                   raise SystemExit(f'Approved treatment visual mapping missing: {marker}')
 
@@ -90,7 +90,7 @@ jobs:
                   raise SystemExit(f'Focused Wallet/Login runtime is missing marker: {marker}')
 
           api_status, api_body = fetch(f'https://{domain}/api/mobile/status/')
-          if api_status != 200 or 'customer club' not in api_body.lower():
+          if api_status != 200 or 'a+ esthetic app' not in api_body.lower():
               raise SystemExit(f'Mobile API verification failed: {api_status}')
 
           print('PUBLIC A+ ESTHETIC FOCUSED BOOK + WALLET RELEASE IS LIVE.')
