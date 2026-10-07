@@ -523,3 +523,171 @@ body{background:
   .core-brand .core-brand-emblem img{width:54px!important;height:54px!important}
   .core-brand .core-brand-name b{font-size:15px!important}
 }
+
+
+/* Premium A+ Esthetic brand stage — 2026-10-07 v33 */
+.core-header.premium-brand-header{
+  position:relative!important;
+  top:auto!important;
+  z-index:24!important;
+  width:100%!important;
+  height:148px!important;
+  min-height:148px!important;
+  margin:0!important;
+  padding:18px 72px 16px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  overflow:hidden!important;
+  border:0!important;
+  border-bottom:1px solid rgba(143,101,31,.10)!important;
+  background:
+    radial-gradient(circle at 50% -24%,rgba(223,185,106,.22),transparent 58%),
+    linear-gradient(180deg,#fffdf9 0%,#f8f2e8 100%)!important;
+  backdrop-filter:none!important;
+  box-shadow:0 10px 30px rgba(73,50,19,.035)!important;
+}
+.core-header.premium-brand-header::before,
+.core-header.premium-brand-header::after{
+  content:""!important;
+  position:absolute!important;
+  pointer-events:none!important;
+}
+.core-header.premium-brand-header::before{
+  width:210px!important;
+  height:210px!important;
+  left:50%!important;
+  top:-138px!important;
+  transform:translateX(-50%)!important;
+  border-radius:50%!important;
+  border:1px solid rgba(180,132,49,.13)!important;
+  box-shadow:
+    0 0 0 22px rgba(190,145,64,.025),
+    0 0 0 46px rgba(190,145,64,.018)!important;
+}
+.core-header.premium-brand-header::after{
+  left:50%!important;
+  bottom:11px!important;
+  width:150px!important;
+  height:1px!important;
+  transform:translateX(-50%)!important;
+  background:linear-gradient(90deg,transparent,rgba(167,117,33,.55),transparent)!important;
+}
+.premium-brand-header .core-brand{
+  position:relative!important;
+  z-index:2!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:2px!important;
+  min-width:0!important;
+  overflow:visible!important;
+  text-align:center!important;
+}
+.premium-brand-header .core-brand .core-brand-emblem{
+  width:86px!important;
+  height:76px!important;
+  flex:0 0 76px!important;
+  display:grid!important;
+  place-items:center!important;
+  overflow:visible!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.premium-brand-header .core-brand .core-brand-emblem img{
+  display:block!important;
+  width:104px!important;
+  height:104px!important;
+  max-width:none!important;
+  object-fit:contain!important;
+  transform:scale(1.18)!important;
+  transform-origin:center!important;
+  filter:drop-shadow(0 10px 18px rgba(151,101,24,.18))!important;
+}
+.premium-brand-header .core-brand .core-brand-name{
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  position:relative!important;
+  padding:0!important;
+  color:#241d15!important;
+  line-height:1!important;
+  text-align:center!important;
+}
+.premium-brand-header .core-brand .core-brand-name::after{
+  display:none!important;
+}
+.premium-brand-header .core-brand .core-brand-name b{
+  display:block!important;
+  font-family:"Iowan Old Style",Baskerville,Georgia,serif!important;
+  font-size:26px!important;
+  font-weight:500!important;
+  line-height:1!important;
+  letter-spacing:.10em!important;
+  white-space:nowrap!important;
+  text-shadow:0 1px 0 rgba(255,255,255,.72)!important;
+}
+.premium-brand-header .core-brand .core-brand-name small{
+  display:block!important;
+  margin-top:8px!important;
+  color:#9d762f!important;
+  font-size:7px!important;
+  font-weight:850!important;
+  line-height:1!important;
+  letter-spacing:.30em!important;
+  white-space:nowrap!important;
+}
+.premium-brand-header .premium-brand-settings{
+  position:absolute!important;
+  z-index:3!important;
+  top:18px!important;
+  right:max(18px,env(safe-area-inset-right))!important;
+  width:44px!important;
+  height:44px!important;
+  border-radius:50%!important;
+  border:1px solid rgba(120,91,42,.10)!important;
+  background:rgba(255,255,255,.88)!important;
+  box-shadow:0 8px 22px rgba(62,44,20,.08)!important;
+  backdrop-filter:blur(12px)!important;
+}
+@media(max-width:520px){
+  .core-header.premium-brand-header{
+    height:140px!important;
+    min-height:140px!important;
+    padding:15px 58px 14px!important;
+  }
+  .premium-brand-header .core-brand .core-brand-emblem{
+    width:82px!important;
+    height:72px!important;
+    flex-basis:72px!important;
+  }
+  .premium-brand-header .core-brand .core-brand-emblem img{
+    width:100px!important;
+    height:100px!important;
+    transform:scale(1.22)!important;
+  }
+  .premium-brand-header .core-brand .core-brand-name b{
+    font-size:23px!important;
+    letter-spacing:.09em!important;
+  }
+  .premium-brand-header .core-brand .core-brand-name small{
+    margin-top:7px!important;
+    font-size:6.5px!important;
+    letter-spacing:.26em!important;
+  }
+  .premium-brand-header .premium-brand-settings{
+    top:15px!important;
+    right:max(14px,env(safe-area-inset-right))!important;
+    width:41px!important;
+    height:41px!important;
+  }
+}
+@media(max-width:370px){
+  .core-header.premium-brand-header{height:134px!important;min-height:134px!important}
+  .premium-brand-header .core-brand .core-brand-emblem{height:67px!important;flex-basis:67px!important}
+  .premium-brand-header .core-brand .core-brand-emblem img{width:92px!important;height:92px!important}
+  .premium-brand-header .core-brand .core-brand-name b{font-size:20px!important}
+}
