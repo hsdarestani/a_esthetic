@@ -1,7 +1,8 @@
 (() => {
   'use strict';
 
-  const CLUB_ORIGIN = 'https://esthetic.smarbiz.sbs';
+  const APP_ORIGIN = window.location.hostname === 'app.a-esthetic.de' ? window.location.origin : 'https://app.a-esthetic.de';
+  const CLUB_ORIGIN = APP_ORIGIN;
   const CLUB_API_PREFIX = '/api/mobile';
   const BOOKING_API_BASE = 'https://book.a-esthetic.de/api/mobile';
   const nativeFetch = window.fetch.bind(window);
