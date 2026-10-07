@@ -10,6 +10,7 @@ class MobileApiCorsMiddleware:
         'https://localhost',
         'http://localhost',
         'https://app.a-esthetic.de',
+        'https://esthetic.smarbiz.sbs',
     }
 
     def __init__(self, get_response):
@@ -85,6 +86,8 @@ class MobileSocialRedirectMiddleware:
             "/?social=1",
             "https://esthetic.smarbiz.sbs/",
             "https://esthetic.smarbiz.sbs/?social=1",
+            "https://app.a-esthetic.de/",
+            "https://app.a-esthetic.de/?social=1",
         }:
             return redirect(self.MOBILE_FINISH_PATH)
 
