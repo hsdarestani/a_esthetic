@@ -220,10 +220,10 @@
     let html=`<section class="approved-points-hero">
       <span>A+ PUNKTE</span>
       <div class="approved-points-balance"><strong>${balance.toLocaleString('de-DE')}</strong><p>Deine Punkte</p><em>Schönheit<br>lohnt sich.</em></div>
-      <small>Noch ${remaining.toLocaleString('de-DE')} Punkte bis zu deinem nächsten Reward</small>
+      <small>Noch ${remaining.toLocaleString('de-DE')} Punkte bis zu deinem nächsten Vorteil</small>
       <div class="approved-progress"><i style="width:${progress}%"></i></div><b>${balance.toLocaleString('de-DE')} / ${nextMilestone.toLocaleString('de-DE')}</b>
     </section>`;
-    html+=`<section class="approved-benefits"><div class="approved-page-head compact"><h1>Deine Vorteile</h1><p>Sammle Punkte und freue dich auf exklusive Rewards und besondere Erlebnisse.</p></div>
+    html+=`<section class="approved-benefits"><div class="approved-page-head compact"><h1>Deine Vorteile</h1><p>Sammle Punkte und freue dich auf exklusive Vorteile und besondere Erlebnisse.</p></div>
       <button data-review-route><span>☆</span><div><strong>Google Bewertung</strong><small>+${Number(reviews.verified_review_points||250)} Punkte nach Verifizierung</small></div><b>›</b></button>
       <button data-friends-route><span>◇</span><div><strong>Freunde einladen</strong><small>Punkte nach erfolgreicher Empfehlung</small></div><b>›</b></button>
       <div class="approved-benefit-row"><span>✦</span><div><strong>Exklusive Vorteile</strong><small>Früherer Zugang zu Aktionen</small></div><b>›</b></div>
