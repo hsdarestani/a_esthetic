@@ -1,7 +1,8 @@
 (() => {
   'use strict';
 
-  const API_BASE = 'https://esthetic.smarbiz.sbs/api/mobile';
+  const APP_ORIGIN = window.location.hostname === 'app.a-esthetic.de' ? window.location.origin : 'https://app.a-esthetic.de';
+  const API_BASE = `${APP_ORIGIN}/api/mobile`;
   const BOOK_ENTRY = 'https://book.a-esthetic.de/verwaltung/app/';
   const nativeFetch = window.fetch.bind(window);
   let adminState = null;
