@@ -90,8 +90,8 @@
     nav.classList.add('luxury-nav');
     const config = {
       home: { order: 1, icon: icons.home, label: 'Home' },
-      wallet: { order: 2, icon: icons.gift, label: 'Rewards' },
-      club: { order: 3, icon: lotus('nav-lotus'), label: 'Club', center: true },
+      wallet: { order: 2, icon: icons.gift, label: 'Vorteile' },
+      club: { order: 3, icon: lotus('nav-lotus'), label: 'Vorteile', center: true },
       booking: { order: 4, icon: icons.calendar, label: 'Termine' },
       more: { order: 5, icon: icons.profile, label: 'Profil' }
     };
@@ -135,7 +135,7 @@
     rewards.dataset.luxuryRewards = '1';
     rewards.classList.add('luxury-rewards');
     const title = rewards.querySelector(':scope > h2');
-    if (title) title.innerHTML = `Rewards <button type="button" class="section-link" tabindex="-1">Alle anzeigen</button>`;
+    if (title) title.innerHTML = `Vorteile <button type="button" class="section-link" tabindex="-1">Alle anzeigen</button>`;
     const rows = [...rewards.querySelectorAll(':scope > .row')];
     rows.forEach((row) => {
       row.classList.add('luxury-reward-card');
@@ -180,14 +180,14 @@
     content.dataset.luxuryWallet = '1';
     content.classList.add('luxury-page', 'luxury-wallet');
     document.body.dataset.luxuryPage = 'wallet';
-    tuneTopbar('Wallet');
+    tuneTopbar('Punkte');
 
     const pagehead = heading.closest('.pagehead');
     pagehead?.classList.add('wallet-intro');
     const eyebrow = pagehead?.querySelector('span');
     const intro = pagehead?.querySelector('p');
-    if (eyebrow) eyebrow.textContent = 'REWARDS & A+ COINS';
-    heading.textContent = 'Wallet';
+    if (eyebrow) eyebrow.textContent = 'VORTEILE & A+ PUNKTE';
+    heading.textContent = 'Punkte';
     if (intro) intro.textContent = 'Sammeln, einlösen und Vorteile jederzeit im Blick behalten.';
 
     const grid = content.querySelector(':scope > .grid2');
@@ -209,7 +209,7 @@
       const small = credit.querySelector('small');
       const text = credit.querySelector('p');
       if (small) small.textContent = 'A+ Credit';
-      if (text) text.textContent = 'Persönliches Club-Guthaben';
+      if (text) text.textContent = 'Persönliches Guthaben';
     }
     if (grid && coins && credit) grid.insertBefore(coins, credit);
 
@@ -228,7 +228,7 @@
         <section class="luxury-benefits">
           <h2>Deine Vorteile</h2>
           <div class="benefit-grid">
-            <div><span>${icons.star}</span><b>Exklusive<br>Rewards</b></div>
+            <div><span>${icons.star}</span><b>Exklusive<br>Vorteile</b></div>
             <div><span>${icons.sparkle}</span><b>Geburtstags-<br>überraschungen</b></div>
             <div><span>${icons.ticket}</span><b>Spezielle<br>Aktionen</b></div>
             <div><span>${icons.crown}</span><b>Bevorzugte<br>Einladungen</b></div>
@@ -264,12 +264,12 @@
   function enhanceClub() {
     const content = document.querySelector('.shell .content');
     const heading = content?.querySelector('.pagehead h1');
-    if (!content || !heading || heading.textContent.trim() !== 'Customer Club') return false;
+    if (!content || !heading || heading.textContent.trim() !== 'A+ Esthetic') return false;
     if (content.dataset.luxuryClub === '1') return true;
     content.dataset.luxuryClub = '1';
     content.classList.add('luxury-page', 'luxury-club');
     document.body.dataset.luxuryPage = 'club';
-    tuneTopbar('Customer Club');
+    tuneTopbar('A+ Esthetic');
     const hero = content.querySelector(':scope > .hero');
     hero?.classList.add('luxury-member-card');
     addMemberWatermark(hero);
@@ -303,7 +303,7 @@
     card.dataset.luxuryLogin = '1';
     auth.classList.add('luxury-auth');
     card.querySelector('.brandrow')?.classList.add('legacy-brandrow');
-    card.insertAdjacentHTML('afterbegin', `<div class="luxury-login-brand">${lotus('login-lotus')}<b>A+ ESTHETIC</b><small>BEAUTY CLUB</small></div>`);
+    card.insertAdjacentHTML('afterbegin', `<div class="luxury-login-brand">${lotus('login-lotus')}<b>A+ ESTHETIC</b><small>A+ ESTHETIC</small></div>`);
     return true;
   }
 

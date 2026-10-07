@@ -30,7 +30,7 @@
       aftercare_task_not_found: 'Diese Nachsorge-Aufgabe wurde nicht gefunden.',
       followup_not_found: 'Dieses Follow-up wurde nicht gefunden.',
       response_required: 'Bitte schreiben Sie eine Rückmeldung oder fordern Sie Kontakt an.',
-      beauty_plan_not_found: 'Dieser Beauty Plan wurde nicht gefunden.',
+      beauty_plan_not_found: 'Dieser Schönheitsplan wurde nicht gefunden.',
       beauty_plan_step_not_found: 'Dieser Schritt wurde nicht gefunden.',
       invalid_target_date: 'Bitte prüfen Sie das Zieldatum.',
       invalid_due_date: 'Bitte prüfen Sie das Datum des Schritts.',
@@ -226,11 +226,11 @@
   }
 
   async function showBeautyPlans() {
-    if (!p1Loading('Persönliche Organisation', 'Beauty Plan', 'Ziele, Journeys, Budget und eigene Schritte.')) return;
+    if (!p1Loading('Persönliche Organisation', 'Schönheitsplan', 'Ziele, Verlauf, Budget und eigene Schritte.')) return;
     try {
       const data = await p1Api('/beauty-plans/');
       const target = content();
-      target.innerHTML = `${backMarkup('Persönliche Organisation', 'Beauty Plan', 'Ziele, Journeys, Budget und eigene Schritte.')}
+      target.innerHTML = `${backMarkup('Persönliche Organisation', 'Schönheitsplan', 'Ziele, Verlauf, Budget und eigene Schritte.')}
         <div class="notice">${esc(data.safety_note)}</div>
         <section class="card"><h2>Neuen Plan erstellen</h2><form id="p1-plan-form" class="form">
           <label>Titel<input name="title" maxlength="180" required placeholder="z. B. Summer Routine"></label>
@@ -238,7 +238,7 @@
           <label>Ziel<textarea name="goal" rows="2" maxlength="5000" placeholder="Ihr persönliches organisatorisches Ziel"></textarea></label>
           <label>Zieldatum<input name="target_date" type="date"></label>
           <label>Monatsbudget (€)<input name="monthly_budget" type="number" min="0" step="0.01" inputmode="decimal"></label>
-          <button class="btn primary" type="submit">Beauty Plan erstellen</button>
+          <button class="btn primary" type="submit">Schönheitsplan erstellen</button>
         </form></section>
         ${data.plans.filter(plan => plan.status !== 'archived').length ? data.plans.filter(plan => plan.status !== 'archived').map(plan => `
           <section class="card">
@@ -247,7 +247,7 @@
             ${plan.steps.length ? plan.steps.map(step => `<label class="check" style="align-items:flex-start;margin:10px 0"><input type="checkbox" data-p1-plan-step="${step.id}" ${step.completed ? 'checked' : ''}><span><b>${esc(step.title)}</b><small style="display:block">${esc(step.step_type_label)}${step.due_on ? ` · ${dateOnly(step.due_on)}` : ''}${step.estimated_cost_cents ? ` · ${euro(step.estimated_cost_cents)}` : ''}</small>${step.description ? `<small style="display:block">${esc(step.description)}</small>` : ''}</span></label>`).join('') : '<p class="empty">Noch keine Schritte.</p>'}
             <div class="separator"></div><form class="form" data-p1-add-step="${plan.id}"><label>Neuer Schritt<input name="title" maxlength="180" required placeholder="Eigener organisatorischer Schritt"></label><label>Typ<select name="step_type">${data.step_types.map(t => `<option value="${esc(t.value)}">${esc(t.label)}</option>`).join('')}</select></label><label>Fällig am<input name="due_on" type="date"></label><label>Geschätzte Kosten (€)<input name="cost" type="number" min="0" step="0.01"></label><button class="btn ghost" type="submit">Schritt hinzufügen</button></form>
             <div class="actions"><button class="btn ghost" type="button" data-p1-archive-plan="${plan.id}">Plan archivieren</button></div>
-          </section>`).join('') : '<section class="card"><p class="empty">Noch kein Beauty Plan.</p></section>'}`;
+          </section>`).join('') : '<section class="card"><p class="empty">Noch kein Schönheitsplan.</p></section>'}`;
       bindBack();
       target.querySelector('#p1-plan-form')?.addEventListener('submit', async event => {
         event.preventDefault();
@@ -272,7 +272,7 @@
         catch (error) { input.checked = !input.checked; input.disabled = false; alert(error.message); }
       }));
       target.querySelectorAll('[data-p1-archive-plan]').forEach(button => button.addEventListener('click', async () => {
-        if (!confirm('Diesen Beauty Plan archivieren?')) return;
+        if (!confirm('Diesen Schönheitsplan archivieren?')) return;
         try { await p1Api(`/beauty-plans/${button.dataset.p1ArchivePlan}/archive/`, { method: 'POST', body: '{}' }); await showBeautyPlans(); }
         catch (error) { alert(error.message); }
       }));
@@ -287,7 +287,7 @@
     const items = [
       ['progress', '◫ Fortschritt'],
       ['aftercare', '✓ Nachsorge'],
-      ['plans', '✦ Beauty Plan'],
+      ['plans', '✦ Schönheitsplan'],
     ];
     items.forEach(([route, label]) => {
       const button = document.createElement('button');

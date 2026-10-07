@@ -12,7 +12,7 @@ on:
       - "www/ops.js"
       - "www/p0.js"
   workflow_run:
-    workflows: ["Deploy A+ Esthetic native Customer Club API"]
+    workflows: ["Deploy A+ Esthetic native A+ Esthetic App API"]
     types: [completed]
 
 permissions:

@@ -11,11 +11,14 @@
   const CONTACT = {
     phone: '+496971417012',
     phoneLabel: '069 71417012',
+    mobile: '+491729907936',
+    mobileLabel: '+49 172 9907936',
     whatsapp: '+491729907936',
     instagram: 'https://www.instagram.com/aplus.esthetic/',
+    directions: 'https://www.google.com/maps/dir/?api=1&destination=Stiftstra%C3%9Fe%2014%2C%2060313%20Frankfurt%20am%20Main',
   };
   const routes = [
-    ['dashboard', '⌂', 'Dashboard'],
+    ['dashboard', '⌂', 'Startseite'],
     ['appointments', '◫', 'Reservieren'],
     ['records', '▤', 'Akte'],
     ['points', '◆', 'Punkte'],
@@ -29,7 +32,8 @@
     friends:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.4-3.2 2.2-4.9 5.5-4.9s5.1 1.7 5.5 4.9M16 7.5h4.5M18.25 5.25v4.5M15 13.5c2.4.35 3.8 1.8 4.1 4.1"/></svg>',
     settings:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 13.7a7.3 7.3 0 0 0 .05-3.4l1.8-1.4-1.8-3.1-2.25.9a7.5 7.5 0 0 0-3-1.7L13.5 2h-3L10.2 5a7.5 7.5 0 0 0-3 1.7l-2.25-.9-1.8 3.1 1.8 1.4a7.3 7.3 0 0 0 .05 3.4l-1.85 1.4 1.8 3.1 2.3-.9a7.5 7.5 0 0 0 2.95 1.7l.3 3h3l.3-3a7.5 7.5 0 0 0 2.95-1.7l2.3.9 1.8-3.1-1.85-1.4Z"/></svg>',
     phone:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 10 8.4 8.2 10.2a14.2 14.2 0 0 0 5.6 5.6L15.6 14l4.4 3c.5.3.7.9.45 1.45-.65 1.45-2 2.45-3.6 2.45C9.2 20.9 3.1 14.8 3.1 7.15c0-1.6 1-2.95 2.45-3.6A1.2 1.2 0 0 1 7 4Z"/></svg>',
-    instagram:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r=".8" fill="currentColor" stroke="none"/></svg>'
+    instagram:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r=".8" fill="currentColor" stroke="none"/></svg>',
+    directions:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2.2"/></svg>'
   };
   const navIcon = key => NAV_ICONS[key] || '';
   const state = { route: 'dashboard', token: localStorage.getItem('aplus_token') || '', me: null, cache: {} };
@@ -72,7 +76,7 @@
     root.innerHTML=`<div class="core-shell">
       <header class="core-header">
         <span class="core-header-spacer"></span>
-        <div class="core-brand"><span class="core-brand-emblem"><img src="./assets/logo.svg" alt="A+ Esthetic"></span><span class="core-brand-name"><b>A+ ESTHETIC</b><small>CUSTOMER CLUB</small></span></div>
+        <div class="core-brand" aria-label="A+ Esthetic"><span class="core-brand-emblem"><img src="./assets/logo.svg" alt="A+ Esthetic"></span></div>
         <button class="core-icon-btn" data-settings aria-label="Einstellungen"><span class="header-icon">${NAV_ICONS.settings}</span></button>
       </header>
       <main class="core-main">${content}</main>
@@ -88,10 +92,10 @@
     const node=document.createElement('div');node.className='settings-overlay';
     node.innerHTML=`<div class="settings-card"><div class="settings-head"><h2>Einstellungen & Recht</h2><button class="core-icon-btn" data-close>×</button></div>
       <div class="settings-user"><strong>${esc(state.me?.member?.name||'A+ Kunde')}</strong><span>${esc(email)}</span></div>
-      <a class="settings-link" href="${LEGAL.privacy}" target="_blank" rel="noopener">Datenschutz <span>›</span></a>
-      <a class="settings-link" href="${LEGAL.terms}" target="_blank" rel="noopener">Nutzungsbedingungen <span>›</span></a>
-      <a class="settings-link" href="${LEGAL.imprint}" target="_blank" rel="noopener">Impressum <span>›</span></a>
-      <details class="settings-more"><summary>Weitere Kontoeinstellungen</summary><a class="settings-link" href="${LEGAL.deletion}" target="_blank" rel="noopener">Konto löschen <span>›</span></a></details>
+      <a class="settings-link" href="${LEGAL.privacy}">Datenschutz <span>›</span></a>
+      <a class="settings-link" href="${LEGAL.terms}">Nutzungsbedingungen <span>›</span></a>
+      <a class="settings-link" href="${LEGAL.imprint}">Impressum <span>›</span></a>
+      <details class="settings-more"><summary>Weitere Kontoeinstellungen</summary><a class="settings-link" href="${LEGAL.deletion}">Konto löschen <span>›</span></a></details>
       <button class="danger wide" data-logout style="margin-top:18px">Abmelden</button></div>`;
     document.body.appendChild(node);
     const close=()=>{node.classList.add('is-closing');setTimeout(()=>node.remove(),120);};
@@ -100,6 +104,21 @@
   }
 
   function logout(render=true){document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};if(render)showLogin();}
+
+  function showContactPicker(){
+    document.querySelectorAll('.contact-overlay').forEach(node=>node.remove());
+    const node=document.createElement('div');
+    node.className='contact-overlay';
+    node.innerHTML=`<div class="contact-card">
+      <div class="contact-head"><div><span>KONTAKT</span><h2>Wie möchtest du anrufen?</h2></div><button type="button" class="core-icon-btn" data-contact-close>×</button></div>
+      <a class="contact-choice" href="tel:${CONTACT.phone}"><span>${NAV_ICONS.phone}</span><div><strong>Praxis</strong><small>${CONTACT.phoneLabel}</small></div><b>›</b></a>
+      <a class="contact-choice" href="tel:${CONTACT.mobile}"><span>${NAV_ICONS.phone}</span><div><strong>Mobil</strong><small>${CONTACT.mobileLabel}</small></div><b>›</b></a>
+    </div>`;
+    document.body.appendChild(node);
+    const close=()=>node.remove();
+    node.addEventListener('click',event=>{if(event.target===node)close();});
+    node.querySelector('[data-contact-close]')?.addEventListener('click',close);
+  }
 
   function showLogin(message=''){
     const rememberedEmail=localStorage.getItem('aplus_login_email')||'';
@@ -155,8 +174,9 @@
 
     html+=`<section class="approved-quick-actions">
       <button type="button" data-dash-book><span>${NAV_ICONS.appointments}</span><b>Reservieren</b></button>
-      <a href="tel:${esc(contact.phone||CONTACT.phone)}"><span>${NAV_ICONS.phone}</span><b>Anrufen</b></a>
+      <button type="button" data-dash-call><span>${NAV_ICONS.phone}</span><b>Anrufen</b></button>
       <a href="${esc(contact.instagram_url||CONTACT.instagram)}" target="_blank" rel="noopener"><span>${NAV_ICONS.instagram}</span><b>Instagram</b></a>
+      <a href="${CONTACT.directions}" target="_blank" rel="noopener"><span>${NAV_ICONS.directions}</span><b>Anfahrt</b></a>
     </section>`;
 
     html+=`<section class="approved-points-preview" data-dash-points>
@@ -165,14 +185,15 @@
     </section>`;
 
     if(banners.length){
-      html+=`<div class="approved-section-head"><h2>Special Offers</h2><span>${banners.length}</span></div>
+      html+=`<div class="approved-section-head"><h2>Angebote</h2><span>${banners.length}</span></div>
       <div class="approved-campaign-stack">${banners.map(b=>`<article class="approved-campaign" style="--approved-campaign-image:url('${esc(b.image_url||'./assets/site/clinic.jpg')}')">
-        <div class="approved-campaign-copy"><span>SPECIAL OFFER</span><h3>${esc(b.title)}</h3>${b.text?`<p>${esc(b.text)}</p>`:''}${b.cta_url?`<a href="${esc(b.cta_url)}" target="_blank" rel="noopener">${esc(b.cta_label||'Mehr erfahren')} <b>›</b></a>`:''}</div>
+        <div class="approved-campaign-copy"><span>ANGEBOT</span><h3>${esc(b.title)}</h3>${b.text?`<p>${esc(b.text)}</p>`:''}${b.cta_url?`<a href="${esc(b.cta_url)}" target="_blank" rel="noopener">${esc(b.cta_label||'Mehr erfahren')} <b>›</b></a>`:''}</div>
       </article>`).join('')}</div>`;
     }
 
     shell(html);
     root.querySelectorAll('[data-dash-book]').forEach(button=>button.addEventListener('click',()=>go('appointments')));
+    root.querySelector('[data-dash-call]')?.addEventListener('click',showContactPicker);
     root.querySelector('[data-dash-points]')?.addEventListener('click',()=>go('points'));
   }
 
@@ -199,13 +220,13 @@
     let html=`<section class="approved-points-hero">
       <span>A+ PUNKTE</span>
       <div class="approved-points-balance"><strong>${balance.toLocaleString('de-DE')}</strong><p>Deine Punkte</p><em>Schönheit<br>lohnt sich.</em></div>
-      <small>Noch ${remaining.toLocaleString('de-DE')} Punkte bis zu deinem nächsten Reward</small>
+      <small>Noch ${remaining.toLocaleString('de-DE')} Punkte bis zu deinem nächsten Vorteil</small>
       <div class="approved-progress"><i style="width:${progress}%"></i></div><b>${balance.toLocaleString('de-DE')} / ${nextMilestone.toLocaleString('de-DE')}</b>
     </section>`;
-    html+=`<section class="approved-benefits"><div class="approved-page-head compact"><h1>Deine Vorteile</h1><p>Sammle Punkte und freue dich auf exklusive Rewards und besondere Erlebnisse.</p></div>
+    html+=`<section class="approved-benefits"><div class="approved-page-head compact"><h1>Deine Vorteile</h1><p>Sammle Punkte und freue dich auf exklusive Vorteile und besondere Erlebnisse.</p></div>
       <button data-review-route><span>☆</span><div><strong>Google Bewertung</strong><small>+${Number(reviews.verified_review_points||250)} Punkte nach Verifizierung</small></div><b>›</b></button>
       <button data-friends-route><span>◇</span><div><strong>Freunde einladen</strong><small>Punkte nach erfolgreicher Empfehlung</small></div><b>›</b></button>
-      <div class="approved-benefit-row"><span>✦</span><div><strong>Exklusive Specials</strong><small>Früherer Zugang zu Aktionen</small></div><b>›</b></div>
+      <div class="approved-benefit-row"><span>✦</span><div><strong>Exklusive Vorteile</strong><small>Früherer Zugang zu Aktionen</small></div><b>›</b></div>
       ${card.member_number?`<button data-show-member-qr><span>▣</span><div><strong>Digitale Mitgliedskarte</strong><small>${esc(card.member_number)}</small></div><b>›</b></button>`:''}
     </section>`;
     if(card.member_number){

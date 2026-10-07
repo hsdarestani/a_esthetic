@@ -104,7 +104,7 @@ def _member_payload(user):
 @csrf_exempt
 @require_http_methods(['GET'])
 def status(request):
-    return JsonResponse({'ok': True, 'service': 'A+ Esthetic Customer Club API', 'time': timezone.now().isoformat()})
+    return JsonResponse({'ok': True, 'service': 'A+ Esthetic App API', 'time': timezone.now().isoformat()})
 
 
 @csrf_exempt

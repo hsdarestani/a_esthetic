@@ -11,6 +11,7 @@
     book: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="15" rx="3"/><path d="M8 3.5v4M16 3.5v4M3.5 10h17"/><path d="M8 14h8"/></svg>',
     phone: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.8 10 8.1 8.3 10a14.3 14.3 0 0 0 5.7 5.7l1.9-1.7 4.3 2.8c.5.3.7.9.5 1.4-.6 1.6-2.1 2.7-3.8 2.7C9.3 20.9 3.1 14.7 3.1 7.1c0-1.7 1.1-3.2 2.7-3.8.5-.2 1.1 0 1.4.5Z"/></svg>',
     instagram: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.4" cy="6.7" r=".8" fill="currentColor" stroke="none"/></svg>',
+    directions: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2.2"/></svg>',
     google: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 12.2c0-.7-.1-1.3-.2-1.9H12v3.6h4.8a4.1 4.1 0 0 1-1.8 2.7v2.3h2.9c1.7-1.6 2.6-3.9 2.6-6.7Z"/><path d="M12 21c2.4 0 4.5-.8 5.9-2.1L15 16.6c-.8.5-1.8.9-3 .9-2.3 0-4.3-1.6-5-3.7H4v2.4A9 9 0 0 0 12 21Z"/><path d="M7 13.8a5.4 5.4 0 0 1 0-3.6V7.8H4a9 9 0 0 0 0 8.4l3-2.4Z"/><path d="M12 6.5c1.3 0 2.5.5 3.4 1.3L18 5.2A8.7 8.7 0 0 0 4 7.8l3 2.4c.7-2.1 2.7-3.7 5-3.7Z"/></svg>'
   };
 
@@ -82,6 +83,7 @@
     decorateAction(actions[0], 'book');
     decorateAction(actions[1], 'phone');
     decorateAction(actions[2], 'instagram');
+    decorateAction(actions[3], 'directions');
     main.querySelector('[data-dashboard-google-review]')?.remove();
   }
 

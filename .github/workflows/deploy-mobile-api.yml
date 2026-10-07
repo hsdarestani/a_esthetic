@@ -1,4 +1,4 @@
-name: Deploy A+ Esthetic native Customer Club API
+name: Deploy A+ Esthetic App API
 
 on:
   workflow_dispatch:
@@ -84,6 +84,7 @@ jobs:
             ENV_FILE="$ROOT/mobile.env"
             PACKAGE="/tmp/a-esthetic-mobile-package.tar.gz"
             DOMAIN="esthetic.smarbiz.sbs"
+            APP_DOMAIN="app.a-esthetic.de"
             OFFICE_DOMAIN="office.a-esthetic.de"
             WEBROOT="/opt/a-esthetic-web/site"
             CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
@@ -122,8 +123,8 @@ jobs:
               cat > "$ENV_FILE" <<EOF
             DJANGO_SECRET_KEY=$SECRET
             DJANGO_DEBUG=0
-            DJANGO_ALLOWED_HOSTS=$DOMAIN,$OFFICE_DOMAIN,127.0.0.1,localhost
-            CSRF_TRUSTED_ORIGINS=https://$DOMAIN,https://$OFFICE_DOMAIN
+            DJANGO_ALLOWED_HOSTS=$DOMAIN,$APP_DOMAIN,$OFFICE_DOMAIN,127.0.0.1,localhost
+            CSRF_TRUSTED_ORIGINS=https://$DOMAIN,https://$APP_DOMAIN,https://$OFFICE_DOMAIN
             EOF
             fi
             chmod 600 "$ENV_FILE"
@@ -162,15 +163,15 @@ jobs:
                     kept.append(f"{key}={shlex.quote(value)}")
             path.write_text("\n".join(kept) + "\n", encoding="utf-8")
             PY
-            OFFICE_DOMAIN="$OFFICE_DOMAIN" DOMAIN="$DOMAIN" ENV_FILE="$ENV_FILE" python3 - <<'PY'
+            OFFICE_DOMAIN="$OFFICE_DOMAIN" APP_DOMAIN="$APP_DOMAIN" DOMAIN="$DOMAIN" ENV_FILE="$ENV_FILE" python3 - <<'PY'
             import os
             from pathlib import Path
             path=Path(os.environ["ENV_FILE"])
             lines=path.read_text(encoding="utf-8").splitlines()
             lines=[line for line in lines if not line.startswith("DJANGO_ALLOWED_HOSTS=") and not line.startswith("CSRF_TRUSTED_ORIGINS=")]
-            domain=os.environ["DOMAIN"]; office=os.environ["OFFICE_DOMAIN"]
-            lines.append(f"DJANGO_ALLOWED_HOSTS={domain},{office},127.0.0.1,localhost")
-            lines.append(f"CSRF_TRUSTED_ORIGINS=https://{domain},https://{office}")
+            domain=os.environ["DOMAIN"]; app_domain=os.environ["APP_DOMAIN"]; office=os.environ["OFFICE_DOMAIN"]
+            lines.append(f"DJANGO_ALLOWED_HOSTS={domain},{app_domain},{office},127.0.0.1,localhost")
+            lines.append(f"CSRF_TRUSTED_ORIGINS=https://{domain},https://{app_domain},https://{office}")
             path.write_text("\n".join(lines)+"\n",encoding="utf-8")
             PY
             chmod 600 "$ENV_FILE"
@@ -226,7 +227,7 @@ jobs:
 
             cat > /etc/systemd/system/a-esthetic-mobile.service <<SERVICE
             [Unit]
-            Description=A+ Esthetic Customer Club mobile API
+            Description=A+ Esthetic App API
             After=network.target
             [Service]
             Type=simple
@@ -250,7 +251,7 @@ jobs:
             server {
               listen 80;
               listen [::]:80;
-              server_name esthetic.smarbiz.sbs;
+              server_name esthetic.smarbiz.sbs app.a-esthetic.de;
               root /opt/a-esthetic-web/site;
               index index.html;
               client_max_body_size 30m;
@@ -264,6 +265,7 @@ jobs:
             from pathlib import Path
             p=Path('/etc/nginx/sites-available/a-esthetic-connected.conf')
             s=p.read_text()
+            s=s.replace('server_name esthetic.smarbiz.sbs;', 'server_name esthetic.smarbiz.sbs app.a-esthetic.de;')
             begin='    # BEGIN CUSTOMER_CLUB_DJANGO'; end='    # END CUSTOMER_CLUB_DJANGO'
             a=s.find(begin); b=s.find(end,a)
             if a >= 0 and b >= 0:
@@ -333,7 +335,7 @@ jobs:
                         return response.status,response.read().decode('utf-8','replace')
                 except HTTPError as exc: return exc.code,exc.read().decode('utf-8','replace')
                 except URLError as exc: raise SystemExit(f'Smoke request failed for {url}: {exc}')
-            checks=[('http://127.0.0.1:8770/api/mobile/status/',None,200,'customer club'),('http://127.0.0.1/api/mobile/status/','esthetic.smarbiz.sbs',200,'customer club'),('http://127.0.0.1/datenschutz/','esthetic.smarbiz.sbs',200,'Kundenclub'),('http://127.0.0.1/mobile-social/finish/','esthetic.smarbiz.sbs',200,'Zur App zurückkehren')]
+            checks=[('http://127.0.0.1:8770/api/mobile/status/',None,200,'A+ Esthetic App'),('http://127.0.0.1/api/mobile/status/','esthetic.smarbiz.sbs',200,'A+ Esthetic App'),('http://127.0.0.1/datenschutz/','esthetic.smarbiz.sbs',200,'A+ Esthetic App'),('http://127.0.0.1/mobile-social/finish/','esthetic.smarbiz.sbs',200,'Zur App zurückkehren')]
             admin_status,admin_body=fetch('http://127.0.0.1/secure-admin/','esthetic.smarbiz.sbs')
             if admin_status not in {200,302}: raise SystemExit(f'Admin proxy smoke failed: HTTP {admin_status}')
             static_status,static_body=fetch('http://127.0.0.1/static/admin/css/base.css','esthetic.smarbiz.sbs')
@@ -348,10 +350,15 @@ jobs:
             PY
 
             certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+            if getent ahosts "$APP_DOMAIN" >/dev/null 2>&1; then
+              certbot --nginx -d "$DOMAIN" -d "$APP_DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+            else
+              echo "DNS for $APP_DOMAIN is not live yet; SSL will be enabled after the DNS record is added."
+            fi
             if getent ahosts "$OFFICE_DOMAIN" >/dev/null 2>&1; then
               certbot --nginx -d "$OFFICE_DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
             else
               echo "DNS for $OFFICE_DOMAIN is not live yet; SSL will be retried after the A record is added."
             fi
             rm -rf "$RELEASE" "$PACKAGE"
-            echo 'A+ Esthetic Customer Club API is prepared on the new STRATO origin.'
+            echo 'A+ Esthetic App API is prepared on the new STRATO origin.'

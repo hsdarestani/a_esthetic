@@ -84,18 +84,18 @@
   }
 
   async function showGamification() {
-    if (!loading('A+ Community', 'Challenges & Achievements', 'Motivation für Pflege, Lernen und Community.')) return;
+    if (!loading('A+ Gemeinschaft', 'Aufgaben & Erfolge', 'Motivation für Pflege, Lernen und Community.')) return;
     try {
       const data = await api('/gamification/');
       const target = content();
-      target.innerHTML = `${backMarkup('A+ Community', 'Challenges & Achievements', 'Motivation für Pflege, Lernen und Community.')}
+      target.innerHTML = `${backMarkup('A+ Gemeinschaft', 'Aufgaben & Erfolge', 'Motivation für Pflege, Lernen und Community.')}
         <section class="card" style="background:linear-gradient(135deg,#17212a,#2d3d47);color:#fff;border:none">
           <small style="color:#e8c594;letter-spacing:.1em">A+ COINS</small>
           <h2 style="font-size:34px;color:#fff;margin:6px 0">${Number(data.coin_balance) || 0}</h2>
           <p style="margin:0;opacity:.75">Durch freigegebene Lern- und Community-Aktivitäten.</p>
         </section>
         <div class="notice">${esc(data.safety_note)}</div>
-        <section class="card"><h2>Aktive Challenges</h2>
+        <section class="card"><h2>Aktive Aufgaben</h2>
           ${data.challenges.length ? data.challenges.map(challenge => {
             const p = challenge.participation;
             const percent = p ? Math.min(100, Math.round((p.progress / challenge.target_count) * 100)) : 0;
@@ -108,10 +108,10 @@
                 ${!p ? `<button class="btn primary" type="button" data-p3-join="${challenge.id}">Challenge starten</button>` : p.completed ? '<span class="badge">✓ Abgeschlossen</span>' : `<button class="btn primary" type="button" data-p3-progress="${challenge.id}" ${p.can_progress_today ? '' : 'disabled'}>${p.can_progress_today ? 'Heutigen Fortschritt speichern' : 'Heute bereits gespeichert'}</button>`}
               </div>
             </div>`;
-          }).join('') : '<p class="empty">Aktuell sind keine Challenges freigeschaltet.</p>'}
+          }).join('') : '<p class="empty">Aktuell sind keine Aufgaben freigeschaltet.</p>'}
         </section>
-        <section class="card"><h2>Achievements</h2>
-          ${data.badges.length ? `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">${data.badges.map(badge => `<div style="padding:14px;border:1px solid rgba(0,0,0,.08);border-radius:16px"><div style="font-size:28px">${esc(badge.icon)}</div><b>${esc(badge.name)}</b><small style="display:block">${esc(badge.description)}</small></div>`).join('')}</div>` : '<p class="empty">Noch keine Achievements – Ihre ersten erscheinen hier.</p>'}
+        <section class="card"><h2>Erfolge</h2>
+          ${data.badges.length ? `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">${data.badges.map(badge => `<div style="padding:14px;border:1px solid rgba(0,0,0,.08);border-radius:16px"><div style="font-size:28px">${esc(badge.icon)}</div><b>${esc(badge.name)}</b><small style="display:block">${esc(badge.description)}</small></div>`).join('')}</div>` : '<p class="empty">Noch keine Erfolge – Ihre ersten erscheinen hier.</p>'}
         </section>
         <section class="card"><h2>Quiz & Wissen</h2>
           ${data.quizzes.length ? data.quizzes.map(quiz => `<div style="padding:14px 0;border-bottom:1px solid rgba(0,0,0,.08)">
@@ -159,12 +159,12 @@
     URL.revokeObjectURL(url);
   }
 
-  async function showEvents() {
-    if (!loading('A+ Community', 'Events', 'Entdecken, anmelden und Wartelisten automatisch nutzen.')) return;
+  async function showVeranstaltungen() {
+    if (!loading('A+ Gemeinschaft', 'Veranstaltungen', 'Entdecken, anmelden und Wartelisten automatisch nutzen.')) return;
     try {
       const data = await api('/events/');
       const target = content();
-      target.innerHTML = `${backMarkup('A+ Community', 'Events', 'Entdecken, anmelden und Wartelisten automatisch nutzen.')}
+      target.innerHTML = `${backMarkup('A+ Gemeinschaft', 'Veranstaltungen', 'Entdecken, anmelden und Wartelisten automatisch nutzen.')}
         <div class="notice">${esc(data.note)}</div>
         ${data.events.length ? data.events.map(event => {
           const r = event.registration;
@@ -173,7 +173,7 @@
             ${event.description ? `<p>${esc(event.description)}</p>` : ''}
             ${r && r.status !== 'cancelled' ? `<div class="notice">${esc(r.status_label)}${r.guest_name ? ` · mit ${esc(r.guest_name)}` : ''}</div><div class="actions">${r.status === 'registered' ? `<button class="btn primary" type="button" data-p3-calendar="${event.id}">Zum Kalender</button>` : ''}${['registered','waitlist'].includes(r.status) ? `<button class="btn ghost" type="button" data-p3-event-cancel="${event.id}">Anmeldung stornieren</button>` : ''}</div>` : `<form class="form" data-p3-event-register="${event.id}">${event.allow_guest ? '<label>Begleitperson (optional)<input name="guest_name" maxlength="120" placeholder="Name der Begleitperson"></label>' : ''}<button class="btn primary" type="submit">Anmelden</button></form>`}
           </section>`;
-        }).join('') : '<div class="card"><p class="empty">Aktuell sind keine kommenden Events veröffentlicht.</p></div>'}`;
+        }).join('') : '<div class="card"><p class="empty">Aktuell sind keine kommenden Veranstaltungen veröffentlicht.</p></div>'}`;
       bindBack();
       target.querySelectorAll('[data-p3-event-register]').forEach(form => form.addEventListener('submit', async event => {
         event.preventDefault();
@@ -183,27 +183,27 @@
         try {
           const result = await api(`/events/${form.dataset.p3EventRegister}/register/`, { method: 'POST', body: JSON.stringify({ guest_name: data.get('guest_name') || '' }) });
           alert(result.registration.status === 'waitlist' ? 'Event ist voll – Sie stehen auf der Warteliste.' : 'Ihre Event-Anmeldung ist bestätigt.');
-          await showEvents();
+          await showVeranstaltungen();
         } catch (error) { alert(error.message); button.disabled = false; }
       }));
       target.querySelectorAll('[data-p3-event-cancel]').forEach(button => button.addEventListener('click', async () => {
         if (!confirm('Event-Anmeldung wirklich stornieren?')) return;
         button.disabled = true;
-        try { await api(`/events/${button.dataset.p3EventCancel}/cancel/`, { method: 'POST', body: '{}' }); await showEvents(); }
+        try { await api(`/events/${button.dataset.p3EventCancel}/cancel/`, { method: 'POST', body: '{}' }); await showVeranstaltungen(); }
         catch (error) { alert(error.message); button.disabled = false; }
       }));
       target.querySelectorAll('[data-p3-calendar]').forEach(button => button.addEventListener('click', async () => {
         try { await downloadEventCalendar(button.dataset.p3Calendar); } catch (error) { alert(error.message); }
       }));
-    } catch (error) { fail(error, showEvents); }
+    } catch (error) { fail(error, showVeranstaltungen); }
   }
 
   async function showConversation(threadId) {
-    if (!loading('A+ Support', 'Unterhaltung', 'Direkter Kontakt mit dem A+ Team.')) return;
+    if (!loading('A+ Hilfe', 'Unterhaltung', 'Direkter Kontakt mit dem A+ Team.')) return;
     try {
       const data = await api(`/conversations/${threadId}/`);
       const target = content();
-      target.innerHTML = `${backMarkup('A+ Support', data.thread.subject, 'Direkter Kontakt mit dem A+ Team.')}
+      target.innerHTML = `${backMarkup('A+ Hilfe', data.thread.subject, 'Direkter Kontakt mit dem A+ Team.')}
         <div class="notice">Dieser Bereich ist nicht für akute Notfälle geeignet.</div>
         <section class="card">
           <div style="display:flex;flex-direction:column;gap:10px">${data.messages.length ? data.messages.map(message => `<div style="align-self:${message.mine ? 'flex-end' : 'flex-start'};max-width:86%;padding:11px 13px;border-radius:16px;background:${message.mine ? '#17212a' : 'rgba(0,0,0,.06)'};color:${message.mine ? '#fff' : 'inherit'}"><div>${esc(message.body)}</div><small style="opacity:.65">${esc(message.sender)} · ${dateTime(message.created_at)}</small></div>`).join('') : '<p class="empty">Noch keine Nachrichten.</p>'}</div>
@@ -228,11 +228,11 @@
   }
 
   async function showConcierge() {
-    if (!loading('A+ Support', 'Concierge & Nachrichten', 'Organisatorische Wünsche und sichere Kommunikation.')) return;
+    if (!loading('A+ Hilfe', 'Nachrichten & Hilfe', 'Organisatorische Wünsche und sichere Kommunikation.')) return;
     try {
       const [concierge, conversations] = await Promise.all([api('/concierge/'), api('/conversations/')]);
       const target = content();
-      target.innerHTML = `${backMarkup('A+ Support', 'Concierge & Nachrichten', 'Organisatorische Wünsche und sichere Kommunikation.')}
+      target.innerHTML = `${backMarkup('A+ Hilfe', 'Nachrichten & Hilfe', 'Organisatorische Wünsche und sichere Kommunikation.')}
         <div class="notice">${esc(concierge.note)} ${esc(conversations.note)}</div>
         <section class="card"><h2>Concierge-Anfrage</h2><form class="form" data-p3-concierge-form>
           <label>Wunsch<select name="request_type">${concierge.types.map(type => `<option value="${esc(type.value)}">${esc(type.label)}</option>`).join('')}</select></label>
@@ -270,8 +270,8 @@
     const grid = heading.closest('.content')?.querySelector('.more-grid');
     if (!grid || grid.querySelector('[data-p3-route]')) return;
     const items = [
-      ['gamification', '✦ Challenges'],
-      ['events', '◆ Events'],
+      ['gamification', '✦ Aufgaben'],
+      ['events', '◆ Veranstaltungen'],
       ['concierge', '◎ Concierge'],
     ];
     items.forEach(([route, label]) => {
@@ -283,7 +283,7 @@
       grid.appendChild(button);
     });
     grid.querySelector('[data-p3-route="gamification"]')?.addEventListener('click', showGamification);
-    grid.querySelector('[data-p3-route="events"]')?.addEventListener('click', showEvents);
+    grid.querySelector('[data-p3-route="events"]')?.addEventListener('click', showVeranstaltungen);
     grid.querySelector('[data-p3-route="concierge"]')?.addEventListener('click', showConcierge);
   }
 

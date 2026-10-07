@@ -144,17 +144,17 @@
   }
 
   async function showWallet() {
-    if (!p2Loading('A+ Beauty Club', 'Mitgliedskarte', 'Ihre digitale A+ Karte, QR und Wallet.')) return;
+    if (!p2Loading('A+ Mitgliedschaft', 'Mitgliedskarte', 'Ihre digitale A+ Karte und der persönliche QR-Code.')) return;
     try {
       const data = await p2Api('/wallet-pass/');
       const card = data.card;
       const target = content();
-      target.innerHTML = `${backMarkup('A+ Beauty Club', 'Mitgliedskarte', 'Ihre digitale A+ Karte, QR und Wallet.')}
+      target.innerHTML = `${backMarkup('A+ Mitgliedschaft', 'Mitgliedskarte', 'Ihre digitale A+ Karte und der persönliche QR-Code.')}
         <section class="card" style="background:linear-gradient(135deg,#111a22,#253642);color:#fff;border:none;overflow:hidden;position:relative">
           <div style="position:absolute;width:180px;height:180px;border-radius:50%;right:-70px;top:-80px;background:rgba(199,154,98,.2)"></div>
           <div style="display:flex;justify-content:space-between;gap:16px;position:relative">
             <div>
-              <small style="color:#f0d7ad;letter-spacing:.12em">A+ ESTHETIC · BEAUTY CLUB</small>
+              <small style="color:#f0d7ad;letter-spacing:.12em">A+ ESTHETIC</small>
               <h2 style="font-size:26px;margin:10px 0 2px;color:#fff">${esc(card.name)}</h2>
               <div style="color:#f0d7ad;font-weight:700">${esc(card.tier)}</div>
               <div style="margin-top:18px;font-size:12px;opacity:.7">MITGLIEDSNUMMER</div>
@@ -171,7 +171,7 @@
           </div>
         </section>
         <section class="card">
-          <h2>In Wallet speichern</h2>
+          <h2>Zur Wallet hinzufügen</h2>
           <p class="muted">Die digitale Karte oben funktioniert immer. Apple/Google Wallet wird nur aktiviert, wenn der jeweilige Anbieter serverseitig konfiguriert ist.</p>
           <div class="actions">
             ${data.providers.apple.configured
@@ -215,11 +215,11 @@
   }
 
   async function showCabinet() {
-    if (!p2Loading('Ihre Produkte', 'Beauty Cabinet', 'Produkte, Haltbarkeit und persönliche Routinen an einem Ort.')) return;
+    if (!p2Loading('Ihre Produkte', 'Produktübersicht', 'Produkte, Haltbarkeit und persönliche Routinen an einem Ort.')) return;
     try {
       const data = await p2Api('/cabinet/');
       const target = content();
-      target.innerHTML = `${backMarkup('Ihre Produkte', 'Beauty Cabinet', 'Produkte, Haltbarkeit und persönliche Routinen an einem Ort.')}
+      target.innerHTML = `${backMarkup('Ihre Produkte', 'Produktübersicht', 'Produkte, Haltbarkeit und persönliche Routinen an einem Ort.')}
         <div class="notice">${esc(data.safety_note)}</div>
         <section class="card">
           <h2>Produkt hinzufügen</h2>
@@ -256,7 +256,7 @@
               <label>Eigene Notiz<input name="note" maxlength="300" placeholder="Optional"></label>
               <button class="btn primary" type="submit">Routine hinzufügen</button>
             </form>`}
-          </section>`).join('') : '<section class="card"><p class="empty">Noch keine Produkte im Beauty Cabinet.</p></section>'}`;
+          </section>`).join('') : '<section class="card"><p class="empty">Noch keine Produkte im Produktübersicht.</p></section>'}`;
       bindBack();
 
       target.querySelector('#p2-cabinet-form')?.addEventListener('submit', async event => {
@@ -317,21 +317,21 @@
     }).join('')}<div class="separator"></div><div class="row"><b>Gesamt</b><b>${euro(cartTotal(productsById))}</b></div>`;
   }
 
-  async function showShop() {
-    if (!p2Loading('A+ Auswahl', 'Shop', 'Produkte bestellen, Abholung oder Versand wählen und Status verfolgen.')) return;
+  async function showProdukte() {
+    if (!p2Loading('A+ Auswahl', 'Produkte', 'Produkte bestellen, Abholung oder Versand wählen und Status verfolgen.')) return;
     try {
       const data = await p2Api('/shop/');
       const target = content();
       const productsById = new Map(data.products.map(product => [Number(product.id), product]));
-      target.innerHTML = `${backMarkup('A+ Auswahl', 'Shop', 'Produkte bestellen, Abholung oder Versand wählen und Status verfolgen.')}
+      target.innerHTML = `${backMarkup('A+ Auswahl', 'Produkte', 'Produkte bestellen, Abholung oder Versand wählen und Status verfolgen.')}
         <div class="notice">${esc(data.payment_note)}</div>
         <section class="card"><h2>Produkte</h2>
           ${data.products.length ? data.products.map(product => `
             <div class="separator"></div><div class="row" style="align-items:flex-start">
               ${product.image_url ? `<img src="${esc(product.image_url)}" alt="" style="width:70px;height:70px;object-fit:cover;border-radius:14px;background:#eee">` : ''}
               <div class="row-main"><b>${esc(product.name)}</b><small>${esc(product.category || '')}</small><p style="margin:6px 0">${esc(product.description || '')}</p><b>${euro(product.price_cents)}</b><small style="display:block">${product.stock_quantity} verfügbar · ${[product.allow_collect ? 'Abholung' : '', product.allow_shipping ? 'Versand' : ''].filter(Boolean).join(' / ')}</small></div>
-              <div style="display:flex;flex-direction:column;gap:6px"><button class="btn primary" type="button" data-p2-cart-add="${product.id}" ${product.in_stock ? '' : 'disabled'}>${product.in_stock ? '+ Warenkorb' : 'Ausverkauft'}</button><button class="btn ghost" type="button" data-p2-cabinet-shop="${product.id}">+ Cabinet</button></div>
-            </div>`).join('') : '<p class="empty">Aktuell sind noch keine Shop-Produkte veröffentlicht.</p>'}
+              <div style="display:flex;flex-direction:column;gap:6px"><button class="btn primary" type="button" data-p2-cart-add="${product.id}" ${product.in_stock ? '' : 'disabled'}>${product.in_stock ? '+ Warenkorb' : 'Ausverkauft'}</button><button class="btn ghost" type="button" data-p2-cabinet-shop="${product.id}">+ Übersicht</button></div>
+            </div>`).join('') : '<p class="empty">Aktuell sind noch keine Produkte-Produkte veröffentlicht.</p>'}
         </section>
         <section class="card"><h2>Warenkorb</h2><div data-p2-cart>${cartMarkup(data.products)}</div>
           <form id="p2-checkout" class="form" style="margin-top:14px">
@@ -385,8 +385,8 @@
       }));
       target.querySelectorAll('[data-p2-cabinet-shop]').forEach(button => button.addEventListener('click', async () => {
         try {
-          await p2Api('/cabinet/', { method: 'POST', body: JSON.stringify({ shop_product_id: Number(button.dataset.p2CabinetShop) }) });
-          alert('Produkt wurde zum Beauty Cabinet hinzugefügt.');
+          await p2Api('/cabinet/', { method: 'POST', body: JSON.stringify({ shop_product_id: Number(button.dataset.p2CabinetProdukte) }) });
+          alert('Produkt wurde zum Produktübersicht hinzugefügt.');
         } catch (error) { alert(error.message); }
       }));
       target.querySelector('#p2-checkout')?.addEventListener('submit', async event => {
@@ -403,15 +403,15 @@
           }) });
           cart.clear();
           alert(`Bestellung ${result.order.order_number} wurde erfasst.`);
-          await showShop();
+          await showProdukte();
         } catch (error) { alert(error.message); }
       });
       target.querySelectorAll('[data-p2-cancel-order]').forEach(button => button.addEventListener('click', async () => {
         if (!confirm('Diese Bestellung stornieren?')) return;
-        try { await p2Api(`/shop/orders/${button.dataset.p2CancelOrder}/cancel/`, { method: 'POST', body: '{}' }); await showShop(); }
+        try { await p2Api(`/shop/orders/${button.dataset.p2CancelOrder}/cancel/`, { method: 'POST', body: '{}' }); await showProdukte(); }
         catch (error) { alert(error.message); }
       }));
-    } catch (error) { p2Fail(error, showShop); }
+    } catch (error) { p2Fail(error, showProdukte); }
   }
 
   function enhanceMore() {
@@ -421,8 +421,8 @@
     if (!grid || grid.querySelector('[data-p2-route]')) return;
     const items = [
       ['wallet', '◆ Mitgliedskarte'],
-      ['cabinet', '◈ Beauty Cabinet'],
-      ['shop', '◉ Shop'],
+      ['cabinet', '◈ Produktübersicht'],
+      ['shop', '◉ Produkte'],
     ];
     items.forEach(([route, label]) => {
       const button = document.createElement('button');
@@ -434,7 +434,7 @@
     });
     grid.querySelector('[data-p2-route="wallet"]')?.addEventListener('click', showWallet);
     grid.querySelector('[data-p2-route="cabinet"]')?.addEventListener('click', showCabinet);
-    grid.querySelector('[data-p2-route="shop"]')?.addEventListener('click', showShop);
+    grid.querySelector('[data-p2-route="shop"]')?.addEventListener('click', showProdukte);
   }
 
   const observer = new MutationObserver(enhanceMore);

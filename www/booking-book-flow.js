@@ -281,7 +281,7 @@
             </div>
             <div class="book-summary" data-book-summary></div>
             <div class="book-consent-stack">
-              <label class="book-privacy-check"><input name="marketing" type="checkbox" checked><span>Ich möchte als Erstes von Aktionen, Angeboten und Neuigkeiten von A+Esthetic erfahren.</span></label>
+              <label class="book-privacy-check"><input name="marketing" type="checkbox"><span>Ich möchte Informationen zu Aktionen, Angeboten und Neuigkeiten von A+ Esthetic erhalten. Diese Einwilligung ist freiwillig und jederzeit mit Wirkung für die Zukunft widerrufbar.</span></label>
               <label class="book-privacy-check"><input name="terms" type="checkbox" required><span>Ich stimme den Stornierungsbedingungen von A+Esthetic zu.</span></label>
               <label class="book-privacy-check"><input name="privacy" type="checkbox" required><span>Ich stimme der Verarbeitung meiner Angaben zur Terminorganisation zu und habe die Datenschutzhinweise gelesen.</span></label>
             </div>
@@ -305,7 +305,7 @@
       const durationLabel = Number.isFinite(duration) && duration > 0 ? `${duration} Min.` : 'Dauer auf Anfrage';
       return `
       <button type="button" class="book-choice-card book-treatment-card has-site-visual" data-service-id="${service.id}" data-service-category="${serviceCategory(service.name)}">
-        <span class="book-treatment-media" style="background-image:url('${esc(serviceImage(service.name))}')"></span>
+        <span class="book-treatment-media" data-service-image="${esc(serviceImage(service.name))}"></span>
         <div class="book-treatment-content">
           <div class="book-treatment-title-row">
             <strong>${esc(service.name)}</strong>
@@ -316,6 +316,28 @@
         </div>
       </button>`;
     }).join('') : '<div class="book-slot-empty">Zurzeit sind keine Online-Termine freigeschaltet.</div>';
+
+    const treatmentMedia = [...services.querySelectorAll('[data-service-image]')];
+    const loadTreatmentMedia = node => {
+      if (!node || node.dataset.imageLoaded === '1') return;
+      const source = node.dataset.serviceImage;
+      if (!source) return;
+      node.style.backgroundImage = `url("${source.replaceAll('"','%22')}")`;
+      node.dataset.imageLoaded = '1';
+    };
+    treatmentMedia.slice(0, 2).forEach(loadTreatmentMedia);
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          loadTreatmentMedia(entry.target);
+          observer.unobserve(entry.target);
+        });
+      }, { rootMargin: '220px 0px' });
+      treatmentMedia.slice(2).forEach(node => observer.observe(node));
+    } else {
+      treatmentMedia.forEach(loadTreatmentMedia);
+    }
 
     const filters=host.querySelector('[data-service-filters]');
     const applyServiceFilter = (filterButton) => {
