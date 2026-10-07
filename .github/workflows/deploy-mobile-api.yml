@@ -1,4 +1,4 @@
-name: Deploy A+ Esthetic native A+ Esthetic App API
+name: Deploy A+ Esthetic App API
 
 on:
   workflow_dispatch:
@@ -227,7 +227,7 @@ jobs:
 
             cat > /etc/systemd/system/a-esthetic-mobile.service <<SERVICE
             [Unit]
-            Description=A+ Esthetic A+ Esthetic App mobile API
+            Description=A+ Esthetic App API
             After=network.target
             [Service]
             Type=simple
