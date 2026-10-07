@@ -454,3 +454,72 @@ body{background:
   .approved-quick-actions b{font-size:8px}
   .core-brand .core-brand-emblem{width:54px!important;height:54px!important}.core-brand .core-brand-emblem img{width:46px!important;height:46px!important}
 }
+
+
+/* A+ Esthetic brand lockup — 2026-10-07 */
+.core-header{
+  height:96px!important;
+  grid-template-columns:48px minmax(0,1fr) 48px!important;
+}
+.core-brand{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:12px!important;
+  min-width:0!important;
+  overflow:visible!important;
+}
+.core-brand .core-brand-emblem{
+  width:68px!important;
+  height:68px!important;
+  flex:0 0 68px!important;
+  display:grid!important;
+  place-items:center!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.core-brand .core-brand-emblem img{
+  width:68px!important;
+  height:68px!important;
+  object-fit:contain!important;
+  filter:drop-shadow(0 8px 16px rgba(154,105,24,.16))!important;
+}
+.core-brand .core-brand-name{
+  display:block!important;
+  position:relative!important;
+  text-align:left!important;
+  color:#211b14!important;
+  line-height:1!important;
+  padding:2px 0 8px!important;
+}
+.core-brand .core-brand-name b{
+  display:block!important;
+  font-family:"Iowan Old Style",Baskerville,Georgia,serif!important;
+  font-size:21px!important;
+  font-weight:600!important;
+  letter-spacing:.08em!important;
+  white-space:nowrap!important;
+}
+.core-brand .core-brand-name::after{
+  content:""!important;
+  position:absolute!important;
+  left:0!important;
+  right:0!important;
+  bottom:0!important;
+  height:1px!important;
+  background:linear-gradient(90deg,#a9741e,rgba(214,175,91,.42),transparent)!important;
+}
+@media(max-width:520px){
+  .core-header{height:90px!important}
+  .core-brand{gap:9px!important}
+  .core-brand .core-brand-emblem{width:60px!important;height:60px!important;flex-basis:60px!important}
+  .core-brand .core-brand-emblem img{width:60px!important;height:60px!important}
+  .core-brand .core-brand-name b{font-size:17px!important;letter-spacing:.075em!important}
+}
+@media(max-width:370px){
+  .core-brand .core-brand-emblem{width:54px!important;height:54px!important;flex-basis:54px!important}
+  .core-brand .core-brand-emblem img{width:54px!important;height:54px!important}
+  .core-brand .core-brand-name b{font-size:15px!important}
+}
