@@ -8,7 +8,7 @@
 - Branch: `main`
 - Android package: `de.aplusesthetic.app`
 - iOS bundle ID: `de.aplusesthetic.app`
-- Version for first release: `1.0.0`
+- Next release: `1.0.28` Build `33`
 - Production: `https://app.a-esthetic.de`
 - Suggested store category: Lifestyle
 
