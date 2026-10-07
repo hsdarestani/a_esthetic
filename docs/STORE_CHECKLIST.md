@@ -9,7 +9,7 @@
 - Android package: `de.aplusesthetic.app`
 - iOS bundle ID: `de.aplusesthetic.app`
 - Version for first release: `1.0.0`
-- Production: `https://esthetic.smarbiz.sbs`
+- Production: `https://app.a-esthetic.de`
 - Suggested store category: Lifestyle
 
 ## Product declaration
@@ -73,8 +73,8 @@ Use `store/metadata.de.json` as the source of truth.
 - App access: Restricted login; provide the review/demo credentials
 - Target audience: select only the real intended customer age groups
 - Health functionality: No health functionality in this customer-club release
-- Privacy policy: `https://esthetic.smarbiz.sbs/datenschutz/`
-- Account deletion/request: `https://esthetic.smarbiz.sbs/konto-loeschen/`
+- Privacy policy: `https://app.a-esthetic.de/datenschutz/`
+- Account deletion/request: `https://app.a-esthetic.de/konto-loeschen/`
 
 ### Data safety baseline
 
@@ -128,8 +128,8 @@ Build environment can include:
 - Primary language: German
 - Bundle ID: `de.aplusesthetic.app`
 - Primary category: Lifestyle
-- Privacy policy URL: `https://esthetic.smarbiz.sbs/datenschutz/`
-- Support URL: `https://esthetic.smarbiz.sbs/support/`
+- Privacy policy URL: `https://app.a-esthetic.de/datenschutz/`
+- Support URL: `https://app.a-esthetic.de/support/`
 - Marketing URL: `https://a-esthetic.de/`
 
 ### App Privacy baseline
