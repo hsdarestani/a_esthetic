@@ -36,7 +36,7 @@
 
   function serviceCategory(name='') {
     const value=String(name).toLowerCase();
-    if (/botox|hyaluron|lippen|skinbooster|gesicht|haut|beratung|microneedling/.test(value)) return 'face';
+    if (/botox|hyaluron|lippen|skinbooster|gesicht|haut|beratung|kontroll|microneedling/.test(value)) return 'face';
     if (/haar|körper|body|lipolyse/.test(value)) return 'body';
     if (/infusion|wellness|vitamin|analyse/.test(value)) return 'wellness';
     return 'all';
@@ -44,15 +44,20 @@
 
 
   function serviceImage(name='') {
-    const value=String(name).toLowerCase();
-    if (value.includes('botox')) return './assets/site/botox.png';
-    if (value.includes('hyal')) return './assets/site/hyaluron.png';
+    const value=String(name).toLowerCase().trim();
+    if (value.includes('kontroll')) return './assets/site/kontrolltermin.png';
+    if (value.includes('beratung')) return './assets/site/erstberatung.png';
+    if (value.includes('botox')) {
+      if (value.includes('bestand')) return './assets/site/botox-bestandspatient.png';
+      return './assets/site/botox-neupatient.png';
+    }
+    if (value.includes('hyal')) return './assets/site/hyaluron-premium.png';
+    if (value.includes('infusion') || value.includes('vitamin')) return './assets/site/infusion-premium.png';
+    if (value.includes('lipolyse') || value.includes('fett-weg') || value.includes('fett weg')) return './assets/site/injektionslipolyse.png';
+    if (value.includes('microneedling') || value.includes('micro needling') || value.includes('rf')) return './assets/site/rf-microneedling-premium.png';
+    if (value.includes('laser') || value.includes('haarentfernung')) return './assets/site/laser-haarentfernung.png';
     if (value.includes('skinbooster') || value.includes('skin booster')) return './assets/site/skinbooster.png';
     if (value.includes('prp') || value.includes('eigenblut')) return './assets/site/prp.png';
-    if (value.includes('infusion') || value.includes('vitamin')) return './assets/site/infusion.jpeg';
-    if (value.includes('lipolyse') || value.includes('fett-weg') || value.includes('fett weg')) return './assets/site/lipolyse.png';
-    if (value.includes('microneedling') || value.includes('micro needling') || value.includes('rf')) return './assets/site/rf-microneedling.png';
-    if (value.includes('laser') || value.includes('haarentfernung')) return './assets/site/laser.png';
     return './assets/site/clinic.jpg';
   }
 
@@ -300,7 +305,7 @@
       const durationLabel = Number.isFinite(duration) && duration > 0 ? `${duration} Min.` : 'Dauer auf Anfrage';
       return `
       <button type="button" class="book-choice-card book-treatment-card has-site-visual" data-service-id="${service.id}" data-service-category="${serviceCategory(service.name)}">
-        <span class="book-treatment-media" style="background-image:url('${esc(serviceImage(service.name))}')"><i>${treatmentIcon(service.name)}</i></span>
+        <span class="book-treatment-media" style="background-image:url('${esc(serviceImage(service.name))}')"></span>
         <div class="book-treatment-content">
           <div class="book-treatment-title-row">
             <strong>${esc(service.name)}</strong>
