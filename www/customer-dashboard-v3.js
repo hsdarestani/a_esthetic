@@ -1,7 +1,8 @@
 (() => {
   'use strict';
 
-  const API = 'https://esthetic.smarbiz.sbs/api/mobile';
+  const APP_ORIGIN = window.location.hostname === 'app.a-esthetic.de' ? window.location.origin : 'https://app.a-esthetic.de';
+  const API = `${APP_ORIGIN}/api/mobile`;
   const ICONS = {
     dashboard: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.2 12 4l8 6.2v8.3a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-8.3Z"/><path d="M9 20v-6h6v6"/></svg>',
     appointments: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="15" rx="3"/><path d="M8 3.5v4M16 3.5v4M3.5 10h17"/><path d="M8 14h3M8 17h6"/></svg>',

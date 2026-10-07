@@ -1,7 +1,8 @@
 (() => {
   'use strict';
 
-  const API = 'https://esthetic.smarbiz.sbs/api/mobile';
+  const APP_ORIGIN = window.location.hostname === 'app.a-esthetic.de' ? window.location.origin : 'https://app.a-esthetic.de';
+  const API = `${APP_ORIGIN}/api/mobile`;
   const TOKEN_KEY = 'aplus_token';
   const PUSH_TOKEN_KEY = 'aplus_push_token';
   let listenersBound = false;

@@ -1,7 +1,8 @@
 (() => {
   'use strict';
 
-  const API_BASE = 'https://esthetic.smarbiz.sbs/api/mobile';
+  const APP_ORIGIN = window.location.hostname === 'app.a-esthetic.de' ? window.location.origin : 'https://app.a-esthetic.de';
+  const API_BASE = `${APP_ORIGIN}/api/mobile`;
   const token = () => localStorage.getItem('aplus_token') || '';
   const esc = (value = '') => String(value)
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -282,8 +283,8 @@
             <div class="book-summary" data-book-summary></div>
             <div class="book-consent-stack">
               <label class="book-privacy-check"><input name="marketing" type="checkbox" checked><span>Ich möchte Informationen zu Aktionen, Angeboten und Neuigkeiten von A+ Esthetic erhalten. Diese Einwilligung ist freiwillig und jederzeit mit Wirkung für die Zukunft widerrufbar.</span></label>
-              <label class="book-privacy-check"><input name="terms" type="checkbox" required><span>Ich akzeptiere die <a href="https://esthetic.smarbiz.sbs/nutzungsbedingungen/">Nutzungsbedingungen</a> für die Terminorganisation.</span></label>
-              <label class="book-privacy-check"><input name="privacy" type="checkbox" required><span>Ich stimme der Verarbeitung meiner Angaben zur Terminorganisation zu und habe die <a href="https://esthetic.smarbiz.sbs/datenschutz/">Datenschutzhinweise</a> gelesen.</span></label>
+              <label class="book-privacy-check"><input name="terms" type="checkbox" required><span>Ich akzeptiere die <a href="${APP_ORIGIN}/nutzungsbedingungen/">Nutzungsbedingungen</a> für die Terminorganisation.</span></label>
+              <label class="book-privacy-check"><input name="privacy" type="checkbox" required><span>Ich stimme der Verarbeitung meiner Angaben zur Terminorganisation zu und habe die <a href="${APP_ORIGIN}/datenschutz/">Datenschutzhinweise</a> gelesen.</span></label>
             </div>
             <button class="book-primary" type="submit">Jetzt Termin buchen</button>
           </form>
