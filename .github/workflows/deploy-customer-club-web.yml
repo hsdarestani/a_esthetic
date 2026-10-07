@@ -87,6 +87,7 @@ jobs:
             RELEASE_DIR="/tmp/a-esthetic-focused-app"
             PACKAGE="/tmp/customer-club-web.tar.gz"
             DOMAIN="esthetic.smarbiz.sbs"
+            APP_DOMAIN="app.a-esthetic.de"
             CONF="/etc/nginx/sites-available/a-esthetic-connected.conf"
 
             for attempt in $(seq 1 120); do
@@ -118,7 +119,7 @@ jobs:
             server {
               listen 80;
               listen [::]:80;
-              server_name esthetic.smarbiz.sbs;
+              server_name esthetic.smarbiz.sbs app.a-esthetic.de;
               root /opt/a-esthetic-web/site;
               index index.html;
               client_max_body_size 30m;
@@ -131,6 +132,14 @@ jobs:
             }
             NGINX
             fi
+
+            python3 - <<'PY'
+            from pathlib import Path
+            p=Path('/etc/nginx/sites-available/a-esthetic-connected.conf')
+            s=p.read_text()
+            s=s.replace('server_name esthetic.smarbiz.sbs;', 'server_name esthetic.smarbiz.sbs app.a-esthetic.de;')
+            p.write_text(s)
+            PY
 
             ln -sfn "$CONF" /etc/nginx/sites-enabled/a-esthetic-connected.conf
             rm -f /etc/nginx/sites-enabled/default
@@ -171,5 +180,10 @@ jobs:
             grep -q 'approved-v22.css?v=20261006-records-v30' /tmp/aesthetic-focused-index.html
             grep -q 'core-app.js?v=20261006-records-v30' /tmp/aesthetic-focused-index.html
             grep -q 'booking-book-flow.js?v=20261006-profile-v27' /tmp/aesthetic-focused-index.html
-            echo "Focused A+ patient app prepared on new STRATO origin for $DOMAIN"
+            if getent ahosts "$APP_DOMAIN" >/dev/null 2>&1; then
+              certbot --nginx -d "$DOMAIN" -d "$APP_DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+            else
+              echo "DNS for $APP_DOMAIN is not live yet; current domain remains active and the new domain is prepared."
+            fi
+            echo "Focused A+ patient app prepared for $DOMAIN and $APP_DOMAIN"
             rm -rf "$RELEASE_DIR" "$PACKAGE"
