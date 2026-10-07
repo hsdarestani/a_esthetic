@@ -18,7 +18,7 @@ def datenschutz(request):
         request,
         'datenschutz',
         'Datenschutzerklärung',
-        'Informationen zur Datenverarbeitung im A+ Esthetic Customer Club',
+        'Informationen zur Datenverarbeitung in der A+ Esthetic App',
     )
 
 
@@ -44,7 +44,7 @@ def terms(request):
         request,
         'terms',
         'Nutzungsbedingungen',
-        'Bedingungen für die Nutzung des A+ Esthetic Customer Clubs',
+        'Bedingungen für die Nutzung der A+ Esthetic App',
     )
 
 
@@ -88,7 +88,7 @@ def account_deletion(request):
     return render(request, 'legal.html', {
         'page': 'account_deletion',
         'legal_title': 'Konto & Daten löschen',
-        'legal_subtitle': 'Löschung Ihres Customer-Club-Kontos und der zugehörigen Daten anfordern',
+        'legal_subtitle': 'Löschung Ihres A+ Esthetic App-Kontos und der zugehörigen Daten anfordern',
         'deletion_error': error,
         'deletion_submitted': submitted,
         'requested_email': requested_email,
