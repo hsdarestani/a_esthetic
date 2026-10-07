@@ -351,7 +351,7 @@ jobs:
 
             certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
             if getent ahosts "$APP_DOMAIN" >/dev/null 2>&1; then
-              certbot --nginx -d "$DOMAIN" -d "$APP_DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+              certbot --nginx --cert-name "$DOMAIN" -d "$DOMAIN" -d "$APP_DOMAIN" --expand --non-interactive --agree-tos --register-unsafely-without-email --redirect
             else
               echo "DNS for $APP_DOMAIN is not live yet; SSL will be enabled after the DNS record is added."
             fi
