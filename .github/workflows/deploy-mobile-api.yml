@@ -350,8 +350,25 @@ jobs:
             PY
 
             certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+            ensure_app_certificate() {
+              local cert="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+              if [ -s "$cert" ] && openssl x509 -in "$cert" -noout -text 2>/dev/null | grep -Fq "DNS:$APP_DOMAIN"; then
+                echo "TLS certificate already covers $APP_DOMAIN; skipping Certbot expansion."
+                return 0
+              fi
+              echo "Waiting for any concurrent Certbot process before expanding $DOMAIN certificate..."
+              for _ in $(seq 1 45); do
+                if ! pgrep -f '[c]ertbot' >/dev/null 2>&1; then
+                  certbot --nginx --cert-name "$DOMAIN" -d "$DOMAIN" -d "$APP_DOMAIN" --expand --non-interactive --agree-tos --register-unsafely-without-email --redirect
+                  return 0
+                fi
+                sleep 2
+              done
+              echo "Certbot remained busy for 90 seconds." >&2
+              return 1
+            }
             if getent ahosts "$APP_DOMAIN" >/dev/null 2>&1; then
-              certbot --nginx --cert-name "$DOMAIN" -d "$DOMAIN" -d "$APP_DOMAIN" --expand --non-interactive --agree-tos --register-unsafely-without-email --redirect
+              ensure_app_certificate
             else
               echo "DNS for $APP_DOMAIN is not live yet; SSL will be enabled after the DNS record is added."
             fi
