@@ -181,7 +181,22 @@ jobs:
             grep -q 'core-app.js?v=20261007-domain-v1' /tmp/aesthetic-focused-index.html
             grep -q 'booking-book-flow.js?v=20261007-domain-v1' /tmp/aesthetic-focused-index.html
             if getent ahosts "$APP_DOMAIN" >/dev/null 2>&1; then
-              certbot --nginx --cert-name "$DOMAIN" -d "$DOMAIN" -d "$APP_DOMAIN" --expand --non-interactive --agree-tos --register-unsafely-without-email --redirect
+              CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+              if [ -s "$CERT" ] && openssl x509 -in "$CERT" -noout -text 2>/dev/null | grep -Fq "DNS:$APP_DOMAIN"; then
+                echo "TLS certificate already covers $APP_DOMAIN; skipping Certbot expansion."
+              else
+                echo "Waiting for any concurrent Certbot process before expanding $DOMAIN certificate..."
+                CERT_READY=0
+                for _ in $(seq 1 45); do
+                  if ! pgrep -f '[c]ertbot' >/dev/null 2>&1; then
+                    certbot --nginx --cert-name "$DOMAIN" -d "$DOMAIN" -d "$APP_DOMAIN" --expand --non-interactive --agree-tos --register-unsafely-without-email --redirect
+                    CERT_READY=1
+                    break
+                  fi
+                  sleep 2
+                done
+                test "$CERT_READY" = "1"
+              fi
             else
               echo "DNS for $APP_DOMAIN is not live yet; current domain remains active and the new domain is prepared."
             fi
