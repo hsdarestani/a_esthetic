@@ -691,3 +691,89 @@ body{background:
   .premium-brand-header .core-brand .core-brand-emblem img{width:92px!important;height:92px!important}
   .premium-brand-header .core-brand .core-brand-name b{font-size:20px!important}
 }
+
+
+/* Premium header refinement — 2026-10-07 v34 */
+.core-header.premium-brand-header{
+  height:184px!important;
+  min-height:184px!important;
+  padding:16px 68px 18px!important;
+  background:
+    radial-gradient(circle at 50% -16%,rgba(225,188,108,.28),transparent 52%),
+    linear-gradient(180deg,#fffefb 0%,#faf4e9 100%)!important;
+}
+.premium-brand-header .core-brand{
+  gap:7px!important;
+}
+.premium-brand-header .core-brand .core-brand-emblem{
+  width:132px!important;
+  height:112px!important;
+  flex:0 0 112px!important;
+}
+.premium-brand-header .core-brand .core-brand-emblem img{
+  width:156px!important;
+  height:156px!important;
+  transform:scale(1.28)!important;
+  filter:drop-shadow(0 12px 22px rgba(157,108,28,.22))!important;
+}
+.premium-brand-header .core-brand .core-brand-name{
+  color:#b1812d!important;
+}
+.premium-brand-header .core-brand .core-brand-name b{
+  font-size:30px!important;
+  font-weight:550!important;
+  letter-spacing:.12em!important;
+  color:#b1812d!important;
+  background:linear-gradient(180deg,#d7b45f 0%,#b7832c 50%,#8f651f 100%)!important;
+  -webkit-background-clip:text!important;
+  background-clip:text!important;
+  -webkit-text-fill-color:transparent!important;
+  text-shadow:0 1px 0 rgba(255,255,255,.35)!important;
+}
+.premium-brand-header .core-brand .core-brand-name small{
+  display:none!important;
+}
+.core-header.premium-brand-header::after{
+  bottom:13px!important;
+  width:186px!important;
+  background:linear-gradient(90deg,transparent,rgba(177,126,39,.52),transparent)!important;
+}
+@media(max-width:520px){
+  .core-header.premium-brand-header{
+    height:174px!important;
+    min-height:174px!important;
+    padding:14px 56px 17px!important;
+  }
+  .premium-brand-header .core-brand .core-brand-emblem{
+    width:122px!important;
+    height:104px!important;
+    flex-basis:104px!important;
+  }
+  .premium-brand-header .core-brand .core-brand-emblem img{
+    width:146px!important;
+    height:146px!important;
+    transform:scale(1.30)!important;
+  }
+  .premium-brand-header .core-brand .core-brand-name b{
+    font-size:28px!important;
+    letter-spacing:.11em!important;
+  }
+}
+@media(max-width:370px){
+  .core-header.premium-brand-header{
+    height:164px!important;
+    min-height:164px!important;
+  }
+  .premium-brand-header .core-brand .core-brand-emblem{
+    width:114px!important;
+    height:98px!important;
+    flex-basis:98px!important;
+  }
+  .premium-brand-header .core-brand .core-brand-emblem img{
+    width:136px!important;
+    height:136px!important;
+  }
+  .premium-brand-header .core-brand .core-brand-name b{
+    font-size:25px!important;
+  }
+}
