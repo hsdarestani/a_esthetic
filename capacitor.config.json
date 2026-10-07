@@ -8,8 +8,7 @@
   "server": {
     "allowNavigation": [
       "book.a-esthetic.de",
-      "app.a-esthetic.de",
-      "esthetic.smarbiz.sbs"
+      "app.a-esthetic.de"
     ]
   },
   "android": {
