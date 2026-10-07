@@ -282,8 +282,8 @@
             <div class="book-summary" data-book-summary></div>
             <div class="book-consent-stack">
               <label class="book-privacy-check"><input name="marketing" type="checkbox"><span>Ich möchte Informationen zu Aktionen, Angeboten und Neuigkeiten von A+ Esthetic erhalten. Diese Einwilligung ist freiwillig und jederzeit mit Wirkung für die Zukunft widerrufbar.</span></label>
-              <label class="book-privacy-check"><input name="terms" type="checkbox" required><span>Ich stimme den Stornierungsbedingungen von A+Esthetic zu.</span></label>
-              <label class="book-privacy-check"><input name="privacy" type="checkbox" required><span>Ich stimme der Verarbeitung meiner Angaben zur Terminorganisation zu und habe die Datenschutzhinweise gelesen.</span></label>
+              <label class="book-privacy-check"><input name="terms" type="checkbox" required><span>Ich akzeptiere die <a href="https://esthetic.smarbiz.sbs/nutzungsbedingungen/">Nutzungsbedingungen</a> für die Terminorganisation.</span></label>
+              <label class="book-privacy-check"><input name="privacy" type="checkbox" required><span>Ich stimme der Verarbeitung meiner Angaben zur Terminorganisation zu und habe die <a href="https://esthetic.smarbiz.sbs/datenschutz/">Datenschutzhinweise</a> gelesen.</span></label>
             </div>
             <button class="book-primary" type="submit">Jetzt Termin buchen</button>
           </form>

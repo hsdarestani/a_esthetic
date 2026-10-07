@@ -114,7 +114,7 @@ jobs:
           core_app=pathlib.Path('www/core-app.js').read_text()
           assert 'approved-visual-story' not in core_app, 'dashboard clinic story must stay removed'
           assert 'background-position:right center!important' in approved_css, 'treatment imagery must stay right aligned'
-          for marker in ('botox.png','hyaluron.png','skinbooster.png','prp.png','infusion.jpeg','lipolyse.png','rf-microneedling.png','laser.png'):
+          for marker in ('erstberatung.png','botox-neupatient.png','botox-bestandspatient.png','hyaluron-premium.png','skinbooster.png','prp.png','infusion-premium.png','injektionslipolyse.png','rf-microneedling-premium.png','laser-haarentfernung.png','kontrolltermin.png'):
               assert marker in booking_flow, f'approved treatment visual missing {marker}'
           print('FOCUSED_RUNTIME_STATIC_AUDIT=success')
           PY
