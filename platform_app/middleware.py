@@ -9,6 +9,7 @@ class MobileApiCorsMiddleware:
         'capacitor://localhost',
         'https://localhost',
         'http://localhost',
+        'https://app.a-esthetic.de',
     }
 
     def __init__(self, get_response):
