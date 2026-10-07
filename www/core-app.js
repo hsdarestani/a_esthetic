@@ -77,7 +77,7 @@
       <header class="core-header premium-brand-header">
         <div class="core-brand" aria-label="A+ Esthetic">
           <span class="core-brand-emblem"><img src="./assets/logo.svg" alt="A+ Esthetic"></span>
-          <span class="core-brand-name"><b>A+ ESTHETIC</b><small>FRANKFURT AM MAIN</small></span>
+          <span class="core-brand-name"><b>A+ ESTHETIC</b></span>
         </div>
         <button class="core-icon-btn premium-brand-settings" data-settings aria-label="Einstellungen"><span class="header-icon">${NAV_ICONS.settings}</span></button>
       </header>
