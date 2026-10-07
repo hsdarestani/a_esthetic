@@ -9,7 +9,7 @@ Branch: `main`
 - Product: customer club / loyalty app
 - Android package: `de.aplusesthetic.app`
 - iOS bundle ID: `de.aplusesthetic.app`
-- Production web service: `https://esthetic.smarbiz.sbs`
+- Production web service: `https://app.a-esthetic.de`
 
 ## Android build contract
 
