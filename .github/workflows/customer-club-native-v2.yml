@@ -29,8 +29,9 @@ jobs:
               problems.append('Unexpected appId')
           if cfg.get('appName') != 'A+ Esthetic':
               problems.append('Unexpected appName')
-          if cfg.get('server', {}).get('url') != 'https://esthetic.smarbiz.sbs':
-              problems.append('Unexpected production URL')
+          allowed = set(cfg.get('server', {}).get('allowNavigation', []))
+          if 'app.a-esthetic.de' not in allowed:
+              problems.append('Branded production domain missing from allowNavigation')
 
           manifest = json.loads(Path('manifest.json').read_text(encoding='utf-8'))
           surface = ' '.join([
@@ -105,7 +106,7 @@ jobs:
           Android Capacitor generation and Gradle `bundleDebug` completed successfully in GitHub Actions.
 
           - Package ID: `de.aplusesthetic.app`
-          - Production URL: `https://esthetic.smarbiz.sbs`
+          - Production URL: `https://app.a-esthetic.de`
           - Verified commit input: `${GITHUB_SHA}`
           - Verification UTC: `$(date -u +'%Y-%m-%dT%H:%M:%SZ')`
           EOF
