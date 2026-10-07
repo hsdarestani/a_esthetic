@@ -27,7 +27,7 @@ Suggested description themes:
 - App name: `A+ Esthetic`
 - Android application ID: `de.aplusesthetic.app`
 - iOS bundle ID: `de.aplusesthetic.app`
-- Production URL: `https://esthetic.smarbiz.sbs`
+- Production URL: `https://app.a-esthetic.de`
 
 Do not change the Android application ID or iOS bundle ID after store records are created.
 
