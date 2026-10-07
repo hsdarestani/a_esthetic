@@ -1,12 +1,13 @@
 (() => {
   'use strict';
 
-  const API = 'https://esthetic.smarbiz.sbs/api/mobile';
+  const APP_ORIGIN = window.location.hostname === 'app.a-esthetic.de' ? window.location.origin : 'https://app.a-esthetic.de';
+  const API = `${APP_ORIGIN}/api/mobile`;
   const LEGAL = {
-    privacy: 'https://esthetic.smarbiz.sbs/datenschutz/',
-    terms: 'https://esthetic.smarbiz.sbs/nutzungsbedingungen/',
-    imprint: 'https://esthetic.smarbiz.sbs/impressum/',
-    deletion: 'https://esthetic.smarbiz.sbs/konto-loeschen/',
+    privacy: `${APP_ORIGIN}/datenschutz/`,
+    terms: `${APP_ORIGIN}/nutzungsbedingungen/`,
+    imprint: `${APP_ORIGIN}/impressum/`,
+    deletion: `${APP_ORIGIN}/konto-loeschen/`,
   };
   const CONTACT = {
     phone: '+496971417012',
