@@ -33,17 +33,17 @@
   {% endif %}
 
   {% if page == 'privacy_choices' %}
-  <section class="card"><h2>Ihre Datenschutz-Optionen</h2><p>In der App können Sie unter <strong>Profil & Datenschutz</strong> Ihre Kontaktdaten und die Einstellung für personalisierte Club-Informationen verwalten.</p><ul><li><a href="/profil/">Profil öffnen</a> (Anmeldung erforderlich)</li><li><a href="/konto-loeschen/">Kontolöschung und Datenlöschung anfordern</a></li><li><a href="mailto:info@a-esthetic.de?subject=DSGVO-Auskunft%20A%2B%20Esthetic">Auskunft oder Datenkopie anfordern</a></li><li><a href="/datenschutz/">Vollständige Datenschutzerklärung lesen</a></li></ul></section>
+  <section class="card"><h2>Ihre Datenschutz-Optionen</h2><p>In der App können Sie unter <strong>Profil & Datenschutz</strong> Ihre Kontaktdaten und die Einstellung für personalisierte App-Informationen verwalten.</p><ul><li><a href="/profil/">Profil öffnen</a> (Anmeldung erforderlich)</li><li><a href="/konto-loeschen/">Kontolöschung und Datenlöschung anfordern</a></li><li><a href="mailto:info@a-esthetic.de?subject=DSGVO-Auskunft%20A%2B%20Esthetic">Auskunft oder Datenkopie anfordern</a></li><li><a href="/datenschutz/">Vollständige Datenschutzerklärung lesen</a></li></ul></section>
   {% endif %}
 
   {% if page == 'account_deletion' %}
   <section class="card"><h2>Löschung anfordern</h2><p>Mit dieser Funktion können Sie die Löschung Ihres A+ Esthetic App-Kontos und der damit verbundenen, nicht mehr erforderlichen Daten einleiten.</p>{% if deletion_submitted %}<div class="ok"><strong>Anfrage gespeichert.</strong><br>Ihre Löschanfrage wurde protokolliert. A+ Esthetic prüft die Identität und führt die Löschung entsprechend den geltenden gesetzlichen Vorgaben durch.</div>{% else %}{% if deletion_error %}<div class="error">{{ deletion_error }}</div>{% endif %}<form method="post">{% csrf_token %}{% if request.user.is_authenticated %}<p>Angemeldetes Konto: <strong>{{ requested_email }}</strong></p>{% else %}<label class="field">E-Mail-Adresse des App-Kontos<input type="email" name="email" value="{{ requested_email }}" autocomplete="email" required></label>{% endif %}<button class="btn" type="submit">Kontolöschung verbindlich anfordern</button></form>{% endif %}</section>
-  <section class="card"><h2>Was wird gelöscht?</h2><p>Nach erfolgreicher Identitätsprüfung werden das App-Konto und zugehörige, nicht mehr erforderliche Konto-, Club-, Termin- und Kommunikationsdaten gelöscht oder anonymisiert, soweit keine gesetzlichen Aufbewahrungspflichten entgegenstehen.</p><p>Bei Fragen: <a href="mailto:info@a-esthetic.de">info@a-esthetic.de</a>.</p></section>
+  <section class="card"><h2>Was wird gelöscht?</h2><p>Nach erfolgreicher Identitätsprüfung werden das App-Konto und zugehörige, nicht mehr erforderliche Konto-, Punkte-, Termin- und Kommunikationsdaten gelöscht oder anonymisiert, soweit keine gesetzlichen Aufbewahrungspflichten entgegenstehen.</p><p>Bei Fragen: <a href="mailto:info@a-esthetic.de">info@a-esthetic.de</a>.</p></section>
   {% endif %}
 
   {% if page == 'support' %}
   <section class="card"><h2>Kontakt</h2><p><strong>A+ Esthetic GmbH</strong><br>Stiftstraße 14<br>60313 Frankfurt am Main</p><p>E-Mail: <a href="mailto:info@a-esthetic.de">info@a-esthetic.de</a><br>Telefon: <a href="tel:+496971417012">069 71417012</a><br>WhatsApp: <a href="https://wa.me/491729907936">+49 172 9907936</a></p></section>
-  <section class="card"><h2>Wobei wir helfen</h2><p>Support umfasst insbesondere Anmeldung, App-Zugriff, Mitgliedschaft, Wallet und Rewards, Terminanfragen, Datenschutzanfragen und technische Probleme.</p></section>
+  <section class="card"><h2>Wobei wir helfen</h2><p>Hilfe umfasst insbesondere Anmeldung, App-Zugriff, Mitgliedschaft, Punkte und Vorteile, Terminanfragen, Datenschutzanfragen und technische Probleme.</p></section>
   {% endif %}
 
   {% if page == 'terms' %}
@@ -57,7 +57,7 @@
   <section class="card"><h2>8. Datenschutz und Kontolöschung</h2><p>Informationen zur Datenverarbeitung finden Sie in der <a href="/datenschutz/">Datenschutzerklärung</a>. Die Löschung des App-Kontos kann über <a href="/konto-loeschen/">Konto & Daten löschen</a> angefordert werden. Gesetzliche Aufbewahrungs- und Dokumentationspflichten bleiben unberührt.</p></section>
   {% endif %}
 
-  <nav class="links"><a href="/datenschutz/">Datenschutz</a><a href="/datenschutz/einstellungen/">Datenschutz-Einstellungen</a><a href="/nutzungsbedingungen/">Nutzungsbedingungen</a><a href="/konto-loeschen/">Konto löschen</a><a href="/support/">Support</a><a href="/impressum/">Impressum</a></nav>
+  <nav class="links"><a href="/datenschutz/">Datenschutz</a><a href="/datenschutz/einstellungen/">Datenschutz-Einstellungen</a><a href="/nutzungsbedingungen/">Nutzungsbedingungen</a><a href="/konto-loeschen/">Konto löschen</a><a href="/support/">Hilfe</a><a href="/impressum/">Impressum</a></nav>
 </main>
 <script>
 document.querySelector('[data-legal-back]')?.addEventListener('click', function(){
