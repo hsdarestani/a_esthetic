@@ -36,7 +36,7 @@ def impressum(request):
 
 
 def support(request):
-    return _legal(request, 'support', 'Support', 'Hilfe und Kontakt zur A+ Esthetic App')
+    return _legal(request, 'support', 'Hilfe', 'Kontakt und technische Unterstützung zur A+ Esthetic App')
 
 
 def terms(request):
