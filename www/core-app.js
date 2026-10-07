@@ -76,7 +76,7 @@
     root.innerHTML=`<div class="core-shell">
       <header class="core-header">
         <span class="core-header-spacer"></span>
-        <div class="core-brand" aria-label="A+ Esthetic"><span class="core-brand-emblem"><img src="./assets/logo.svg" alt="A+ Esthetic"></span></div>
+        <div class="core-brand" aria-label="A+ Esthetic"><span class="core-brand-emblem"><img src="./assets/logo.svg" alt="A+ Esthetic"></span><span class="core-brand-name"><b>A+ ESTHETIC</b></span></div>
         <button class="core-icon-btn" data-settings aria-label="Einstellungen"><span class="header-icon">${NAV_ICONS.settings}</span></button>
       </header>
       <main class="core-main">${content}</main>
