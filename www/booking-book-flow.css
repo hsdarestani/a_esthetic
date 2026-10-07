@@ -11,3 +11,5 @@
 @keyframes bookRise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media(max-width:720px){.book-flow{border-radius:22px;padding:22px 14px}.book-choice-grid,.book-staff-grid{grid-template-columns:1fr}.book-field-row{grid-template-columns:1fr}.book-time-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.book-date-carousel-shell{grid-template-columns:32px minmax(0,1fr) 32px}.book-date-nav{width:32px;height:32px}.book-staff-avatar{width:68px;height:68px;flex-basis:68px}.book-summary-row{grid-template-columns:84px 1fr}}
 @media(max-width:390px){.book-time-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.book-progress{margin-bottom:26px}.book-progress-dot{width:30px;height:30px}.book-date-chip{flex-basis:78px;min-height:100px}}
+
+.book-privacy-check a{color:#765b24;text-decoration:underline;text-underline-offset:2px;font-weight:700}
