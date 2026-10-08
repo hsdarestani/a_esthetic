@@ -53,7 +53,7 @@
   border:1px solid rgba(255,255,255,.42)!important;
   border-radius:34px!important;
   background:
-    linear-gradient(160deg,rgba(255,255,255,.91),rgba(255,255,255,.77) 58%,rgba(255,250,242,.73))!important;
+    linear-gradient(160deg,rgba(255,255,255,.82),rgba(255,255,255,.72) 58%,rgba(255,250,242,.68))!important;
   box-shadow:
     0 40px 100px rgba(24,18,12,.28),
     0 10px 30px rgba(24,18,12,.12),
@@ -124,6 +124,10 @@
   width:72px!important;
   max-width:none!important;
   height:auto!important;
+  display:block!important;
+  object-fit:contain!important;
+  object-position:center!important;
+  transform:translateY(-5px);
   filter:drop-shadow(0 6px 14px rgba(140,99,29,.11));
 }
 
