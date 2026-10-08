@@ -1,0 +1,118 @@
+name: Repair and verify A+ Esthetic app domain
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/repair-app-domain.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-app-domain-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repair HTTPS vhost and same-origin app API
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            DOMAIN=app.a-esthetic.de
+            OLD=/etc/nginx/sites-available/a-esthetic-connected.conf
+            APP=/etc/nginx/sites-available/a-esthetic-app.conf
+            CERT=/etc/letsencrypt/live/esthetic.smarbiz.sbs/fullchain.pem
+            KEY=/etc/letsencrypt/live/esthetic.smarbiz.sbs/privkey.pem
+            test -s "$OLD"
+            test -s "$CERT"
+            test -s "$KEY"
+            test -s /opt/a-esthetic-web/site/index.html
+            openssl x509 -in "$CERT" -noout -text | grep -Fq "DNS:$DOMAIN"
+            echo "Verified that existing valid certificate has SAN for $DOMAIN"
+            TEMP="$(mktemp -d)"
+            cp -a "$OLD" "$TEMP/original.conf"
+            if [ -e "$APP" ]; then cp -a "$APP" "$TEMP/app.conf"; fi
+            if [ -L /etc/nginx/sites-enabled/a-esthetic-app.conf ]; then echo yes > "$TEMP/app_enabled"; fi
+            rollback() {
+              echo "Rolling back app domain vhost"
+              cp -a "$TEMP/original.conf" "$OLD"
+              if [ -f "$TEMP/app.conf" ]; then cp -a "$TEMP/app.conf" "$APP"; else rm -f "$APP"; fi
+              if [ -f "$TEMP/app_enabled" ]; then
+                ln -sfn "$APP" /etc/nginx/sites-enabled/a-esthetic-app.conf
+              else
+                rm -f /etc/nginx/sites-enabled/a-esthetic-app.conf
+              fi
+              nginx -t && systemctl reload nginx || true
+            }
+            trap 'rollback' ERR
+            python3 - <<'PY'
+            from pathlib import Path
+            p = Path('/etc/nginx/sites-available/a-esthetic-connected.conf')
+            s = p.read_text()
+            # Remove app host from the legacy multi-host server so the dedicated
+            # TLS server below always handles SNI for app.a-esthetic.de.
+            s = s.replace('server_name esthetic.smarbiz.sbs app.a-esthetic.de;',
+                          'server_name esthetic.smarbiz.sbs;')
+            p.write_text(s)
+            PY
+            cat > "$APP" <<'NGINX'
+            server {
+                listen 80;
+                listen [::]:80;
+                server_name app.a-esthetic.de;
+                return 301 https://app.a-esthetic.de$request_uri;
+            }
+            server {
+                listen 443 ssl;
+                listen [::]:443 ssl;
+                server_name app.a-esthetic.de;
+                ssl_certificate /etc/letsencrypt/live/esthetic.smarbiz.sbs/fullchain.pem;
+                ssl_certificate_key /etc/letsencrypt/live/esthetic.smarbiz.sbs/privkey.pem;
+                root /opt/a-esthetic-web/site;
+                index index.html;
+                client_max_body_size 30m;
+                add_header X-Content-Type-Options nosniff always;
+                add_header X-Frame-Options DENY always;
+                location / { try_files $uri $uri/ /index.html; }
+                location = /sw.js { add_header Cache-Control "no-cache, no-store, must-revalidate" always; }
+                location ^~ /api/mobile/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; }
+                location ^~ /accounts/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location ^~ /mobile-social/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location ^~ /secure-admin/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location ^~ /static/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /login/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location ^~ /datenschutz/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /support/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /konto-loeschen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /nutzungsbedingungen/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+                location = /impressum/ { proxy_pass http://127.0.0.1:8770; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+            }
+            NGINX
+            ln -sfn "$APP" /etc/nginx/sites-enabled/a-esthetic-app.conf
+            nginx -t
+            systemctl reload nginx
+            curl --noproxy '*' --fail --silent --show-error --max-time 20 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/mobile/status/" | grep -Fq 'A+ Esthetic App API'
+            curl --noproxy '*' --fail --silent --show-error --max-time 20 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" | grep -Fq 'core-app.js'
+            echo "App domain passes local verified HTTPS, SNI and API checks."
+            trap - ERR
+            rm -rf "$TEMP"
+      - name: Verify public DNS HTTPS and API from GitHub runner
+        run: |
+          set -euo pipefail
+          getent ahostsv4 app.a-esthetic.de || true
+          curl -fSL --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 35 \
+            --resolve app.a-esthetic.de:443:217.154.224.53 \
+            https://app.a-esthetic.de/api/mobile/status/ | grep -Fq 'A+ Esthetic App API'
+          curl -fSL --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 35 \
+            https://app.a-esthetic.de/ | grep -Fq 'core-app.js'
+          echo "Public app domain is live with valid TLS and working API."
