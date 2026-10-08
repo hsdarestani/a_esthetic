@@ -55,9 +55,9 @@ class AuditRequestMiddleware:
 
 
 class MobileSocialRedirectMiddleware:
-    """Remember Android app social OAuth so allauth returns to the app bridge."""
+    """Return mobile Google and Apple browser OAuth to the app bridge."""
 
-    GOOGLE_LOGIN_PATH = "/accounts/google/login/"
+    SOCIAL_LOGIN_PATHS = {"/accounts/google/login/", "/accounts/apple/login/"}
     MOBILE_FINISH_PATH = "/mobile-social/finish/"
     SESSION_KEY = "aesthetic_mobile_social"
 
@@ -66,7 +66,7 @@ class MobileSocialRedirectMiddleware:
 
     def __call__(self, request):
         if (
-            request.path == self.GOOGLE_LOGIN_PATH
+            request.path in self.SOCIAL_LOGIN_PATHS
             and request.GET.get("next") == self.MOBILE_FINISH_PATH
         ):
             request.session[self.SESSION_KEY] = True

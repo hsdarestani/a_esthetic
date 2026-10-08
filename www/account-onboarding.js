@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_ORIGIN = window.location.hostname === 'app.a-esthetic.de' ? window.location.origin : 'https://app.a-esthetic.de';
+  const APP_ORIGIN = ['esthetic.smarbiz.sbs', 'app.a-esthetic.de'].includes(window.location.hostname) ? window.location.origin : 'https://esthetic.smarbiz.sbs';
   const API = `${APP_ORIGIN}/api/mobile`;
   let cachedConfig = null;
   const root = () => document.getElementById('app');
@@ -437,7 +437,7 @@
 
   let socialDeepLinkBound = false;
   async function bindBrowserSocialCallback() {
-    if (nativePlatform() !== 'android' || socialDeepLinkBound) return;
+    if (!nativePlatform() || socialDeepLinkBound) return;
     const appPlugin = window.Capacitor?.Plugins?.App;
     if (!appPlugin) return;
     socialDeepLinkBound = true;
@@ -454,14 +454,14 @@
     } catch (_) {}
   }
 
-  async function browserGoogleLogin(config) {
+  async function browserSocialLogin(provider, config) {
     const browser = window.Capacitor?.Plugins?.Browser;
     const appPlugin = window.Capacitor?.Plugins?.App;
     if (!browser || !appPlugin) {
-      return nativeSocialLogin('google', config);
+      return nativeSocialLogin(provider, config);
     }
     await bindBrowserSocialCallback();
-    const url = `${APP_ORIGIN}/accounts/google/login/?process=login&next=%2Fmobile-social%2Ffinish%2F`;
+    const url = `${APP_ORIGIN}/accounts/${provider}/login/?process=login&next=%2Fmobile-social%2Ffinish%2F`;
     await browser.open({url});
   }
 
@@ -469,9 +469,8 @@
     const platform = nativePlatform();
     if (!platform || !wrapper) return false;
 
-    const canGoogle = config.google && config.google_client_id &&
-      (platform === 'android' || Boolean(config.google_ios_client_id));
-    const canApple = platform === 'ios' && config.apple;
+    const canGoogle = Boolean(config.google && config.google_client_id);
+    const canApple = Boolean(config.apple && config.apple_client_id);
 
     const buttons = [];
     if (canGoogle) {
@@ -501,11 +500,11 @@
         if (button.disabled) return;
         button.disabled = true;
         try {
-          if (button.dataset.nativeSocial === 'google' && platform === 'android') {
-            await browserGoogleLogin(config);
-          } else {
-            await nativeSocialLogin(button.dataset.nativeSocial, config);
-          }
+          const provider = button.dataset.nativeSocial;
+          const browserRequired = (provider === 'google' && (platform === 'android' || (platform === 'ios' && !config.google_ios_client_id)))
+            || (provider === 'apple' && platform === 'android');
+          if (browserRequired) await browserSocialLogin(provider, config);
+          else await nativeSocialLogin(provider, config);
         } catch (error) {
           await showSignup(errorText(error));
         } finally {
@@ -567,7 +566,7 @@
         locale:'de'
       });
     } catch (_) {
-      host.innerHTML = '';
+      host.innerHTML = '<a class="native-provider-button native-google-button" href="' + APP_ORIGIN + '/accounts/google/login/?process=login">Mit Google anmelden</a>';
     }
   }
 
@@ -600,7 +599,7 @@
         });
       }
     } catch (_) {
-      host.innerHTML = '';
+      host.innerHTML = '<a class="native-provider-button native-apple-button" href="' + APP_ORIGIN + '/accounts/apple/login/?process=login">Mit Apple anmelden</a>';
     }
   }
 
