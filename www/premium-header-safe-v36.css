@@ -1,0 +1,159 @@
+/* A+ Esthetic premium header v36
+   Root fix: previous iOS shell constrained the header to 66px + safe area,
+   while v35 logo stack needed over 100px and spilled onto the first card.
+   This file is loaded LAST and owns the complete premium header geometry. */
+.core-shell > .core-header.premium-brand-header{
+  position:relative!important;
+  top:0!important;
+  width:100%!important;
+  max-width:100%!important;
+  height:136px!important;
+  min-height:136px!important;
+  margin:0!important;
+  padding:12px 60px 14px!important;
+  display:flex!important;
+  justify-content:center!important;
+  align-items:center!important;
+  box-sizing:border-box!important;
+  overflow:hidden!important;
+  isolation:isolate!important;
+  border:0!important;
+  border-bottom:1px solid rgba(153,113,46,.12)!important;
+  border-radius:0 0 22px 22px!important;
+  background:linear-gradient(180deg,#fffefb 0%,#faf5ec 100%)!important;
+  box-shadow:0 8px 22px rgba(75,52,21,.04)!important;
+}
+.core-shell > .core-header.premium-brand-header::before{display:none!important}
+.core-shell > .core-header.premium-brand-header::after{
+  bottom:7px!important;
+  width:112px!important;
+  height:1px!important;
+  opacity:.5!important;
+}
+.core-shell > .core-header.premium-brand-header .core-brand{
+  position:relative!important;
+  z-index:1!important;
+  display:flex!important;
+  flex:0 1 auto!important;
+  flex-direction:column!important;
+  justify-content:center!important;
+  align-items:center!important;
+  width:100%!important;
+  max-width:350px!important;
+  min-width:0!important;
+  min-height:0!important;
+  margin:0!important;
+  padding:0!important;
+  gap:3px!important;
+  overflow:hidden!important;
+  text-align:center!important;
+}
+.core-shell > .core-header.premium-brand-header .core-brand .core-brand-emblem{
+  display:grid!important;
+  place-items:center!important;
+  width:76px!important;
+  height:76px!important;
+  min-width:76px!important;
+  min-height:76px!important;
+  flex:0 0 76px!important;
+  margin:0!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  overflow:hidden!important;
+}
+.core-shell > .core-header.premium-brand-header .core-brand .core-brand-emblem img{
+  display:block!important;
+  width:76px!important;
+  height:76px!important;
+  min-width:0!important;
+  max-width:76px!important;
+  max-height:76px!important;
+  object-fit:contain!important;
+  object-position:center!important;
+  transform:translateY(-3px)!important;
+  filter:drop-shadow(0 5px 11px rgba(151,101,24,.12))!important;
+}
+.core-shell > .core-header.premium-brand-header .core-brand .core-brand-name{
+  display:block!important;
+  width:100%!important;
+  max-width:100%!important;
+  min-width:0!important;
+  flex:0 0 auto!important;
+  margin:0!important;
+  padding:0!important;
+  overflow:hidden!important;
+  text-align:center!important;
+}
+.core-shell > .core-header.premium-brand-header .core-brand .core-brand-name b{
+  display:block!important;
+  width:100%!important;
+  max-width:100%!important;
+  margin:0!important;
+  padding:0!important;
+  font-family:"Iowan Old Style",Baskerville,Georgia,serif!important;
+  font-size:clamp(19px,5vw,25px)!important;
+  line-height:1.13!important;
+  font-weight:550!important;
+  letter-spacing:.075em!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:clip!important;
+  color:#aa7a28!important;
+  background:linear-gradient(180deg,#d5b25c,#aa7625 60%,#88621e)!important;
+  -webkit-background-clip:text!important;
+  background-clip:text!important;
+  -webkit-text-fill-color:transparent!important;
+}
+.core-shell > .core-header.premium-brand-header .core-brand .core-brand-name small{display:none!important}
+.core-shell > .core-header.premium-brand-header .premium-brand-settings{
+  position:absolute!important;
+  z-index:3!important;
+  top:12px!important;
+  right:max(16px,env(safe-area-inset-right))!important;
+  flex:0 0 40px!important;
+  width:40px!important;
+  height:40px!important;
+}
+@media(max-width:520px){
+  .core-shell > .core-header.premium-brand-header{
+    height:126px!important;
+    min-height:126px!important;
+    padding:9px 56px 12px!important;
+  }
+  .core-shell > .core-header.premium-brand-header .core-brand{
+    max-width:calc(100vw - 112px)!important;
+  }
+  .core-shell > .core-header.premium-brand-header .core-brand .core-brand-emblem{
+    width:72px!important;
+    height:72px!important;
+    min-width:72px!important;
+    min-height:72px!important;
+    flex-basis:72px!important;
+  }
+  .core-shell > .core-header.premium-brand-header .core-brand .core-brand-emblem img{
+    width:72px!important;
+    height:72px!important;
+    max-width:72px!important;
+    max-height:72px!important;
+  }
+  .core-shell > .core-header.premium-brand-header .core-brand .core-brand-name b{
+    font-size:clamp(18px,5.3vw,23px)!important;
+    letter-spacing:.06em!important;
+  }
+}
+html.aplus-ios .core-shell > .core-header.premium-brand-header{
+  height:calc(112px + env(safe-area-inset-top))!important;
+  min-height:calc(112px + env(safe-area-inset-top))!important;
+  padding:calc(env(safe-area-inset-top) + 5px) 56px 8px!important;
+  border-radius:0 0 22px 22px!important;
+}
+html.aplus-ios .core-shell > .core-header.premium-brand-header .premium-brand-settings{
+  top:calc(env(safe-area-inset-top) + 12px)!important;
+}
+html.aplus-android .core-shell > .core-header.premium-brand-header{
+  margin-top:0!important;
+}
+/* Never allow an ancestor's legacy flex/grid sizing to overlap the hero. */
+.core-shell > .core-main{position:relative!important;z-index:1!important}
