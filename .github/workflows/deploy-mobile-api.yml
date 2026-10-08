@@ -3,7 +3,7 @@ name: Deploy A+ Esthetic App API
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, fix/login-domain-auth-ui-20261008-no-native-build]
     paths:
       - "platform_app/**"
       - "p0_app/**"
