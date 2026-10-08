@@ -454,14 +454,14 @@
     } catch (_) {}
   }
 
-  async function browserGoogleLogin(config) {
+  async function browserSocialLogin(provider, config) {
     const browser = window.Capacitor?.Plugins?.Browser;
     const appPlugin = window.Capacitor?.Plugins?.App;
     if (!browser || !appPlugin) {
-      return nativeSocialLogin('google', config);
+      return nativeSocialLogin(provider, config);
     }
     await bindBrowserSocialCallback();
-    const url = `${APP_ORIGIN}/accounts/google/login/?process=login&next=%2Fmobile-social%2Ffinish%2F`;
+    const url = `${APP_ORIGIN}/accounts/${provider}/login/?process=login&next=%2Fmobile-social%2Ffinish%2F`;
     await browser.open({url});
   }
 
@@ -470,7 +470,7 @@
     if (!platform || !wrapper) return false;
 
     const canGoogle = Boolean(config.google && config.google_client_id);
-    const canApple = platform === 'ios' && config.apple;
+    const canApple = Boolean(config.apple && config.apple_client_id);
 
     const buttons = [];
     if (canGoogle) {
@@ -500,11 +500,11 @@
         if (button.disabled) return;
         button.disabled = true;
         try {
-          if (button.dataset.nativeSocial === 'google' && (platform === 'android' || (platform === 'ios' && !config.google_ios_client_id))) {
-            await browserGoogleLogin(config);
-          } else {
-            await nativeSocialLogin(button.dataset.nativeSocial, config);
-          }
+          const provider = button.dataset.nativeSocial;
+          const browserRequired = (provider === 'google' && (platform === 'android' || (platform === 'ios' && !config.google_ios_client_id)))
+            || (provider === 'apple' && platform === 'android');
+          if (browserRequired) await browserSocialLogin(provider, config);
+          else await nativeSocialLogin(provider, config);
         } catch (error) {
           await showSignup(errorText(error));
         } finally {
