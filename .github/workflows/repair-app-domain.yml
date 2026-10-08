@@ -101,6 +101,12 @@ jobs:
             ln -sfn "$APP" /etc/nginx/sites-enabled/a-esthetic-app.conf
             nginx -t
             systemctl reload nginx
+            echo "--- Active TLS server blocks and certificate paths ---"
+            nginx -T 2>&1 | grep -E '(^# configuration file |server_name |ssl_certificate |listen 443|conflicting server)' | head -n 140 || true
+            echo "--- Served certificate on app SNI ---"
+            (echo | openssl s_client -connect 127.0.0.1:443 -servername "$DOMAIN" 2>/dev/null | openssl x509 -noout -subject -ext subjectAltName) || true
+            echo "--- Valid certificate file ---"
+            openssl x509 -in "$CERT" -noout -subject -ext subjectAltName
             curl --noproxy '*' --fail --silent --show-error --max-time 20 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/mobile/status/" | grep -Fq 'A+ Esthetic App API'
             curl --noproxy '*' --fail --silent --show-error --max-time 20 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" | grep -Fq 'core-app.js'
             echo "App domain passes local verified HTTPS, SNI and API checks."
