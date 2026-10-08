@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_ORIGIN = window.location.hostname === 'app.a-esthetic.de' ? window.location.origin : 'https://app.a-esthetic.de';
+  const APP_ORIGIN = ['esthetic.smarbiz.sbs', 'app.a-esthetic.de'].includes(window.location.hostname) ? window.location.origin : 'https://esthetic.smarbiz.sbs';
   const API = `${APP_ORIGIN}/api/mobile`;
   let cachedConfig = null;
   const root = () => document.getElementById('app');
@@ -437,7 +437,7 @@
 
   let socialDeepLinkBound = false;
   async function bindBrowserSocialCallback() {
-    if (nativePlatform() !== 'android' || socialDeepLinkBound) return;
+    if (!nativePlatform() || socialDeepLinkBound) return;
     const appPlugin = window.Capacitor?.Plugins?.App;
     if (!appPlugin) return;
     socialDeepLinkBound = true;
@@ -469,8 +469,7 @@
     const platform = nativePlatform();
     if (!platform || !wrapper) return false;
 
-    const canGoogle = config.google && config.google_client_id &&
-      (platform === 'android' || Boolean(config.google_ios_client_id));
+    const canGoogle = Boolean(config.google && config.google_client_id);
     const canApple = platform === 'ios' && config.apple;
 
     const buttons = [];
@@ -501,7 +500,7 @@
         if (button.disabled) return;
         button.disabled = true;
         try {
-          if (button.dataset.nativeSocial === 'google' && platform === 'android') {
+          if (button.dataset.nativeSocial === 'google' && (platform === 'android' || (platform === 'ios' && !config.google_ios_client_id))) {
             await browserGoogleLogin(config);
           } else {
             await nativeSocialLogin(button.dataset.nativeSocial, config);
