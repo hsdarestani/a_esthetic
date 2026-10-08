@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_ORIGIN = window.location.hostname === 'app.a-esthetic.de' ? window.location.origin : 'https://app.a-esthetic.de';
+  const APP_ORIGIN = ['esthetic.smarbiz.sbs', 'app.a-esthetic.de'].includes(window.location.hostname) ? window.location.origin : 'https://esthetic.smarbiz.sbs';
   const API_BASE = `${APP_ORIGIN}/api/mobile`;
   const BOOK_ENTRY = 'https://book.a-esthetic.de/verwaltung/app/';
   const nativeFetch = window.fetch.bind(window);
