@@ -566,7 +566,7 @@
         locale:'de'
       });
     } catch (_) {
-      host.innerHTML = '';
+      host.innerHTML = '<a class="native-provider-button native-google-button" href="' + APP_ORIGIN + '/accounts/google/login/?process=login">Mit Google anmelden</a>';
     }
   }
 
@@ -599,7 +599,7 @@
         });
       }
     } catch (_) {
-      host.innerHTML = '';
+      host.innerHTML = '<a class="native-provider-button native-apple-button" href="' + APP_ORIGIN + '/accounts/apple/login/?process=login">Mit Apple anmelden</a>';
     }
   }
 
