@@ -3,7 +3,7 @@ name: Deploy A+ Esthetic Customer Club web
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, fix/forgot-password-web-20261008]
     paths:
       - "www/**"
       - ".github/workflows/deploy-customer-club-web.yml"
