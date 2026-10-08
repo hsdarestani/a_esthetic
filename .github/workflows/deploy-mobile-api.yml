@@ -265,7 +265,11 @@ jobs:
             from pathlib import Path
             p=Path('/etc/nginx/sites-available/a-esthetic-connected.conf')
             s=p.read_text()
-            s=s.replace('server_name esthetic.smarbiz.sbs;', 'server_name esthetic.smarbiz.sbs app.a-esthetic.de;')
+            # Preserve the dedicated app TLS vhost: do not register app hostname twice.
+            if Path('/etc/nginx/sites-enabled/a-esthetic-app.conf').exists():
+                s=s.replace('server_name esthetic.smarbiz.sbs app.a-esthetic.de;', 'server_name esthetic.smarbiz.sbs;')
+            else:
+                s=s.replace('server_name esthetic.smarbiz.sbs;', 'server_name esthetic.smarbiz.sbs app.a-esthetic.de;')
             begin='    # BEGIN CUSTOMER_CLUB_DJANGO'; end='    # END CUSTOMER_CLUB_DJANGO'
             a=s.find(begin); b=s.find(end,a)
             if a >= 0 and b >= 0:
