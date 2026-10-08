@@ -193,6 +193,23 @@
   transform:translateY(-1px);
 }
 
+.login-shell.login-shell-auth .login-password-reset{
+  display:block;
+  width:max-content;
+  max-width:100%;
+  margin:-3px 2px 15px auto;
+  font-size:12px;
+  font-weight:650;
+  color:#826222;
+  text-decoration:none;
+  text-underline-offset:3px;
+}
+.login-shell.login-shell-auth .login-password-reset:hover,
+.login-shell.login-shell-auth .login-password-reset:focus-visible{
+  color:#553a0c;
+  text-decoration:underline;
+}
+
 .login-shell.login-shell-auth .primary,
 .login-shell.login-shell-auth .secondary{
   min-height:54px!important;
