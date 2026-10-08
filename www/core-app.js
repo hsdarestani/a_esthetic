@@ -126,7 +126,14 @@
   function showLogin(message=''){
     // A production login must never prefill a stored test account.
     localStorage.removeItem('aplus_login_email');
-    root.innerHTML=`<div class="login-shell login-shell-auth"><form class="login-card" data-login><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div><div class="login-kicker">A+ ESTHETIC</div><h1>Anmelden</h1><p>Termine, Patientenakte und A+ Punkte an einem Ort.</p>${message?`<div class="notice error">${esc(message)}</div>`:''}<label class="field"><span>E-Mail</span><input name="email" type="email" autocomplete="off" autocapitalize="none" spellcheck="false" required></label><label class="field"><span>Passwort</span><input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide" type="submit">Anmelden</button></form></div>`;
+    root.innerHTML=`<div class="login-shell login-shell-auth"><form class="login-card" data-login><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div><div class="login-kicker">A+ ESTHETIC</div><h1>Anmelden</h1><p>Termine, Patientenakte und A+ Punkte an einem Ort.</p>${message?`<div class="notice error">${esc(message)}</div>`:''}<label class="field"><span>E-Mail</span><input name="email" type="email" autocomplete="off" autocapitalize="none" spellcheck="false" required></label><label class="field"><span>Passwort</span><input name="password" type="password" autocomplete="current-password" required></label><a class="login-password-reset" data-forgot-password href="${APP_ORIGIN}/accounts/password/reset/">Passwort vergessen?</a><button class="primary wide" type="submit">Anmelden</button></form></div>`;
+    root.querySelector('[data-forgot-password]')?.addEventListener('click',async event=>{
+      const browser=window.Capacitor?.Plugins?.Browser;
+      if (!browser?.open) return;
+      event.preventDefault();
+      try { await browser.open({url:event.currentTarget.href}); }
+      catch (_) { window.location.assign(event.currentTarget.href); }
+    });
     root.querySelector('[data-login]').addEventListener('submit',async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button');btn.disabled=true;btn.textContent='Anmeldung …';try{const fd=new FormData(e.currentTarget);const data=await request('/login/',{method:'POST',json:{email:fd.get('email'),password:fd.get('password')}});state.token=data.token;localStorage.setItem('aplus_token',state.token);await boot();}catch(err){showLogin(err.code==='invalid_credentials'?'E-Mail oder Passwort ist nicht korrekt.':err.message);}});
   }
 
