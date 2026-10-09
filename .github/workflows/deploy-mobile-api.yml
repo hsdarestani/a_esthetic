@@ -217,6 +217,7 @@ jobs:
             cd "$ROOT"
             "$VENV/bin/python" manage.py migrate platform_app --fake-initial --noinput
             "$VENV/bin/python" manage.py migrate --noinput
+            "$VENV/bin/python" manage.py shell -c "from django.contrib.sites.models import Site; from django.conf import settings; Site.objects.update_or_create(id=settings.SITE_ID, defaults={'domain': 'app.a-esthetic.de', 'name': 'A+ Esthetic'})"
             "$VENV/bin/python" manage.py seed_platform
             "$VENV/bin/python" manage.py seed_p1
             "$VENV/bin/python" manage.py seed_p2

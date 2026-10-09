@@ -25,7 +25,7 @@ from .push import create_notification, push_configuration
 from .reward_views import redemption_payload
 
 BOOK_ADMIN_URL = "https://book.a-esthetic.de/verwaltung/"
-APP_ADMIN_URL = "https://esthetic.smarbiz.sbs/secure-admin/"
+APP_ADMIN_URL = "https://app.a-esthetic.de/secure-admin/"
 
 
 def _json(request):

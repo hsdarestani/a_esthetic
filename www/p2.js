@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const API_BASE = 'https://esthetic.smarbiz.sbs/api/mobile';
+  const API_BASE = 'https://app.a-esthetic.de/api/mobile';
   const cart = new Map();
   const objectUrls = new Set();
 

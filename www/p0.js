@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  const API_BASE = 'https://esthetic.smarbiz.sbs/api/mobile';
-  const AUTH_BASE = 'https://esthetic.smarbiz.sbs/accounts';
+  const API_BASE = 'https://app.a-esthetic.de/api/mobile';
+  const AUTH_BASE = 'https://app.a-esthetic.de/accounts';
 
   function token() {
     return localStorage.getItem('aplus_token') || '';

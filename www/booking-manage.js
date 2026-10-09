@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const API_BASE = 'https://esthetic.smarbiz.sbs/api/mobile';
+  const API_BASE = 'https://app.a-esthetic.de/api/mobile';
   const token = () => localStorage.getItem('aplus_token') || '';
   const esc = (value = '') => String(value)
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')

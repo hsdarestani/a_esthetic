@@ -271,7 +271,7 @@ def profile(request):
 @login_required
 def member_qr(request):
     member, _ = MemberAccount.objects.get_or_create(user=request.user)
-    image = qrcode.make(f'https://esthetic.smarbiz.sbs/checkin/{member.qr_token}')
+    image = qrcode.make(f'https://app.a-esthetic.de/checkin/{member.qr_token}')
     out = io.BytesIO()
     image.save(out, format='PNG')
     out.seek(0)
