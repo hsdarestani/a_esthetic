@@ -24,6 +24,8 @@ jobs:
           set -euo pipefail
           python3 scripts/check_app_production_domains.py
           python3 scripts/store_positioning_check.py
+          bash -n scripts/build-android.sh scripts/build-ios.sh
+          grep -q 'Verified Android Play versionName=' scripts/build-android.sh
           for script in www/*.js; do node --check "$script"; done
           python3 -m compileall -q config platform_app p0_app p1_app p2_app p3_app
       - name: Check canonical HTTPS status, OAuth config and password reset

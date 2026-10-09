@@ -38,6 +38,38 @@ fi
 
 npx cap sync android
 
+# Always configure the Google Play release version, not Capacitor's default 1.
+python3 - <<'PY'
+import os
+import re
+from pathlib import Path
+
+gradle = Path("android/app/build.gradle")
+if not gradle.is_file():
+    raise SystemExit("Expected Android app Gradle file not found")
+version = os.environ.get("APP_VERSION_NAME", os.environ.get("APP_VERSION", "1.0.0")).strip()
+build = os.environ.get("APP_BUILD_NUMBER", os.environ.get("BUILD_NUMBER", "1")).strip()
+if not build.isdecimal() or int(build) < 1:
+    raise SystemExit("APP_BUILD_NUMBER must be a positive integer")
+if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", version):
+    raise SystemExit("APP_VERSION_NAME must be a numeric dotted version")
+source = gradle.read_text(encoding="utf-8")
+source, code_count = re.subn(
+    r'(?m)^(\s*versionCode\s+)\d+(\s*(?://[^\n]*)?)$',
+    lambda m: m.group(1) + build + m.group(2),
+    source, count=1,
+)
+source, name_count = re.subn(
+    r'''(?m)^(\s*versionName\s+)["'][^"']+["'](\s*(?://[^\n]*)?)$''',
+    lambda m: m.group(1) + '"' + version + '"' + m.group(2),
+    source, count=1,
+)
+if code_count != 1 or name_count != 1:
+    raise SystemExit("Could not set Android versionCode and versionName")
+gradle.write_text(source, encoding="utf-8")
+print(f"Verified Android Play versionName={version} versionCode={build}")
+PY
+
 # The Android Google login is completed in the system browser and returns to
 # the app with a short-lived signed bridge code. Register the callback URI on
 # the generated Capacitor MainActivity before Gradle packages the app.
