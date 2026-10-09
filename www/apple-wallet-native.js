@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_ORIGIN = ['esthetic.smarbiz.sbs', 'app.a-esthetic.de'].includes(window.location.hostname) ? window.location.origin : 'https://esthetic.smarbiz.sbs';
+  const APP_ORIGIN = ['esthetic.smarbiz.sbs', 'app.a-esthetic.de'].includes(window.location.hostname) ? window.location.origin : 'https://app.a-esthetic.de';
   const API = `${APP_ORIGIN}/api/mobile`;
 
   function platform() {
