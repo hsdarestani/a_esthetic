@@ -1,0 +1,277 @@
+name: Deploy BE DIFFERENT isolated on Esthetic (temporary)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bedifferent-temp-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bedifferent-esthetic-temp
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: bedifferent
+          POSTGRES_PASSWORD: test_only
+          POSTGRES_DB: bedifferent_build
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bedifferent -d bedifferent_build"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://bedifferent:test_only@127.0.0.1:5432/bedifferent_build?schema=public
+      NEXT_PUBLIC_APP_URL: https://bedifferent.smarbiz.sbs
+      CRON_SECRET: only-for-github-build
+      DATA_DIR: /tmp/bedifferent-build
+    steps:
+      - name: Checkout BE DIFFERENT code
+        uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/aymantraining
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build on GitHub (never compile on Esthetic production)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npx prisma generate
+          npx prisma db push
+          npm run build
+          test -s .next/standalone/server.js
+          test -d .next/static
+          npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/bedifferent-init.sql
+          test -s /tmp/bedifferent-init.sql
+
+      - name: Package self-contained Node server without host installations
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGE="$(mktemp -d)"
+          cp -a .next/standalone/. "$STAGE/"
+          mkdir -p "$STAGE/.next" "$STAGE/scripts" "$STAGE/bin" "$STAGE/data"
+          cp -a .next/static "$STAGE/.next/static"
+          cp -a public "$STAGE/public"
+          cp scripts/seed.mjs "$STAGE/scripts/seed.mjs"
+          cp /tmp/bedifferent-init.sql "$STAGE/bedifferent-init.sql"
+          cp "$(command -v node)" "$STAGE/bin/node"
+          mkdir -p "$STAGE/node_modules"
+          if [ -d node_modules/.prisma ]; then cp -a node_modules/.prisma "$STAGE/node_modules/"; fi
+          if [ -d node_modules/@prisma ]; then cp -a node_modules/@prisma "$STAGE/node_modules/"; fi
+          if [ -d node_modules/@prisma/client ]; then mkdir -p "$STAGE/node_modules/@prisma"; cp -a node_modules/@prisma/client "$STAGE/node_modules/@prisma/"; fi
+          test -f "$STAGE/node_modules/@prisma/client/package.json"
+          tar -C "$STAGE" -czf bedifferent-temp-release.tgz .
+          du -h bedifferent-temp-release.tgz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bedifferent-temp-release
+          path: bedifferent-temp-release.tgz
+          retention-days: 3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Confirm existing production endpoints before deployment
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ > /dev/null
+          curl -fsS --max-time 20 https://book.a-esthetic.de/api/health/ > /dev/null
+          echo EXISTING_APPS_PRECHECK=OK
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: bedifferent-temp-release
+
+      - name: Copy release to isolated temporary location
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: bedifferent-temp-release.tgz
+          target: /tmp
+
+      - name: Provision isolated app using preinstalled PostgreSQL (no Nginx changes)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 12m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp
+            RELEASE="$APP/releases/${{ github.run_id }}"
+            SERVICE=bedifferent-temp
+            ENVFILE=/etc/bedifferent-temp.env
+
+            # Stop safely on unexpected host or insufficient resources.
+            test "$(id -u)" -eq 0
+            test -d /opt/a-esthetic-mobile
+            test -d /opt/aesthetic-book
+            systemctl is-active --quiet nginx
+            systemctl is-active --quiet postgresql
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            test -s /tmp/bedifferent-temp-release.tgz
+            available_kb=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+            echo "HOST_MEMORY_AVAILABLE_KB=$available_kb"
+            test "$available_kb" -ge 1300000 || { echo "Refusing deploy due to low available RAM"; exit 1; }
+            test ! -e /etc/systemd/system/bedifferent-temp.service || grep -q '/opt/bedifferent-temp/' /etc/systemd/system/bedifferent-temp.service
+            if ss -ltn | grep -Eq '127\.0\.0\.1:3100\b'; then
+              if ! systemctl is-active --quiet "$SERVICE"; then
+                echo "Port 3100 is occupied by an unknown service" >&2; exit 1
+              fi
+            fi
+
+            # Never install packages, restart nginx, or alter existing site files.
+            if ! id bedifferenttemp >/dev/null 2>&1; then
+              useradd --system --home "$APP" --shell /usr/sbin/nologin bedifferenttemp
+            fi
+            mkdir -p "$APP/releases" "$APP/data/uploads"
+            chmod 750 "$APP"
+            chown -R bedifferenttemp:bedifferenttemp "$APP/data"
+            mkdir -p "$RELEASE"
+            tar -xzf /tmp/bedifferent-temp-release.tgz -C "$RELEASE"
+            test -s "$RELEASE/server.js"
+            test -x "$RELEASE/bin/node"
+            chown -R root:root "$RELEASE"
+            chmod -R go-w "$RELEASE"
+            rm -f /tmp/bedifferent-temp-release.tgz
+
+            # First installation only: an entirely separate database and role.
+            if [ ! -e "$ENVFILE" ]; then
+              if runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='bedifferent_temp'" | grep -qx 1; then
+                echo "Refusing to adopt unexpected existing database" >&2; exit 1
+              fi
+              if runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='bedifferenttemp'" | grep -qx 1; then
+                echo "Refusing to adopt unexpected existing PostgreSQL role" >&2; exit 1
+              fi
+              db_pass=$(openssl rand -hex 28)
+              cron_secret=$(openssl rand -hex 32)
+              runuser -u postgres -- psql -v ON_ERROR_STOP=1 -c "CREATE ROLE bedifferenttemp LOGIN PASSWORD '$db_pass' CONNECTION LIMIT 8"
+              runuser -u postgres -- createdb --owner=bedifferenttemp bedifferent_temp
+              runuser -u postgres -- psql -v ON_ERROR_STOP=1 -c "ALTER ROLE bedifferenttemp IN DATABASE bedifferent_temp SET statement_timeout='30s'"
+              umask 027
+              {
+                echo "NODE_ENV=production"
+                echo "HOSTNAME=127.0.0.1"
+                echo "PORT=3100"
+                echo "NEXT_PUBLIC_APP_URL=https://bedifferent.smarbiz.sbs"
+                echo "DATA_DIR=$APP/data"
+                echo "DATABASE_URL=postgresql://bedifferenttemp:$db_pass@127.0.0.1:5432/bedifferent_temp?schema=public"
+                echo "CRON_SECRET=$cron_secret"
+              } > "$ENVFILE"
+              chown root:bedifferenttemp "$ENVFILE"
+              chmod 640 "$ENVFILE"
+              PGPASSWORD="$db_pass" psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U bedifferenttemp -d bedifferent_temp -f "$RELEASE/bedifferent-init.sql" >/dev/null
+            fi
+            test -s "$ENVFILE"
+            chown root:bedifferenttemp "$ENVFILE"
+            chmod 640 "$ENVFILE"
+            chmod 750 "$APP/releases"
+            mkdir -p "$RELEASE/.next/cache"
+            chown -R bedifferenttemp:bedifferenttemp "$RELEASE/.next/cache"
+            # First release seeded once; no destructive or implicit schema migrations.
+            if [ ! -e "$APP/.initial-seed-ok" ]; then
+              set -a
+              . "$ENVFILE"
+              set +a
+              runuser -u bedifferenttemp -- env DATABASE_URL="$DATABASE_URL" "$RELEASE/bin/node" "$RELEASE/scripts/seed.mjs"
+              touch "$APP/.initial-seed-ok"
+            fi
+
+            cat > /etc/systemd/system/bedifferent-temp.service <<'UNIT'
+            [Unit]
+            Description=BE DIFFERENT isolated temporary service
+            After=network-online.target postgresql.service
+            Wants=network-online.target
+            [Service]
+            Type=simple
+            User=bedifferenttemp
+            Group=bedifferenttemp
+            WorkingDirectory=/opt/bedifferent-temp/current
+            EnvironmentFile=/etc/bedifferent-temp.env
+            ExecStart=/opt/bedifferent-temp/current/bin/node /opt/bedifferent-temp/current/server.js
+            Restart=on-failure
+            RestartSec=5s
+            MemoryHigh=600M
+            MemoryMax=768M
+            CPUQuota=60%
+            TasksMax=120
+            NoNewPrivileges=true
+            PrivateTmp=true
+            ProtectHome=true
+            ProtectSystem=strict
+            ReadWritePaths=/opt/bedifferent-temp/data /opt/bedifferent-temp/current/.next/cache
+            UMask=0077
+            [Install]
+            WantedBy=multi-user.target
+            UNIT
+            systemd-analyze verify /etc/systemd/system/bedifferent-temp.service
+            if [ -L "$APP/current" ]; then
+              readlink -f "$APP/current" > "$APP/.previous-release-path"
+            fi
+            ln -sfn "$RELEASE" "$APP/current.new"
+            mv -Tf "$APP/current.new" "$APP/current"
+            systemctl daemon-reload
+            systemctl enable --now "$SERVICE"
+            systemctl restart "$SERVICE"
+
+            ready=0
+            for i in $(seq 1 35); do
+              if curl -fsS --max-time 5 http://127.0.0.1:3100/api/ready >/dev/null 2>&1; then ready=1; break; fi
+              sleep 2
+            done
+            if [ "$ready" -ne 1 ]; then
+              echo "BE DIFFERENT was not ready; rolling back only its own service." >&2
+              journalctl -u "$SERVICE" --no-pager -n 45 || true
+              systemctl stop "$SERVICE" || true
+              if [ -s "$APP/.previous-release-path" ]; then
+                prior=$(cat "$APP/.previous-release-path")
+                ln -sfn "$prior" "$APP/current.new"
+                mv -Tf "$APP/current.new" "$APP/current"
+                systemctl start "$SERVICE" || true
+              fi
+              exit 1
+            fi
+            curl -fsS --max-time 8 http://127.0.0.1:3100/api/health >/dev/null
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            curl -fsS --max-time 8 http://127.0.0.1:8017/api/health/ >/dev/null
+            curl -fsS --max-time 8 http://127.0.0.1:8770/api/mobile/status/ >/dev/null
+            echo BEDIFFERENT_ISOLATED_READY=OK
+            echo EXISTING_ESTHETIC_SERVICES=OK
+            echo NOTE_DOMAIN_ROUTING_NOT_MODIFIED
+
+      - name: Confirm existing production endpoints after deployment
+        if: always()
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 20 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo EXISTING_APPS_POSTCHECK=OK
