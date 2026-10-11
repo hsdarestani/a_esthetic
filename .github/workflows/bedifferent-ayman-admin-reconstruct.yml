@@ -1,0 +1,94 @@
+name: Rebuild Ayman training starter on existing administrator
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bedifferent-ayman-admin-reconstruct.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reconstruct:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify existing public services before changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready >/dev/null
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+
+      - name: Checkout original application source
+        uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/aymantraining
+          ref: main
+          persist-credentials: false
+
+      - name: Transfer only the idempotent profile restoration script
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s scripts/restore-ayman-admin-profile.mjs
+          tar czf ayman-profile-restore.tgz scripts/restore-ayman-admin-profile.mjs
+
+      - name: Copy to temporary directory
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: ayman-profile-restore.tgz
+          target: /tmp
+
+      - name: Reconstruct verified starter template only
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 4m
+          script: |
+            set -euo pipefail
+            test "$(id -u)" -eq 0
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            test -s /tmp/ayman-profile-restore.tgz
+            APP=/opt/bedifferent-temp/current
+            test -s "$APP/bin/node"
+            test -s "$APP/node_modules/@prisma/client/package.json"
+            test -s /etc/bedifferent-temp.env
+            systemctl start bedifferent-temp-backup.service
+            install -m 644 /dev/null "$APP/scripts/restore-ayman-admin-profile.mjs"
+            trap 'rm -f /tmp/ayman-profile-restore.tgz "$APP/scripts/restore-ayman-admin-profile.mjs"' EXIT
+            tar -xOf /tmp/ayman-profile-restore.tgz scripts/restore-ayman-admin-profile.mjs > "$APP/scripts/restore-ayman-admin-profile.mjs"
+            set -a
+            . /etc/bedifferent-temp.env
+            set +a
+            runuser -u bedifferenttemp -- env DATABASE_URL="$DATABASE_URL" "$APP/bin/node" "$APP/scripts/restore-ayman-admin-profile.mjs"
+            role_name=$(runuser -u postgres -- psql -XAt -d bedifferent_temp -c "SELECT \"role\" || ':' || \"name\" FROM \"User\" WHERE \"email\"='admin@bedifferent.smarbiz.sbs'")
+            test "$role_name" = "ADMIN:Ayman"
+            echo "CONFIRMED_ADMIN_PROFILE=Ayman"
+            runuser -u postgres -- psql -XAt -d bedifferent_temp -c 'SELECT ''ACTIVE_PLAN_COUNT=''||COUNT(*) FROM "PlanAssignment" WHERE "active"=true AND "userId"=(SELECT "id" FROM "User" WHERE "email"=chr(97)||chr(100)||chr(109)||chr(105)||chr(110)||chr(64)||''bedifferent.smarbiz.sbs'');' || true
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ >/dev/null
+            echo ALL_LOCAL_APPS_OK
+
+      - name: Verify production health after
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 https://bedifferent.smarbiz.sbs/api/ready >/dev/null
+          curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 20 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo ALL_PUBLIC_APPS_OK
