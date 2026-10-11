@@ -1,4 +1,5 @@
 name: Verify Ayman authenticated demo screens with removable temporary session
+# Check demo warning cards after their final deployment.
 # Revalidate admin responsive UI, demo customer details, and uploaded photos.
 on:
   push:
