@@ -1,10 +1,6 @@
 name: Deploy BE DIFFERENT isolated on Esthetic (temporary)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/bedifferent-temp-deploy.yml"
   workflow_dispatch:
 
 permissions:
@@ -233,12 +229,12 @@ jobs:
             [Install]
             WantedBy=multi-user.target
             UNIT
-            systemd-analyze verify /etc/systemd/system/bedifferent-temp.service
             if [ -L "$APP/current" ]; then
               readlink -f "$APP/current" > "$APP/.previous-release-path"
             fi
             ln -sfn "$RELEASE" "$APP/current.new"
             mv -Tf "$APP/current.new" "$APP/current"
+            systemd-analyze verify /etc/systemd/system/bedifferent-temp.service
             systemctl daemon-reload
             systemctl enable --now "$SERVICE"
             systemctl restart "$SERVICE"
