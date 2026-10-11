@@ -64,7 +64,7 @@ jobs:
             chmod 750 "$APP/backup.sh" "$APP/maintenance.sh"
             cat >/etc/systemd/system/bedifferent-temp-backup.service <<'UNIT'
             [Unit]
-            Description=Daily encrypted-at-rest-by-host-permissions BE DIFFERENT backups
+            Description=Daily permission-restricted BE DIFFERENT backups
             After=postgresql.service
             [Service]
             Type=oneshot
