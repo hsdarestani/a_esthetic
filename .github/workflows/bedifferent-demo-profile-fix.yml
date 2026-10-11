@@ -1,0 +1,90 @@
+name: Fill protected demo athlete profiles for Be Different admin preview
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bedifferent-demo-profile-fix.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fill-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify protected production services before changes
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 https://bedifferent.smarbiz.sbs/api/ready >/dev/null
+          curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 20 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo BEFORE_ALL_APPS_HEALTHY
+
+      - name: Checkout the current Be Different source
+        uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/aymantraining
+          ref: main
+          persist-credentials: false
+
+      - name: Validate guarded, repeatable demo fixture and create tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check scripts/fill-demo-athlete-profiles.mjs
+          grep -Fq 'email.endsWith("@example.invalid")' scripts/fill-demo-athlete-profiles.mjs
+          grep -Fq 'DEMO_PROFILES_FILLED_SUCCESSFULLY' scripts/fill-demo-athlete-profiles.mjs
+          tar -czf demo-profile-fixtures-20261011.tgz scripts/fill-demo-athlete-profiles.mjs
+
+      - name: Copy only demo fixture script to temporary directory
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: demo-profile-fixtures-20261011.tgz
+          target: /tmp
+
+      - name: Backup independent database then safely fill DEMO only
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp/current
+            test "$(id -u)" -eq 0
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            test -s /tmp/demo-profile-fixtures-20261011.tgz
+            test -s /etc/bedifferent-temp.env
+            test -s "$APP/node_modules/@prisma/client/package.json"
+            systemctl start bedifferent-temp-backup.service
+            test "$(find /opt/bedifferent-temp/backups -type f -name 'db-*.dump' | wc -l)" -gt 0
+            trap 'rm -f /tmp/demo-profile-fixtures-20261011.tgz "$APP/scripts/fill-demo-athlete-profiles.mjs"' EXIT
+            tar -xOf /tmp/demo-profile-fixtures-20261011.tgz scripts/fill-demo-athlete-profiles.mjs > "$APP/scripts/fill-demo-athlete-profiles.mjs"
+            chmod 644 "$APP/scripts/fill-demo-athlete-profiles.mjs"
+            set -a
+            . /etc/bedifferent-temp.env
+            set +a
+            cd "$APP"
+            runuser -u bedifferenttemp -- env DATABASE_URL="$DATABASE_URL" "$APP/bin/node" "$APP/scripts/fill-demo-athlete-profiles.mjs"
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ >/dev/null
+            echo DEMO_PROFILE_FIX_APPLIED
+
+      - name: Check all production apps stayed online
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 https://bedifferent.smarbiz.sbs/api/ready >/dev/null
+          curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 20 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo AFTER_ALL_APPS_HEALTHY
