@@ -1,0 +1,132 @@
+name: Activate BE DIFFERENT HTTPS after Cloudflare DNS points to Esthetic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bedifferent-temp-https.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  https:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Create isolated ACME probe without touching Esthetic vhosts
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            test "$(id -u)" -eq 0
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet nginx
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready >/dev/null
+            test -L /etc/nginx/sites-enabled/bedifferent-temp.conf
+            mkdir -p /var/www/bedifferent-temp-acme/.well-known/acme-challenge
+            printf '%s\n' 'bd-proof-${{ github.run_id }}' > /var/www/bedifferent-temp-acme/.well-known/acme-challenge/bd-proof-${{ github.run_id }}
+            echo ORIGIN_ACME_PROBE=CREATED
+
+      - name: Confirm the real public DNS reaches THIS Esthetic origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED='bd-proof-${{ github.run_id }}'
+          ACTUAL=$(curl -fsSL --connect-timeout 8 --max-time 20 "http://bedifferent.smarbiz.sbs/.well-known/acme-challenge/$EXPECTED")
+          test "$ACTUAL" = "$EXPECTED" || { echo "The domain does not yet route to the Esthetic VPS. Update Cloudflare A record first."; exit 1; }
+          echo PUBLIC_DNS_REACHES_ESTHETIC=YES
+
+      - name: Create certificate and enable dedicated TLS vhost with rollback
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 7m
+          script: |
+            set -euo pipefail
+            DOMAIN=bedifferent.smarbiz.sbs
+            CERT=/etc/letsencrypt/live/bedifferent.smarbiz.sbs/fullchain.pem
+            KEY=/etc/letsencrypt/live/bedifferent.smarbiz.sbs/privkey.pem
+            CONF=/etc/nginx/sites-available/bedifferent-temp-ssl.conf
+            ENABLED=/etc/nginx/sites-enabled/bedifferent-temp-ssl.conf
+            test "$(id -u)" -eq 0
+            test -L /etc/nginx/sites-enabled/bedifferent-temp.conf
+            curl -fsS http://127.0.0.1:3100/api/ready >/dev/null
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            nginx -t
+            if [ ! -s "$CERT" ] || [ ! -s "$KEY" ]; then
+              certbot certonly --webroot --webroot-path /var/www/bedifferent-temp-acme -d "$DOMAIN" \
+                --non-interactive --agree-tos --register-unsafely-without-email \
+                --keep-until-expiring
+            fi
+            openssl x509 -in "$CERT" -noout -checkend 86400
+            openssl x509 -in "$CERT" -noout -ext subjectAltName | grep -F "DNS:$DOMAIN"
+            if [ -e "$ENABLED" ] && [ "$(readlink -f "$ENABLED")" != "$CONF" ]; then
+              echo "Existing TLS vhost is not ours" >&2; exit 1
+            fi
+            if [ -e "$CONF" ] && ! grep -q 'BE_DIFFERENT_TEMP_TLS_ISOLATED' "$CONF"; then
+              echo "Existing TLS config is not ours" >&2; exit 1
+            fi
+            cat > "$CONF.new" <<'NGINX'
+            # BE_DIFFERENT_TEMP_TLS_ISOLATED
+            server {
+                listen 443 ssl;
+                listen [::]:443 ssl;
+                server_name bedifferent.smarbiz.sbs;
+                ssl_certificate /etc/letsencrypt/live/bedifferent.smarbiz.sbs/fullchain.pem;
+                ssl_certificate_key /etc/letsencrypt/live/bedifferent.smarbiz.sbs/privkey.pem;
+                ssl_protocols TLSv1.2 TLSv1.3;
+                client_max_body_size 110m;
+                location / {
+                    proxy_pass http://127.0.0.1:3100;
+                    proxy_http_version 1.1;
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto https;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection "upgrade";
+                    proxy_read_timeout 180s;
+                }
+                add_header X-Content-Type-Options nosniff always;
+                add_header Referrer-Policy strict-origin-when-cross-origin always;
+            }
+            NGINX
+            mv "$CONF.new" "$CONF"
+            ln -sfn "$CONF" "$ENABLED"
+            if ! nginx -t; then
+              rm -f "$ENABLED"
+              nginx -t || true
+              exit 1
+            fi
+            systemctl reload nginx
+            if ! curl -fsS --max-time 12 --resolve bedifferent.smarbiz.sbs:443:127.0.0.1 https://bedifferent.smarbiz.sbs/api/ready >/dev/null ||
+               ! curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ >/dev/null ||
+               ! curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ >/dev/null; then
+              rm -f "$ENABLED"
+              nginx -t && systemctl reload nginx
+              echo "TLS vhost rolled back due to health failure" >&2
+              exit 1
+            fi
+            echo BEDIFFERENT_HTTPS_ORIGIN_OK=YES
+            echo ESTHETIC_BOOK_STILL_OK=YES
+
+      - name: Verify live domain and both existing apps externally
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo ESTHETIC_AND_BOOK_PUBLIC_OK=YES
+          curl -fsS --max-time 20 https://bedifferent.smarbiz.sbs/api/ready >/dev/null
+          echo BEDIFFERENT_PUBLIC_HTTPS_OK=YES
