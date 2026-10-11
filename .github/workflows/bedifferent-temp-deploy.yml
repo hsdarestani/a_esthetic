@@ -78,6 +78,8 @@ jobs:
           cp "$(command -v node)" "$STAGE/bin/node"
           mkdir -p "$STAGE/node_modules"
           if [ -d node_modules/.prisma ]; then cp -a node_modules/.prisma "$STAGE/node_modules/"; fi
+          if [ -d node_modules/bcryptjs ]; then cp -a node_modules/bcryptjs "$STAGE/node_modules/"; fi
+          test -f "$STAGE/node_modules/bcryptjs/package.json"
           if [ -d node_modules/@prisma ]; then cp -a node_modules/@prisma "$STAGE/node_modules/"; fi
           if [ -d node_modules/@prisma/client ]; then mkdir -p "$STAGE/node_modules/@prisma"; cp -a node_modules/@prisma/client "$STAGE/node_modules/@prisma/"; fi
           test -f "$STAGE/node_modules/@prisma/client/package.json"
