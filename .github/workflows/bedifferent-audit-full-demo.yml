@@ -1,4 +1,5 @@
 name: Audit every BE DIFFERENT demo page and admin route
+# Include coverage counts for features that currently have no demo records.
 on:
   push:
     branches: [main]
