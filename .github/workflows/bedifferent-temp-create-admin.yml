@@ -1,0 +1,62 @@
+name: Create BE DIFFERENT admin with GitHub secret credentials
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BD_ADMIN_EMAIL: ${{ secrets.BD_ADMIN_EMAIL }}
+      BD_ADMIN_PASSWORD: ${{ secrets.BD_ADMIN_PASSWORD }}
+    steps:
+      - name: Require private credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BD_ADMIN_EMAIL" || { echo "Set BD_ADMIN_EMAIL in repository Actions secrets"; exit 1; }
+          test ${#BD_ADMIN_PASSWORD} -ge 20 || { echo "Set BD_ADMIN_PASSWORD (20+ characters) in repository Actions secrets"; exit 1; }
+
+      - name: Provision only isolated BE DIFFERENT administrator
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          BD_ADMIN_EMAIL: ${{ secrets.BD_ADMIN_EMAIL }}
+          BD_ADMIN_PASSWORD: ${{ secrets.BD_ADMIN_PASSWORD }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: BD_ADMIN_EMAIL,BD_ADMIN_PASSWORD
+          command_timeout: 3m
+          script: |
+            set -euo pipefail
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            test -s /opt/bedifferent-temp/current/scripts/provision-admin.mjs
+            test -s /etc/bedifferent-temp.env
+            set -a
+            . /etc/bedifferent-temp.env
+            set +a
+            runuser -u bedifferenttemp -- env \
+              DATABASE_URL="$DATABASE_URL" \
+              BD_ADMIN_EMAIL="$BD_ADMIN_EMAIL" \
+              BD_ADMIN_PASSWORD="$BD_ADMIN_PASSWORD" \
+              /opt/bedifferent-temp/current/bin/node \
+              /opt/bedifferent-temp/current/scripts/provision-admin.mjs
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready >/dev/null
+
+      - name: Verify main businesses remain healthy
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready >/dev/null
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo ALL_APPS_HEALTHY=YES
