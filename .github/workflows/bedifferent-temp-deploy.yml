@@ -72,6 +72,8 @@ jobs:
           cp -a .next/static "$STAGE/.next/static"
           cp -a public "$STAGE/public"
           cp scripts/seed.mjs "$STAGE/scripts/seed.mjs"
+          cp scripts/provision-admin.mjs "$STAGE/scripts/provision-admin.mjs"
+          test -s "$STAGE/scripts/provision-admin.mjs"
           cp /tmp/bedifferent-init.sql "$STAGE/bedifferent-init.sql"
           cp "$(command -v node)" "$STAGE/bin/node"
           mkdir -p "$STAGE/node_modules"
