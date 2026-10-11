@@ -11,20 +11,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      BD_ADMIN_EMAIL: ${{ secrets.BD_ADMIN_EMAIL }}
+      BD_ADMIN_EMAIL: ${{ secrets.BD_ADMIN_EMAIL || 'admin@bedifferent.smarbiz.sbs' }}
       BD_ADMIN_PASSWORD: ${{ secrets.BD_ADMIN_PASSWORD }}
     steps:
       - name: Require private credentials
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$BD_ADMIN_EMAIL" || { echo "Set BD_ADMIN_EMAIL in repository Actions secrets"; exit 1; }
           test ${#BD_ADMIN_PASSWORD} -ge 20 || { echo "Set BD_ADMIN_PASSWORD (20+ characters) in repository Actions secrets"; exit 1; }
 
       - name: Provision only isolated BE DIFFERENT administrator
         uses: appleboy/ssh-action@v1.2.0
         env:
-          BD_ADMIN_EMAIL: ${{ secrets.BD_ADMIN_EMAIL }}
+          BD_ADMIN_EMAIL: ${{ secrets.BD_ADMIN_EMAIL || 'admin@bedifferent.smarbiz.sbs' }}
           BD_ADMIN_PASSWORD: ${{ secrets.BD_ADMIN_PASSWORD }}
         with:
           host: ${{ secrets.SERVER_HOST }}
