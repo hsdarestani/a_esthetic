@@ -39,6 +39,18 @@ jobs:
             free -m
             echo "=== DISK ==="
             df -h / /opt /var/lib/docker 2>/dev/null || df -h /
+            echo "=== DEPLOY RUNTIME ==="
+            printf 'DEPLOY_USER='; id -un
+            printf 'OS='; . /etc/os-release && echo "$PRETTY_NAME"
+            printf 'ARCH='; uname -m
+            for cmd in node npm psql pg_config curl tar sha256sum; do printf 'BIN_%s=' "$cmd"; command -v "$cmd" || echo missing; done
+            node --version 2>/dev/null || true
+            psql --version 2>/dev/null || true
+            printf 'POSTGRES_READY='; pg_isready 2>/dev/null || true
+            printf 'DB_BEDIFFERENT_EXISTS='
+            if command -v runuser >/dev/null 2>&1; then
+              runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='bedifferent_temp'" 2>/dev/null | grep -qx 1 && echo true || echo false
+            else echo unknown; fi
             echo "=== INODES ==="
             df -i / | tail -n 1
             echo "=== MAJOR SERVICES ==="
