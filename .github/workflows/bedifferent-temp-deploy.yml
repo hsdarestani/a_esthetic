@@ -1,4 +1,5 @@
 name: Deploy BE DIFFERENT isolated on Esthetic (temporary)
+# Mobile coach page polish and guarded demo profile samples.
 # Deploy dashboard user photo fix from the latest aymantraining main, preserving existing accounts.
 
 on:
@@ -62,6 +63,11 @@ jobs:
           test -d .next/static
           grep -Fq 'kind==="PROGRESS_PHOTO"&&user.role==="ATHLETE"&&user.subscriptionTier==="FREE"' app/api/media/route.ts
           grep -Fq 'DEMO DATEN' app/admin/kpi/page.tsx
+          test -s scripts/fill-demo-athlete-profiles.mjs
+          node --check scripts/fill-demo-athlete-profiles.mjs
+          grep -Fq 'admin-mobile-polish.css' app/layout.tsx
+          grep -Fq 'attention-row' app/admin/page.tsx
+          grep -Fq 'customer-profile-values' app/admin/customers/\[id\]/page.tsx
           npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/bedifferent-init.sql
           test -s /tmp/bedifferent-init.sql
 
