@@ -153,7 +153,8 @@ jobs:
               useradd --system --home "$APP" --shell /usr/sbin/nologin bedifferenttemp
             fi
             mkdir -p "$APP/releases" "$APP/data/uploads"
-            chmod 750 "$APP"
+            chown root:bedifferenttemp "$APP" "$APP/releases"
+            chmod 750 "$APP" "$APP/releases"
             chown -R bedifferenttemp:bedifferenttemp "$APP/data"
             mkdir -p "$RELEASE"
             tar -xzf /tmp/bedifferent-temp-release.tgz -C "$RELEASE"
