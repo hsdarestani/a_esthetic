@@ -1,0 +1,83 @@
+name: Fill only missing Ayman DEMO chat AI and weekly reports
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bedifferent-remaining-demo-fill.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  populate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Verify protected production services before edits
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready > /dev/null
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ > /dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ > /dev/null
+          echo PRECHECK_PRODUCTION_OK
+      - name: Checkout Be Different demo fixture
+        uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/aymantraining
+          ref: main
+          persist-credentials: false
+      - name: Verify syntax and guarded fixture target
+        run: |
+          set -euo pipefail
+          node --check scripts/fill-ayman-remaining-demo.mjs
+          grep -Fq 'admin.name!=="Ayman"' scripts/fill-ayman-remaining-demo.mjs
+          grep -Fq 'example.invalid' scripts/fill-ayman-remaining-demo.mjs
+          tar czf bd-remaining-demo-fixture.tgz scripts/fill-ayman-remaining-demo.mjs
+      - name: Copy fixture only to temporary directory
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: bd-remaining-demo-fixture.tgz
+          target: /tmp
+      - name: Back up Be Different then create labelled local examples
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp/current
+            test "$(id -u)" -eq 0
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            test -s /tmp/bd-remaining-demo-fixture.tgz
+            test -s /etc/bedifferent-temp.env
+            systemctl start bedifferent-temp-backup.service
+            test "$(find /opt/bedifferent-temp/backups -name 'db-*.dump' -type f | wc -l)" -ge 1
+            trap 'rm -f /tmp/bd-remaining-demo-fixture.tgz "$APP/scripts/fill-ayman-remaining-demo.mjs"' EXIT
+            tar -xOf /tmp/bd-remaining-demo-fixture.tgz scripts/fill-ayman-remaining-demo.mjs > "$APP/scripts/fill-ayman-remaining-demo.mjs"
+            chmod 644 "$APP/scripts/fill-ayman-remaining-demo.mjs"
+            set -a
+            . /etc/bedifferent-temp.env
+            set +a
+            cd "$APP"
+            runuser -u bedifferenttemp -- env DATABASE_URL="$DATABASE_URL" "$APP/bin/node" "$APP/scripts/fill-ayman-remaining-demo.mjs"
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready > /dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ > /dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ > /dev/null
+            echo LOCAL_SERVICES_OK_AFTER_SEED
+      - name: Verify public health after seeding
+        if: always()
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready > /dev/null
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ > /dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ > /dev/null
+          echo ALL_PUBLIC_APPS_HEALTHY
