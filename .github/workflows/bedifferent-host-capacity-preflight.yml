@@ -51,6 +51,11 @@ jobs:
             if command -v runuser >/dev/null 2>&1; then
               runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='bedifferent_temp'" 2>/dev/null | grep -qx 1 && echo true || echo false
             else echo unknown; fi
+            echo "=== TEMPORARY DOMAIN ROUTING READINESS ==="
+            printf 'NODE_PUBLIC_RESOLUTION='; getent ahostsv4 bedifferent.smarbiz.sbs | awk '{print $1}' | sort -u | tr '\n' ' '; echo
+            printf 'SERVER_PUBLIC_RESOLUTION='; getent ahostsv4 esthetic.smarbiz.sbs | awk '{print $1}' | sort -u | tr '\n' ' '; echo
+            printf 'CERTBOT='; command -v certbot || echo missing
+            printf 'BEDIFFERENT_LOCAL_CERT='; test -f /etc/letsencrypt/live/bedifferent.smarbiz.sbs/fullchain.pem && echo yes || echo no
             echo "=== INODES ==="
             df -i / | tail -n 1
             echo "=== MAJOR SERVICES ==="
