@@ -60,6 +60,7 @@ jobs:
           npm run build
           test -s .next/standalone/server.js
           test -d .next/static
+          grep -Fq 'kind==="PROGRESS_PHOTO"&&user.role==="ATHLETE"&&user.subscriptionTier==="FREE"' app/api/media/route.ts
           npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/bedifferent-init.sql
           test -s /tmp/bedifferent-init.sql
 
