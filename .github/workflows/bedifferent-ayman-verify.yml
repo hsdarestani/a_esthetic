@@ -1,0 +1,38 @@
+name: Verify reconstructed Ayman admin account and plans read only
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bedifferent-ayman-verify.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify Ayman account and starter training assignments
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            runuser -u postgres -- psql -XAt -v ON_ERROR_STOP=1 -d bedifferent_temp <<'SQL'
+            SELECT 'AYMAN_ADMIN_ACCOUNTS='||COUNT(*) FROM "User" WHERE "name"='Ayman' AND "role"='ADMIN' AND "email"='admin@bedifferent.smarbiz.sbs';
+            SELECT 'ASSIGNED_TEMPLATES='||COUNT(*) FROM "PlanAssignment" p JOIN "User" u ON u.id=p."userId" WHERE u."email"='admin@bedifferent.smarbiz.sbs' AND p."active"=TRUE;
+            SELECT 'SCHEDULED_WORKOUTS='||COUNT(*) FROM "Workout" w JOIN "User" u ON u.id=w."userId" WHERE u."email"='admin@bedifferent.smarbiz.sbs' AND w."completedAt" IS NULL;
+            SELECT 'WORKOUT_EXERCISE_ROWS='||COUNT(*) FROM "WorkoutExercise" we JOIN "Workout" w ON w.id=we."workoutId" JOIN "User" u ON u.id=w."userId" WHERE u."email"='admin@bedifferent.smarbiz.sbs';
+            SELECT 'ACCOUNT_PHOTOS='||COUNT(*) FROM "MediaAsset" a JOIN "User" u ON u.id=a."relatedUserId" WHERE u."email"='admin@bedifferent.smarbiz.sbs' AND a."kind"='PROGRESS_PHOTO';
+            SELECT 'ACCOUNTS_TOTAL='||COUNT(*) FROM "User";
+            SQL
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ >/dev/null
+            echo ALL_SYSTEMS_HEALTHY
