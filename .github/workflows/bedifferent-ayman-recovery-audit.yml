@@ -29,10 +29,12 @@ jobs:
             systemctl is-active --quiet a-esthetic-mobile
             systemctl is-active --quiet aesthetic-book
             echo '=== NEW_DATABASE ==='
-            runuser -u postgres -- psql -XAt -d bedifferent_temp -c 'SELECT ''USER_COUNT=''||count(*) FROM "User";'
-            runuser -u postgres -- psql -XAt -d bedifferent_temp -c 'SELECT ''MATCHING_AYMAN_ACCOUNTS=''||count(*) FROM "User" WHERE "name" ILIKE ''%ayman%'' OR "name" ILIKE ''%lhadaf%'';'
-            runuser -u postgres -- psql -XAt -d bedifferent_temp -c 'SELECT ''MATCHING_AYMAN_MEDIA_RECORDS=''||count(*) FROM "MediaAsset" WHERE "relatedUserId" IN (SELECT "id" FROM "User" WHERE "name" ILIKE ''%ayman%'' OR "name" ILIKE ''%lhadaf%'');'
-            runuser -u postgres -- psql -XAt -d bedifferent_temp -c 'SELECT ''ALL_PRIVATE_MEDIA_RECORDS=''||count(*) FROM "MediaAsset" WHERE "kind"=''PROGRESS_PHOTO'';'
+            runuser -u postgres -- psql -XAt -d bedifferent_temp <<'SQL'
+            SELECT 'USER_COUNT='||count(*) FROM "User";
+            SELECT 'MATCHING_AYMAN_ACCOUNTS='||count(*) FROM "User" WHERE "name" ILIKE '%ayman%' OR "name" ILIKE '%lhadaf%';
+            SELECT 'MATCHING_AYMAN_MEDIA_RECORDS='||count(*) FROM "MediaAsset" WHERE "relatedUserId" IN (SELECT "id" FROM "User" WHERE "name" ILIKE '%ayman%' OR "name" ILIKE '%lhadaf%');
+            SELECT 'ALL_PRIVATE_MEDIA_RECORDS='||count(*) FROM "MediaAsset" WHERE "kind"='PROGRESS_PHOTO';
+            SQL
             echo '=== FILE_COUNTS_ONLY ==='
             for root in /opt/bedifferent-temp/data/uploads /opt/bedifferent/backups /opt/bedifferent-temp/backups /root/bedifferent /opt/bedifferent; do
               if [ -d "$root" ]; then
