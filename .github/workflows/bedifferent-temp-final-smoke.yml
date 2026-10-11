@@ -29,6 +29,16 @@ jobs:
           curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/health > /dev/null
           curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready > /dev/null
           echo PUBLIC_BEDIFFERENT_FRONTEND_AND_API=OK
+          curl -fsS --max-time 20 https://bedifferent.smarbiz.sbs/login -o /tmp/bd-html-check
+          grep -Eo '/_next/static/css/[^" ]+\.css' /tmp/bd-html-check | sort -u >/tmp/bd-css-urls
+          test -s /tmp/bd-css-urls
+          : >/tmp/bd-css-contents
+          while read -r asset; do
+            curl -fsS --max-time 15 "https://bedifferent.smarbiz.sbs$asset" >> /tmp/bd-css-contents
+          done </tmp/bd-css-urls
+          grep -Fq 'overflow-wrap:normal' /tmp/bd-css-contents
+          grep -Fq '.bd-hero-editorial h1' /tmp/bd-css-contents
+          echo DASHBOARD_NAME_WRAP_CSS_PUBLISHED=OK
 
       - name: Verify both unrelated live businesses were not disturbed
         shell: bash
@@ -61,4 +71,9 @@ jobs:
             curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready > /dev/null
             curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ > /dev/null
             curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ > /dev/null
+            test -s /opt/bedifferent-temp/current/scripts/provision-admin.mjs
+            cd /opt/bedifferent-temp/current
+            /opt/bedifferent-temp/current/bin/node -p "require.resolve('bcryptjs')" >/dev/null
+            /opt/bedifferent-temp/current/bin/node -p "require.resolve('@prisma/client')" >/dev/null
+            echo ADMIN_PROVISION_RUNTIME_READY=YES
             echo LOCAL_ALL_SERVICES=OK
