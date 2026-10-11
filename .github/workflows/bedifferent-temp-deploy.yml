@@ -1,6 +1,10 @@
 name: Deploy BE DIFFERENT isolated on Esthetic (temporary)
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bedifferent-temp-deploy.yml"
   workflow_dispatch:
 
 permissions:
