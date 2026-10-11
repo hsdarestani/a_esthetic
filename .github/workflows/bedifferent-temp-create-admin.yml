@@ -1,10 +1,6 @@
 name: Create BE DIFFERENT admin with GitHub secret credentials
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/bedifferent-temp-create-admin.yml'
   workflow_dispatch:
 
 permissions:
