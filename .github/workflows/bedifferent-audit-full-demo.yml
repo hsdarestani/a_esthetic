@@ -1,0 +1,66 @@
+name: Audit every BE DIFFERENT demo page and admin route
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bedifferent-audit-full-demo.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout latest Be Different audit
+        uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/aymantraining
+          ref: main
+          persist-credentials: false
+      - name: Validate audit source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check scripts/audit-all-demo-routes.mjs
+          tar czf full-demo-audit.tgz scripts/audit-all-demo-routes.mjs
+      - name: Copy temporary audit script
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: full-demo-audit.tgz
+          target: /tmp
+      - name: Probe all pages using short-lived and auto-removed admin session
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 9m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp/current
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            trap 'rm -f /tmp/full-demo-audit.tgz "$APP/scripts/audit-all-demo-routes.mjs"' EXIT
+            tar -xOf /tmp/full-demo-audit.tgz scripts/audit-all-demo-routes.mjs > "$APP/scripts/audit-all-demo-routes.mjs"
+            chmod 644 "$APP/scripts/audit-all-demo-routes.mjs"
+            set -a
+            . /etc/bedifferent-temp.env
+            set +a
+            cd "$APP"
+            runuser -u bedifferenttemp -- env DATABASE_URL="$DATABASE_URL" "$APP/bin/node" "$APP/scripts/audit-all-demo-routes.mjs"
+      - name: Verify all three public apps healthy
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 https://bedifferent.smarbiz.sbs/api/ready > /dev/null
+          curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ > /dev/null
+          curl -fsS --max-time 20 https://book.a-esthetic.de/api/health/ > /dev/null
+          echo PUBLIC_PRODUCTION_SERVICES_OK
