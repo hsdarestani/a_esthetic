@@ -1,0 +1,115 @@
+name: Add isolated BE DIFFERENT HTTP ingress without touching existing virtual hosts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bedifferent-temp-ingress.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ingress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Verify Esthetic and Booking public before
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo BEFORE=OK
+
+      - name: Add dedicated HTTP vhost only after BE DIFFERENT is ready
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 4m
+          script: |
+            set -euo pipefail
+            DOMAIN=bedifferent.smarbiz.sbs
+            AVAILABLE=/etc/nginx/sites-available/bedifferent-temp.conf
+            ENABLED=/etc/nginx/sites-enabled/bedifferent-temp.conf
+            test "$(id -u)" -eq 0
+            systemctl is-active --quiet nginx
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            systemctl is-active --quiet bedifferent-temp
+            nginx -t
+            curl -fsS --max-time 7 http://127.0.0.1:3100/api/ready > /dev/null
+            curl -fsS --max-time 7 http://127.0.0.1:8017/api/health/ > /dev/null
+            curl -fsS --max-time 7 http://127.0.0.1:8770/api/mobile/status/ > /dev/null
+            if [ -e "$ENABLED" ] && [ "$(readlink -f "$ENABLED")" != "$AVAILABLE" ]; then
+              echo "Refusing to replace unknown domain configuration" >&2
+              exit 1
+            fi
+            if [ ! -e "$ENABLED" ] && grep -REq 'server_name[[:space:]]+bedifferent\.smarbiz\.sbs' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null; then
+              echo "Conflicting domain config already exists" >&2
+              exit 1
+            fi
+            if [ -e "$AVAILABLE" ] && ! grep -q 'BE_DIFFERENT_TEMP_ISOLATED' "$AVAILABLE"; then
+              echo "Refusing to overwrite unrelated available config" >&2
+              exit 1
+            fi
+            mkdir -p /var/www/bedifferent-temp-acme/.well-known/acme-challenge
+            cat > "$AVAILABLE.new" <<'NGINX'
+            # BE_DIFFERENT_TEMP_ISOLATED
+            server {
+                listen 80;
+                listen [::]:80;
+                server_name bedifferent.smarbiz.sbs;
+                client_max_body_size 110m;
+
+                location ^~ /.well-known/acme-challenge/ {
+                    root /var/www/bedifferent-temp-acme;
+                    default_type text/plain;
+                }
+                location / {
+                    proxy_pass http://127.0.0.1:3100;
+                    proxy_http_version 1.1;
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto https;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection "upgrade";
+                    proxy_read_timeout 180s;
+                }
+            }
+            NGINX
+            mv -f "$AVAILABLE.new" "$AVAILABLE"
+            ln -sfn "$AVAILABLE" "$ENABLED"
+            if ! nginx -t; then
+              rm -f "$ENABLED"
+              nginx -t || true
+              echo "New virtual host failed validation; removed without reload" >&2
+              exit 1
+            fi
+            systemctl reload nginx
+            sleep 1
+            if ! curl -fsS --max-time 10 -H 'Host: bedifferent.smarbiz.sbs' http://127.0.0.1/api/ready >/dev/null ||
+               ! curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ >/dev/null ||
+               ! curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ >/dev/null; then
+              rm -f "$ENABLED"
+              nginx -t && systemctl reload nginx
+              echo "Rolled back temporary ingress after failed health" >&2
+              exit 1
+            fi
+            echo BEDIFFERENT_HTTP_ORIGIN_READY=YES
+            echo EXISTING_APPS_STILL_READY=YES
+            echo HTTPS_AND_CLOUDFLARE_DNS_NOT_CHANGED=YES
+
+      - name: Verify Esthetic and Booking public after
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo AFTER=OK
