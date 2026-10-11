@@ -30,6 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s scripts/seed-ayman-admin-demo.mjs
+          node --check scripts/seed-ayman-admin-demo.mjs
           tar -czf bd-demo-admin-fixtures.tgz scripts/seed-ayman-admin-demo.mjs
       - name: Copy fixture to server temporary directory
         uses: appleboy/scp-action@v0.1.7
