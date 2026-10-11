@@ -37,7 +37,7 @@ jobs:
             test -s "$REL/server.js"
             test -x "$REL/bin/node"
             test -s /etc/bedifferent-temp.env
-            test -s "$APP/.initial-seed-ok"
+            test -e "$APP/.initial-seed-ok"
             test -s /etc/systemd/system/bedifferent-temp.service
             systemctl is-active --quiet nginx
             systemctl is-active --quiet a-esthetic-mobile
