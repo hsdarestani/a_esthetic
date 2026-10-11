@@ -1,0 +1,126 @@
+name: Protect temporary BE DIFFERENT data and run isolated maintenance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bedifferent-temp-operations.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  operations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Install only BE DIFFERENT timers and verify first backup
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp
+            test -s /etc/bedifferent-temp.env
+            test -f "$APP/.initial-seed-ok"
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            curl -fsS http://127.0.0.1:3100/api/ready >/dev/null
+            test ! -e "$APP/backup.sh" || grep -q 'BE_DIFFERENT_TEMP_BACKUP' "$APP/backup.sh"
+            test ! -e "$APP/maintenance.sh" || grep -q 'BE_DIFFERENT_TEMP_MAINTENANCE' "$APP/maintenance.sh"
+            install -d -m 700 -o bedifferenttemp -g bedifferenttemp "$APP/backups"
+            cat > "$APP/backup.sh" <<'BACKUP'
+            #!/usr/bin/env bash
+            # BE_DIFFERENT_TEMP_BACKUP
+            set -euo pipefail
+            umask 077
+            cd /opt/bedifferent-temp
+            stamp=$(date -u +%Y%m%dT%H%M%SZ)
+            pg_dump -U bedifferenttemp -d bedifferent_temp -Fc -f "backups/db-$stamp.dump.tmp"
+            mv "backups/db-$stamp.dump.tmp" "backups/db-$stamp.dump"
+            tar -czf "backups/uploads-$stamp.tar.gz.tmp" -C data uploads
+            mv "backups/uploads-$stamp.tar.gz.tmp" "backups/uploads-$stamp.tar.gz"
+            find backups -type f -mtime +14 -delete
+            echo BEDIFFERENT_BACKUP_COMPLETE
+            BACKUP
+            cat > "$APP/maintenance.sh" <<'MAINTENANCE'
+            #!/usr/bin/env bash
+            # BE_DIFFERENT_TEMP_MAINTENANCE
+            set -euo pipefail
+            set -a
+            . /etc/bedifferent-temp.env
+            set +a
+            curl -fsS --connect-timeout 3 --max-time 120 -X POST \
+              -H "x-cron-secret: $CRON_SECRET" http://127.0.0.1:3100/api/internal/maintenance >/dev/null
+            echo BEDIFFERENT_MAINTENANCE_COMPLETE
+            MAINTENANCE
+            chown root:bedifferenttemp "$APP/backup.sh" "$APP/maintenance.sh"
+            chmod 750 "$APP/backup.sh" "$APP/maintenance.sh"
+            cat >/etc/systemd/system/bedifferent-temp-backup.service <<'UNIT'
+            [Unit]
+            Description=Daily encrypted-at-rest-by-host-permissions BE DIFFERENT backups
+            After=postgresql.service
+            [Service]
+            Type=oneshot
+            User=bedifferenttemp
+            Group=bedifferenttemp
+            ExecStart=/opt/bedifferent-temp/backup.sh
+            Nice=15
+            CPUQuota=25%
+            MemoryMax=256M
+            NoNewPrivileges=true
+            PrivateTmp=true
+            UNIT
+            cat >/etc/systemd/system/bedifferent-temp-backup.timer <<'UNIT'
+            [Unit]
+            Description=Daily BE DIFFERENT temporary backup timer
+            [Timer]
+            OnCalendar=*-*-* 03:15:00
+            RandomizedDelaySec=15m
+            Persistent=true
+            Unit=bedifferent-temp-backup.service
+            [Install]
+            WantedBy=timers.target
+            UNIT
+            cat >/etc/systemd/system/bedifferent-temp-maintenance.service <<'UNIT'
+            [Unit]
+            Description=BE DIFFERENT hourly app maintenance
+            After=bedifferent-temp.service
+            [Service]
+            Type=oneshot
+            User=bedifferenttemp
+            Group=bedifferenttemp
+            ExecStart=/opt/bedifferent-temp/maintenance.sh
+            CPUQuota=20%
+            MemoryMax=256M
+            NoNewPrivileges=true
+            PrivateTmp=true
+            UNIT
+            cat >/etc/systemd/system/bedifferent-temp-maintenance.timer <<'UNIT'
+            [Unit]
+            Description=Hourly BE DIFFERENT internal maintenance
+            [Timer]
+            OnCalendar=hourly
+            RandomizedDelaySec=10m
+            Persistent=false
+            Unit=bedifferent-temp-maintenance.service
+            [Install]
+            WantedBy=timers.target
+            UNIT
+            systemctl daemon-reload
+            systemctl start bedifferent-temp-backup.service
+            systemctl is-failed --quiet bedifferent-temp-backup.service && exit 1 || true
+            test "$(find "$APP/backups" -maxdepth 1 -name '*.dump' -type f | wc -l)" -ge 1
+            systemctl enable --now bedifferent-temp-backup.timer bedifferent-temp-maintenance.timer
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            echo BEDIFFERENT_DAILY_BACKUPS=ENABLED
+            echo BEDIFFERENT_HOURLY_MAINTENANCE=ENABLED
+            echo EXISTING_APPS_UNTOUCHED=YES
