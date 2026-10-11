@@ -1,0 +1,74 @@
+name: Finish BE DIFFERENT isolated temporary first start
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bedifferent-temp-finish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  finish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check existing production externally before
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo ESTHETIC_BOOK_BEFORE_OK
+
+      - name: Finish only isolated Be Different service
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp
+            REL="$APP/releases/38142023476"
+            test -s "$REL/server.js"
+            test -x "$REL/bin/node"
+            test -s /etc/bedifferent-temp.env
+            test -s "$APP/.initial-seed-ok"
+            test -s /etc/systemd/system/bedifferent-temp.service
+            systemctl is-active --quiet nginx
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            chown root:bedifferenttemp "$APP" "$APP/releases"
+            chmod 750 "$APP" "$APP/releases"
+            ln -sfn "$REL" "$APP/current.new"
+            mv -Tf "$APP/current.new" "$APP/current"
+            systemctl daemon-reload
+            systemctl enable --now bedifferent-temp
+            systemctl restart bedifferent-temp
+            ready=0
+            for i in $(seq 1 30); do
+              if curl -fsS --max-time 3 http://127.0.0.1:3100/api/ready >/dev/null 2>&1; then ready=1; break; fi
+              sleep 2
+            done
+            if [ "$ready" -ne 1 ]; then
+              journalctl -u bedifferent-temp --no-pager -n 50 || true
+              systemctl stop bedifferent-temp
+              exit 1
+            fi
+            curl -fsS --max-time 5 http://127.0.0.1:3100/api/health >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ >/dev/null
+            echo BEDIFFERENT_READY_ON_LOCALHOST_3100
+            echo AESTHETIC_BOOK_LOCAL_OK
+
+      - name: Check existing production externally after
+        if: always()
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo ESTHETIC_BOOK_AFTER_OK
