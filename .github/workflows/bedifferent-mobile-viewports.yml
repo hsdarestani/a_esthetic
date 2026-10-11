@@ -1,4 +1,5 @@
 name: Check Be Different live mobile pages for overflow and tiny buttons
+# Includes visual box checks on the newly populated demo attention buttons.
 on:
   push:
     branches: [main]
