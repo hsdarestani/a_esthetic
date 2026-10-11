@@ -1,0 +1,47 @@
+name: Check Be Different live mobile pages for overflow and tiny buttons
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bedifferent-mobile-viewports.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      BD_ADMIN_PASSWORD: ${{ secrets.BD_ADMIN_PASSWORD }}
+    steps:
+      - name: Checkout Be Different source
+        uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/aymantraining
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright into GitHub runner only
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npx playwright install chromium
+      - name: Test authenticated pages at 360px 390px and 1280px
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ${#BD_ADMIN_PASSWORD} -ge 8
+          node --check scripts/audit-responsive-ui.mjs
+          node scripts/audit-responsive-ui.mjs
+      - name: Confirm public health after browser checks
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready >/dev/null
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo ALL_HOSTED_APPS_HEALTHY
