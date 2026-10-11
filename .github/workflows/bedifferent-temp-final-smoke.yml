@@ -1,0 +1,64 @@
+name: Verify BE DIFFERENT temporary website and existing Esthetic production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bedifferent-temp-final-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Verify BE DIFFERENT actual public pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for route in / /login /register /forgot-password; do
+            printf "PAGE_%s=" "$route"
+            code=$(curl -sSL --max-time 20 -o /tmp/bedifferent-response.html -w '%{http_code}' "https://bedifferent.smarbiz.sbs$route")
+            echo "$code"
+            test "$code" = 200
+            test "$(wc -c </tmp/bedifferent-response.html)" -gt 300
+          done
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/health > /dev/null
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready > /dev/null
+          echo PUBLIC_BEDIFFERENT_FRONTEND_AND_API=OK
+
+      - name: Verify both unrelated live businesses were not disturbed
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ > /dev/null
+          curl -fsS --max-time 20 https://book.a-esthetic.de/api/health/ > /dev/null
+          echo ESTHETIC_AND_BOOK_PUBLIC=OK
+
+      - name: Read-only server runtime and seed inspection
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet bedifferent-temp-backup.timer
+            systemctl is-active --quiet bedifferent-temp-maintenance.timer
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            nginx -t
+            printf 'FREE_MEMORY_MB='; free -m | awk '/^Mem:/ {print $7}'
+            printf 'BD_MEMORY_BYTES='; systemctl show -p MemoryCurrent --value bedifferent-temp
+            printf 'BD_BACKUP_FILES='; find /opt/bedifferent-temp/backups -maxdepth 1 -type f -name 'db-*.dump' | wc -l
+            printf 'BD_EXERCISES='
+            runuser -u bedifferenttemp -- psql -d bedifferent_temp -tAc 'SELECT count(*) FROM "Exercise";'
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready > /dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ > /dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ > /dev/null
+            echo LOCAL_ALL_SERVICES=OK
