@@ -1,5 +1,5 @@
 name: Deploy BE DIFFERENT isolated on Esthetic (temporary)
-# Full demo QA responsive fixes and explicitly labeled preview-only content.
+# Final Ayman demo Attention Queue fallback and responsive visual verification.
 # Mobile coach page polish and guarded demo profile samples.
 # Deploy dashboard user photo fix from the latest aymantraining main, preserving existing accounts.
 
@@ -69,6 +69,7 @@ jobs:
           grep -Fq 'bd-wearable-demo' app/wearables/WearablesClient.tsx
           grep -Fq 'DEMO · ABONNEMENT ÜBERSICHT' app/admin/subscriptions/page.tsx
           grep -Fq 'DEMO · REFERENZWERTE' app/admin/norms/page.tsx
+          grep -Fq 'previewOnly' app/admin/page.tsx
           test -s scripts/fill-demo-athlete-profiles.mjs
           node --check scripts/fill-demo-athlete-profiles.mjs
           grep -Fq 'admin-mobile-polish.css' app/layout.tsx
