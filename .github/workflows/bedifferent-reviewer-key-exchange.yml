@@ -1,0 +1,36 @@
+name: Prepare secure BE DIFFERENT reviewer password handoff
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/bedifferent-reviewer-key-exchange.yml"]
+permissions:
+  contents: read
+jobs:
+  exchange:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Make one-time RSA public key on the correct Esthetic host
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 3m
+          script: |
+            set -euo pipefail
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            DIR=/root/.bedifferent-review-handoff-20261012
+            install -d -m 700 "$DIR"
+            if [ ! -f "$DIR/private.pem" ]; then
+              umask 077
+              openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$DIR/private.pem" 2>/dev/null
+              chmod 600 "$DIR/private.pem"
+            fi
+            openssl pkey -in "$DIR/private.pem" -pubout -out "$DIR/public.pem"
+            echo BE_DIFFERENT_REVIEW_PUBLIC_KEY_BEGIN
+            cat "$DIR/public.pem"
+            echo BE_DIFFERENT_REVIEW_PUBLIC_KEY_END
