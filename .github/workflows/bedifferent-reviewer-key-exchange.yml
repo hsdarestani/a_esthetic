@@ -32,5 +32,5 @@ jobs:
             fi
             openssl pkey -in "$DIR/private.pem" -pubout -out "$DIR/public.pem"
             echo BE_DIFFERENT_REVIEW_PUBLIC_KEY_BEGIN
-            od -An -tx1 -v "$DIR/public.pem" | tr -d " \\n"; echo
+            od -An -tx1 -w16 -v "$DIR/public.pem"
             echo BE_DIFFERENT_REVIEW_PUBLIC_KEY_END
