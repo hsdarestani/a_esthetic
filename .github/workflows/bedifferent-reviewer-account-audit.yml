@@ -1,0 +1,54 @@
+name: BE DIFFERENT reviewer account audit on Esthetic server
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bedifferent-reviewer-account-audit.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect isolated BE DIFFERENT reviewer only
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 3m
+          script: |
+            set -euo pipefail
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            test -s /etc/bedifferent-temp.env
+            test -d /opt/bedifferent-temp/current
+            runuser -u postgres -- psql -XAt -d bedifferent_temp -v ON_ERROR_STOP=1 <<'SQL'
+            SELECT 'REVIEW_AUDIT=' || json_build_object(
+              'found', count(*)=1,
+              'role', max(role::text),
+              'tier', max("subscriptionTier"::text),
+              'onboarding_completed', coalesce(bool_and("onboardingCompleted"),false),
+              'has_password_hash', coalesce(bool_and(length("passwordHash")>30),false),
+              'timezone', max(timezone),
+              'has_goals', exists(select 1 from "Goal" where "userId" in
+                (select id from "User" where email='appreview@bedifferent.smarbiz.sbs')),
+              'has_assigned_training', exists(select 1 from "PlanAssignment" where "userId" in
+                (select id from "User" where email='appreview@bedifferent.smarbiz.sbs'))
+            )::text
+            FROM "User"
+            WHERE email='appreview@bedifferent.smarbiz.sbs';
+            SQL
+            curl -fsS --max-time 12 http://127.0.0.1:3100/api/ready >/dev/null
+            echo APP_REVIEW_AUDIT_COMPLETED
+      - name: Check other live services
+        if: always()
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo ESTHETIC_AND_BOOK_UNCHANGED
