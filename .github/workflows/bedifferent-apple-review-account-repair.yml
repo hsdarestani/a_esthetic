@@ -1,0 +1,107 @@
+name: Restore BE DIFFERENT Apple reviewer login on Esthetic
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/bedifferent-apple-review-account-repair.yml"]
+permissions:
+  contents: read
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Isolated reviewer upsert with one-time encrypted password
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp/current
+            DIR=/root/.bedifferent-review-handoff-20261012
+            test "$(id -u)" -eq 0
+            test -s "$DIR/private.pem"
+            test -s /etc/bedifferent-temp.env
+            test -s "$APP/node_modules/@prisma/client/package.json"
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            umask 077
+            trap 'shred -u "$DIR/private.pem" "$DIR/public.pem" "$DIR/cipher.bin" 2>/dev/null || true; rmdir "$DIR" 2>/dev/null || true' EXIT
+            printf '%s' 'osIxWg8N61SEjvONQLRLQBliPaNuu5rkvxxsOdv8kvVEiMZwzINisJd7/TBgpZ+qY7f3xv3aaKgXdKlDYKXPM+JfhN9qDjJSW3hnyF6JzaLSsyymXgvk9rbq+dGtzftloVyXPlwCOiQKblc9kOPIPyduYqxJBq6yMuGJJmh4ShBfGhb0sBJ3REYImOh3QXDsDnzCjbvW+HUQtYg7ZODDtPXai/w0DOoN1xJ9A6ErobgO9n9Q4qsO8Y9PG9ODa1H4ofdPP7v08bGNpeXAHMZ2Zg5vlwWsPaVRrU2oL2sfvFBRW4j/TOA8jA/NU9gVcGxO3iMrMZn8cTyBv6kHVeNtxQTe4Yix8rGyy6Iyh69saYj2paMbxLj8OLwdhm1br3oHEqsJc67d/+e7Ei8zAS1ORrSx6oh0h7obgWg5QKMiIjZ1hFh4cjl8pIcPNC5m9uQidbX6PXz3eJKQppmI1fkKS/PrXzX0I17NUyd152O+JHkyO7OTg9faJMuvhGFL87uF' | base64 -d > "$DIR/cipher.bin"
+            review_password="$(openssl pkeyutl -decrypt -inkey "$DIR/private.pem" -in "$DIR/cipher.bin" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256)"
+            test "${#review_password}" -ge 20
+            test "${#review_password}" -le 128
+            systemctl start bedifferent-temp-backup.service
+            set -a
+            . /etc/bedifferent-temp.env
+            set +a
+            cd "$APP"
+            runuser -u bedifferenttemp -- env DATABASE_URL="$DATABASE_URL" BD_REVIEW_PASSWORD="$review_password" "$APP/bin/node" - <<'NODE'
+            const bcrypt = require("bcryptjs");
+            const {PrismaClient} = require("@prisma/client");
+            const prisma = new PrismaClient();
+            const email = "appreview@bedifferent.smarbiz.sbs";
+            const password = process.env.BD_REVIEW_PASSWORD;
+            async function main(){
+              if (!password || password.length<20 || password.length>128) throw Error("Invalid review credential");
+              const old=await prisma.user.findUnique({where:{email}});
+              if(old && old.role!=="ATHLETE") throw Error("Refusing to modify a non-athlete record");
+              const passwordHash=await bcrypt.hash(password,12);
+              const user=await prisma.user.upsert({
+                where:{email},
+                update:{passwordHash,subscriptionTier:"ELITE",onboardingCompleted:true,name:"Review Athlete",role:"ATHLETE"},
+                create:{email,passwordHash,subscriptionTier:"ELITE",onboardingCompleted:true,name:"Review Athlete",role:"ATHLETE",locale:"en"}
+              });
+              // Only synthetic reviewer records. Do not modify real athlete data.
+              const plan=await prisma.trainingPlan.findFirst({where:{id:"starter-athlete-base"}});
+              if(plan && !await prisma.planAssignment.findFirst({where:{userId:user.id,active:true}})){
+                await prisma.planAssignment.create({data:{userId:user.id,planId:plan.id}});
+              }
+              const workoutId="bd-apple-review-training";
+              await prisma.workout.upsert({
+                where:{id:workoutId},update:{},
+                create:{id:workoutId,userId:user.id,trainingPlanId:plan?.id||null,
+                  title:"REVIEW DEMO · Ganzkörper Training",
+                  scheduledAt:new Date(Date.now()+24*3600*1000),
+                  notes:"Synthetic training session for App Store review"}
+              });
+              console.log("REVIEW_USER="+(old?"UPDATED":"CREATED"));
+              console.log("REVIEW_ROLE="+user.role);
+              console.log("REVIEW_TIER="+user.subscriptionTier);
+              console.log("REVIEW_ONBOARDING_COMPLETE="+user.onboardingCompleted);
+              const base="https://bedifferent.smarbiz.sbs";
+              const auth=await fetch(base+"/api/auth/login",{
+                method:"POST",
+                headers:{"content-type":"application/json","origin":base,"x-bd-client":"mobile"},
+                body:JSON.stringify({email,password}),signal:AbortSignal.timeout(20000)
+              });
+              if(!auth.ok)throw Error("Reviewer login rejected HTTP "+auth.status);
+              const login=await auth.json();
+              if(!login.sessionToken)throw Error("Review login did not return mobile session");
+              console.log("REVIEW_LOGIN=PASS");
+              const dashboard=await fetch(base+"/api/mobile/dashboard",{
+                headers:{"authorization":"Bearer "+login.sessionToken,"x-bd-client":"mobile"},
+                signal:AbortSignal.timeout(20000)
+              });
+              if(!dashboard.ok)throw Error("Reviewer dashboard rejected HTTP "+dashboard.status);
+              const data=await dashboard.json();
+              if(!data.user?.onboardingCompleted)throw Error("Review dashboard onboarding incomplete");
+              console.log("REVIEW_DASHBOARD=PASS");
+            }
+            main().catch(e=>{console.error("REVIEW_SETUP_ERROR="+e.message);process.exitCode=1}).finally(async()=>{await prisma.$disconnect()});
+            NODE
+            unset review_password
+            curl -fsS --max-time 12 http://127.0.0.1:3100/api/ready >/dev/null
+            echo APP_REVIEW_REPAIR_COMPLETE
+      - name: Ensure A+ ESTHETIC and booking unaffected
+        if: always()
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready >/dev/null
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo ALL_THREE_APPS_HEALTHY
