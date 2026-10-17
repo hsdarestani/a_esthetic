@@ -995,3 +995,21 @@ body{background:
 .approved-exclusive-offer p{margin:5px 0}
 .approved-benefits button[data-exclusive-benefits]:focus-visible{outline:3px solid #cda956;outline-offset:3px}
 .approved-benefits button[data-exclusive-benefits][aria-expanded="true"] b[data-exclusive-chevron]{transform:rotate(90deg)}
+
+/* Cross-platform digital member card with QR-first fallback. */
+.approved-member-card .approved-wallet-guide{
+  margin:0 0 12px;
+  color:#70695e;
+  font-size:12px;
+  line-height:1.55;
+}
+.approved-member-card [data-wallet-provider]{
+  margin-top:10px;
+  width:100%;
+  min-height:42px;
+  white-space:normal;
+}
+.approved-member-card [data-wallet-provider]:disabled{
+  opacity:.7;
+  cursor:wait;
+}
