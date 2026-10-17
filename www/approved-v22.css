@@ -880,3 +880,16 @@ body{background:
     font-size:25px!important;
   }
 }
+
+/* Patient record composer: keep every selected document visible until confirmation. */
+.approved-upload-files{display:grid;gap:8px;margin-top:10px}
+.approved-upload-file{margin:0;grid-template-columns:54px minmax(0,1fr) 34px}
+.approved-upload-file img{background:#efe8da}
+.approved-upload-file strong{font-size:12px!important}
+.approved-upload-file small{font-size:10px!important;line-height:1.35}
+.approved-upload-file .approved-upload-remove{justify-self:end}
+.approved-upload-message{margin-top:12px;padding:12px;border-radius:12px;font-size:12px;line-height:1.5}
+.approved-upload-message[hidden]{display:none!important}
+.approved-upload-message.is-error{background:#fff0ed;color:#8f3429;border:1px solid #edc4bd}
+.approved-upload-message.is-success{background:#edf7f0;color:#35664a;border:1px solid #c2dec9}
+.approved-save-record:disabled{opacity:.65;cursor:wait}
