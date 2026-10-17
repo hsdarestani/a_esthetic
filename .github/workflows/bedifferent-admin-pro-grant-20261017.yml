@@ -1,0 +1,145 @@
+name: BE DIFFERENT admin PRO complimentary entitlement
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bedifferent-admin-pro-grant-20261017.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: bedifferent-admin-pro-single-account
+  cancel-in-progress: false
+jobs:
+  grant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Grant verified PRO entitlement while preserving ADMIN role
+        env:
+          HOST: ${{ secrets.SERVER_HOST }}
+          SSH_PORT: ${{ secrets.SERVER_PORT }}
+          SSH_USER: ${{ secrets.SERVER_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SSH_KEY_PASSPHRASE: ${{ secrets.SERVER_SSH_PASSPHRASE }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$SSH_PRIVATE_KEY" && test -n "$SSH_USER"
+          PORT="${SSH_PORT:-22}"
+          umask 077
+          KEY="$RUNNER_TEMP/bedifferent-admin-pro-key"
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > "$KEY"
+          chmod 600 "$KEY"
+          if [ -n "$SSH_KEY_PASSPHRASE" ]; then
+            eval "$(ssh-agent -s)" >/dev/null
+            ASKPASS="$RUNNER_TEMP/bedifferent-pro-askpass"
+            printf '%s\n' '#!/bin/sh' 'printf "%s" "$SSH_KEY_PASSPHRASE"' > "$ASKPASS"
+            chmod 700 "$ASKPASS"
+            DISPLAY=:0 SSH_ASKPASS="$ASKPASS" SSH_ASKPASS_REQUIRE=force setsid ssh-add "$KEY" </dev/null
+          fi
+          install -d -m 700 "$HOME/.ssh"
+          ssh-keyscan -T 10 -p "$PORT" -H "$HOST" >> "$HOME/.ssh/known_hosts" 2>/dev/null
+          test -s "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          STATUS="$RUNNER_TEMP/bd-admin-pro-status.txt"
+          set +e
+          ssh -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "$PORT" "$SSH_USER@$HOST" 'bash -se' > "$STATUS" 2>&1 <<'REMOTE'
+          set -euo pipefail
+          APP=/opt/bedifferent-temp/current
+          test -s /etc/bedifferent-temp.env
+          test -s "$APP/node_modules/@prisma/client/package.json"
+          test -x "$APP/bin/node"
+          cd "$APP"
+          set -a
+          . /etc/bedifferent-temp.env
+          set +a
+          runuser -u bedifferenttemp -- env DATABASE_URL="$DATABASE_URL" "$APP/bin/node" - <<'NODE'
+          const { PrismaClient } = require('@prisma/client');
+          const crypto = require('node:crypto');
+          const db = new PrismaClient();
+          const email = 'admin@bedifferent.smarbiz.sbs';
+          const provider = 'internal_admin';
+          const externalId = 'complimentary-admin-pro-2026';
+          let ephemeralHash = null;
+          async function main() {
+            const before = await db.user.findUnique({
+              where: { email },
+              select: { id: true, role: true, subscriptionTier: true, onboardingCompleted: true }
+            });
+            if (!before || before.role !== 'ADMIN') throw new Error('Expected existing ADMIN account not found; made no changes.');
+            if (!before.onboardingCompleted) throw new Error('Admin athlete onboarding is not completed; made no changes.');
+            console.log('ADMIN_INITIAL_ROLE=' + before.role);
+            console.log('ADMIN_INITIAL_TIER=' + before.subscriptionTier);
+            console.log('ADMIN_ATHLETE_PROFILE=ONBOARDED');
+            if (before.subscriptionTier !== 'ELITE') {
+              await db.$transaction(async tx => {
+                const user = await tx.user.findUnique({
+                  where: { email },
+                  select: { id: true, role: true, subscriptionTier: true }
+                });
+                if (!user || user.id !== before.id || user.role !== 'ADMIN') throw new Error('Admin identity/role changed; refusing update.');
+                const grant = await tx.subscription.findUnique({
+                  where: { provider_externalId: { provider, externalId } }
+                });
+                if (grant && grant.userId !== user.id) throw new Error('Manual PRO grant belongs to another account.');
+                if (grant) {
+                  await tx.subscription.update({
+                    where: { id: grant.id },
+                    data: { tier: 'PRO', status: 'active', renewsAt: null, trialEndsAt: null }
+                  });
+                } else {
+                  await tx.subscription.create({
+                    data: { userId: user.id, tier: 'PRO', provider, externalId, status: 'active', renewsAt: null, trialEndsAt: null }
+                  });
+                }
+                await tx.user.update({ where: { id: user.id }, data: { subscriptionTier: 'PRO' } });
+              });
+            } else {
+              console.log('ADMIN_ACTION=PRESERVED_SUPERIOR_ELITE_TIER');
+            }
+            const after = await db.user.findUnique({
+              where: { email },
+              select: { id: true, role: true, subscriptionTier: true, onboardingCompleted: true }
+            });
+            if (!after || after.id !== before.id || after.role !== 'ADMIN' || !after.onboardingCompleted)
+              throw new Error('Post-update ADMIN role or athlete onboarding verification failed.');
+            if (after.subscriptionTier !== 'PRO' && after.subscriptionTier !== 'ELITE')
+              throw new Error('Post-update PRO entitlement verification failed.');
+            if (after.subscriptionTier === 'PRO') {
+              const grant = await db.subscription.findUnique({ where: { provider_externalId: { provider, externalId } } });
+              if (!grant || grant.userId !== after.id || grant.tier !== 'PRO' || grant.status !== 'active' || grant.renewsAt || grant.trialEndsAt)
+                throw new Error('Permanent complimentary PRO subscription readback failed.');
+            }
+            const token = crypto.randomBytes(32).toString('base64url');
+            ephemeralHash = crypto.createHash('sha256').update(token).digest('hex');
+            await db.authSession.create({ data: { tokenHash: ephemeralHash, userId: after.id, expiresAt: new Date(Date.now()+120000) } });
+            const response = await fetch('http://127.0.0.1:3100/api/entitlements', {
+              headers: { authorization: 'Bearer ' + token, 'x-bd-client': 'mobile' },
+              signal: AbortSignal.timeout(20000)
+            });
+            if (!response.ok) throw new Error('Authenticated entitlement probe HTTP ' + response.status);
+            const body = await response.json();
+            if (!body.ok || body.tier !== after.subscriptionTier) throw new Error('Authenticated entitlement response mismatches database');
+            console.log('ADMIN_FINAL_ROLE=ADMIN');
+            console.log('ADMIN_FINAL_TIER=' + after.subscriptionTier);
+            console.log('ADMIN_ENTITLEMENTS_API=PASS');
+            console.log('ADMIN_BOTH_ROLE_AND_ATHLETE_ACCESS=YES');
+            console.log('ADMIN_PRO_NO_PAYMENT_NO_EXPIRY=YES');
+          }
+          main().catch(err => {
+            console.error('ADMIN_PRO_GRANT_ERROR=' + (err instanceof Error ? err.message : 'unknown'));
+            process.exitCode = 1;
+          }).finally(async () => {
+            if (ephemeralHash) await db.authSession.deleteMany({ where: { tokenHash: ephemeralHash } }).catch(() => {});
+            await db.$disconnect();
+          });
+          NODE
+          REMOTE
+          RC=$?
+          set -e
+          tail -c 8000 "$STATUS"
+          { printf 'BE DIFFERENT admin PRO workflow run %s\n\n' "$GITHUB_RUN_ID"; tail -c 8000 "$STATUS"; } | jq -Rs '{body: .}' > "$RUNNER_TEMP/issue.json"
+          curl --silent --show-error --fail-with-body -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" -H "Content-Type: application/json" --data-binary @"$RUNNER_TEMP/issue.json" "https://api.github.com/repos/hsdarestani/a_esthetic/issues/70/comments" >/dev/null
+          test "$RC" -eq 0
