@@ -976,3 +976,9 @@ body{background:
     right:10px;
   }
 }
+
+/* Referral confirmation: visible under the send button without navigating. */
+.referral-premium [data-referral-feedback]{margin:12px 0 0;font-size:12px;line-height:1.55;overflow-wrap:anywhere}
+.referral-premium [data-referral-feedback][hidden]{display:none!important}
+.referral-premium [data-referral] button[type="submit"]:disabled{opacity:.72;cursor:progress}
+.referral-row strong{overflow-wrap:anywhere;word-break:normal}
