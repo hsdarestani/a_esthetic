@@ -1,0 +1,49 @@
+name: Inspect BE DIFFERENT isolated live release 20261017
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bedifferent-isolated-live-inspect-20261017.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Public endpoints
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo PUBLIC_SERVICES=OK
+      - name: Read only check of isolated service
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 4m
+          script: |
+            set -euo pipefail
+            echo LIVE_BD_INSPECTION_BEGIN
+            for svc in nginx postgresql bedifferent-temp a-esthetic-mobile aesthetic-book; do echo "$svc=$(systemctl is-active "$svc" || true)"; done
+            APP=/opt/bedifferent-temp
+            test -d "$APP/releases"
+            test -L "$APP/current"
+            test -s /etc/bedifferent-temp.env
+            test -s /etc/systemd/system/bedifferent-temp.service
+            printf 'ACTIVE_RELEASE='; readlink -f "$APP/current"
+            printf 'ACTIVE_SERVER_PRESENT='; test -s "$APP/current/server.js" && echo yes
+            printf 'ACTIVE_NODE_PRESENT='; test -x "$APP/current/bin/node" && echo yes
+            printf 'ACTIVE_APP_STATIC_PRESENT='; test -d "$APP/current/.next/static" && echo yes
+            printf 'AVAILABLE_MEMORY_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo
+            printf 'OPT_AVAILABLE_KB='; df -Pk "$APP" | awk 'NR==2 {print $4}'
+            printf 'APP_UID='; id -u bedifferenttemp
+            printf 'APP_RELEASE_COUNT='; find "$APP/releases" -mindepth 1 -maxdepth 1 -type d | wc -l
+            curl -fsS --max-time 8 http://127.0.0.1:3100/api/ready
+            echo
+            echo LIVE_BD_INSPECTION_END
