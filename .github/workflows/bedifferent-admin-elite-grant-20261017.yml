@@ -1,0 +1,105 @@
+name: Grant BE DIFFERENT admin complimentary ELITE on Esthetic
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/bedifferent-admin-elite-grant-20261017.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bedifferent-admin-elite-20261017
+  cancel-in-progress: false
+jobs:
+  grant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect and conditionally grant ELITE to existing admin only
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp/current
+            test -s /etc/bedifferent-temp.env
+            test -s "$APP/node_modules/@prisma/client/package.json"
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready >/dev/null
+            set -a
+            . /etc/bedifferent-temp.env
+            set +a
+            cd "$APP"
+            runuser -u bedifferenttemp -- env DATABASE_URL="$DATABASE_URL" "$APP/bin/node" - <<'NODE'
+            const {PrismaClient}=require('@prisma/client');
+            const crypto=require('node:crypto');
+            const db=new PrismaClient();
+            const email='admin@bedifferent.smarbiz.sbs';
+            const provider='internal_admin';
+            const externalId='bedifferent-admin-complimentary-elite';
+            const origin='http://127.0.0.1:3100';
+            let sessionHash;
+            async function main(){
+              const original=await db.user.findUnique({where:{email},select:{id:true,role:true,subscriptionTier:true,name:true}});
+              if(!original||original.role!=='ADMIN')throw Error('Designated admin missing or not an ADMIN: aborting without changes');
+              const existing=await db.subscription.findUnique({where:{provider_externalId:{provider,externalId}}});
+              if(existing && existing.userId!==original.id)throw Error('Existing admin grant belongs to another account: abort');
+              console.log('ADMIN_TIER_BEFORE='+original.subscriptionTier);
+              console.log('ADMIN_ROLE_BEFORE='+original.role);
+              if(original.subscriptionTier!=='ELITE'||!existing||existing.status!=='active'||existing.tier!=='ELITE'||existing.renewsAt){
+                await db.$transaction(async tx=>{
+                  const actor=await tx.user.findUnique({where:{email},select:{id:true,role:true}});
+                  if(!actor||actor.id!==original.id||actor.role!=='ADMIN')throw Error('Admin role changed: abort');
+                  await tx.subscription.upsert({
+                    where:{provider_externalId:{provider,externalId}},
+                    create:{userId:original.id,provider,externalId,status:'active',tier:'ELITE',renewsAt:null,trialEndsAt:null},
+                    update:{status:'active',tier:'ELITE',renewsAt:null,trialEndsAt:null}
+                  });
+                  await tx.user.update({where:{id:original.id},data:{subscriptionTier:'ELITE'}});
+                });
+                console.log('ADMIN_GRANT_CHANGED=true');
+              }else console.log('ADMIN_GRANT_CHANGED=false');
+              const current=await db.user.findUnique({where:{email},select:{id:true,role:true,subscriptionTier:true}});
+              const grant=await db.subscription.findUnique({where:{provider_externalId:{provider,externalId}}});
+              if(current?.role!=='ADMIN'||current.subscriptionTier!=='ELITE'||grant?.userId!==current.id||grant.status!=='active'||grant.tier!=='ELITE'||grant.renewsAt!==null)throw Error('Admin ELITE permanent grant not verified');
+              console.log('ADMIN_TIER_AFTER=ELITE');
+              console.log('ADMIN_ROLE_AFTER=ADMIN');
+              console.log('ADMIN_GRANT=ACTIVE_NO_EXPIRY_NO_PAYMENT');
+              const token=crypto.randomBytes(32).toString('base64url');
+              sessionHash=crypto.createHash('sha256').update(token).digest('hex');
+              await db.authSession.create({data:{tokenHash:sessionHash,userId:current.id,expiresAt:new Date(Date.now()+120000)}});
+              const headers={authorization:'Bearer '+token,'x-bd-client':'mobile'};
+              for(const [route,label,check] of [
+                ['/api/entitlements','ALL_FEATURE_FLAGS',d=>d.ok&&d.tier==='ELITE'&&d.features?.coach_chat===true&&d.features?.different_ai===true&&d.features?.elite_video_calls===true],
+                ['/api/ai','DIFFERENT_AI',d=>d.ok&&Array.isArray(d.items)],
+                ['/api/admin/users','ADMIN_USERS',d=>d.ok&&Array.isArray(d.users)]
+              ]){
+                const response=await fetch(origin+route,{headers,signal:AbortSignal.timeout(20000),redirect:'manual'});
+                if(response.status!==200)throw Error(label+' failed HTTP '+response.status);
+                const data=await response.json();
+                if(!check(data))throw Error(label+' did not meet expected response checks');
+                console.log('ADMIN_'+label+'=PASS');
+              }
+            }
+            main().catch(e=>{console.error('ADMIN_ELITE_ERROR='+e.message);process.exitCode=1}).finally(async()=>{
+              if(sessionHash)await db.authSession.deleteMany({where:{tokenHash:sessionHash}}).catch(()=>undefined);
+              await db.$disconnect();
+            });
+            NODE
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ >/dev/null
+            echo LOCAL_BE_DIFFERENT_AND_ESTHETIC_HEALTHY
+      - name: Check public services stayed online
+        if: always()
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 https://bedifferent.smarbiz.sbs/api/ready >/dev/null
+          curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 20 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo ALL_PUBLIC_SERVICES_HEALTHY
