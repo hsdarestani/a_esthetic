@@ -128,7 +128,7 @@
         : active && editable && !editable.change_allowed
           ? '<p class="book-cancel-deadline">Online Stornierungen sind nur bis '+cutoff+' Stunden vor Terminbeginn möglich. Danach kontaktiere bitte die Praxis.</p>'
           : active && !manageable
-            ? '<p class="book-cancel-deadline">Die Stornierungsoptionen konnten nicht geladen werden. Bitte versuche es erneut.</p>'
+            ? '<p class="book-cancel-deadline">Die Stornierungsoptionen konnten nicht geladen werden.</p><button type="button" class="book-cancel-reload" data-reload-cancellations>Erneut versuchen</button>'
             : '';
       return '<article class="book-appointment-row" data-appointment-id="'+esc(item.id)+'">'+
         '<button type="button" class="book-appointment-open" data-open-appointment="'+esc(item.id)+'" aria-expanded="false">'+
@@ -378,6 +378,7 @@
     appointmentsList.addEventListener('click', async event => {
       const target = event.target.closest('button');
       if (!target || target.disabled) return;
+      if(target.hasAttribute('data-reload-cancellations')) { await reloadCancellations(); return; }
       const row = target.closest('[data-appointment-id]');
       if (!row) return;
       const controls = row.querySelector('[data-cancel-confirmation]');
