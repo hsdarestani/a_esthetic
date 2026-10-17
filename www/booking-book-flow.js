@@ -262,6 +262,7 @@
     const phone = profileData.phone || '';
 
     card.innerHTML = `
+      <section class="book-my-appointments"><h2>Deine Termine</h2><div data-appointment-status role="status" aria-live="polite"></div><div data-appointments>${appointmentRows(state.data.appointments)}</div></section>
       <div class="book-flow" data-book-root>
         <div class="book-progress" aria-label="Buchungsfortschritt">
           <span class="book-progress-dot is-active" data-book-progress="1">1</span><span class="book-progress-line"></span>
@@ -321,8 +322,7 @@
           <div class="book-summary" data-success-summary></div>
           <button class="book-primary" type="button" data-new-booking>Weiteren Termin buchen</button>
         </section>
-      </div>
-      <section class="book-my-appointments"><h2>Deine Termine</h2><div data-appointment-status role="status" aria-live="polite"></div><div data-appointments>${appointmentRows(state.data.appointments)}</div></section>`;
+      </div>`;
 
     const appointmentsList = card.querySelector('[data-appointments]');
     const appointmentStatus = card.querySelector('[data-appointment-status]');
