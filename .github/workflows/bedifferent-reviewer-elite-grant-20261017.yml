@@ -17,10 +17,10 @@ jobs:
       - name: Update only existing Apple reviewer in isolated BE DIFFERENT database and smoke test
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: \${{ secrets.SERVER_HOST }}
-          username: \${{ secrets.SERVER_USER }}
-          port: \${{ secrets.SERVER_PORT }}
-          key: \${{ secrets.SERVER_SSH_KEY }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 5m
           script: |
             set -euo pipefail
