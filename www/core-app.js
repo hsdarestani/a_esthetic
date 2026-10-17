@@ -39,6 +39,8 @@
   const navIcon = key => NAV_ICONS[key] || '';
   const state = { route: 'dashboard', token: localStorage.getItem('aplus_token') || '', me: null, cache: {} };
   const root = document.getElementById('app');
+  const routeHistory = [];
+  let nativeBackListenerRegistered = false;
 
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
   const fmt = value => value ? new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)) : '—';
@@ -106,7 +108,7 @@
     node.querySelector('[data-logout]').onclick=()=>{node.remove();requestAnimationFrame(()=>logout());};
   }
 
-  function logout(render=true){document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};if(render)showLogin();}
+  function logout(render=true){document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
 
   function showContactPicker(){
     document.querySelectorAll('.contact-overlay').forEach(node=>node.remove());
@@ -141,8 +143,64 @@
     root.innerHTML=`<div class="login-shell login-shell-auth"><section class="login-card"><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div><h1>Willkommen zurück</h1><p>${esc(message)}</p><div class="spinner"></div><button class="secondary wide" type="button" data-reconnect>Erneut verbinden</button></section></div>`;
     root.querySelector('[data-reconnect]')?.addEventListener('click',boot);
   }
-  async function boot(){if(!state.token)return showLogin();try{state.me=await request('/me/');if(state.me?.account?.locked){window.APlusOnboarding?.start?.();return;}go(new URLSearchParams(window.location.search).get('bereich')==='termine'?'appointments':'dashboard');}catch(err){if(err?.code==='profile_completion_required'){window.APlusOnboarding?.start?.();return;}if(state.token)showReconnect('Die Verbindung ist gerade nicht verfügbar. Ihre Anmeldung bleibt gespeichert.');}}
-  async function go(route){if(route==='reviews'){state.route='points';shell(loader());try{await renderReviews();}catch(err){shell(errorBox(err));}return;}if(!routes.some(r=>r[0]===route))route='dashboard';state.route=route;shell(loader());try{if(route==='dashboard')await renderDashboard();if(route==='appointments')await renderAppointments();if(route==='records')await renderRecords();if(route==='points')await renderPoints();if(route==='friends')await renderFriends();}catch(err){shell(`${pageHead('A+ Esthetic','Fehler')} ${errorBox(err)}`);}}
+  async function boot(){if(!state.token)return showLogin();try{state.me=await request('/me/');if(state.me?.account?.locked){window.APlusOnboarding?.start?.();return;}go(new URLSearchParams(window.location.search).get('bereich')==='termine'?'appointments':'dashboard',{resetHistory:true});}catch(err){if(err?.code==='profile_completion_required'){window.APlusOnboarding?.start?.();return;}if(state.token)showReconnect('Die Verbindung ist gerade nicht verfügbar. Ihre Anmeldung bleibt gespeichert.');}}
+  async function go(route, options={}){
+    const displayRoute=route==='reviews'?'points':route;
+    const nextRoute=routes.some(item=>item[0]===displayRoute)?displayRoute:'dashboard';
+    if(options.resetHistory)routeHistory.length=0;
+    else if(!options.fromBack && state.me && nextRoute!==state.route){
+      routeHistory.push(state.route);
+      if(routeHistory.length>25)routeHistory.shift();
+    }
+    state.route=nextRoute;
+    shell(loader());
+    try{
+      if(route==='reviews'){await renderReviews();return;}
+      if(nextRoute==='dashboard')await renderDashboard();
+      if(nextRoute==='appointments')await renderAppointments();
+      if(nextRoute==='records')await renderRecords();
+      if(nextRoute==='points')await renderPoints();
+      if(nextRoute==='friends')await renderFriends();
+    }catch(err){shell(`${pageHead('A+ Esthetic','Fehler')} ${errorBox(err)}`);}
+  }
+
+  function handleNativeBack(){
+    const settings=document.querySelector('.settings-overlay');
+    if(settings){const close=settings.querySelector('[data-close]');if(close)close.click();else settings.remove();return;}
+    const contact=document.querySelector('.contact-overlay');
+    if(contact){const close=contact.querySelector('[data-contact-close]');if(close)close.click();else contact.remove();return;}
+    const confirmation=document.querySelector('.book-cancel-confirm:not([hidden])');
+    if(confirmation){confirmation.querySelector('[data-dismiss-cancel]')?.click();return;}
+    const activeStep=document.querySelector('.book-step.is-active[data-book-step]');
+    if(activeStep && Number(activeStep.dataset.bookStep)>1 && Number(activeStep.dataset.bookStep)<5){
+      const back=activeStep.querySelector('[data-back]');
+      if(back){back.click();return;}
+    }
+    if(state.token && state.me){
+      while(routeHistory.length){
+        const previous=routeHistory.pop();
+        if(previous!==state.route){void go(previous,{fromBack:true});return;}
+      }
+      if(state.route!=='dashboard'){void go('dashboard',{fromBack:true});return;}
+    }
+    // Exit only after returning to the home screen, consistent with Android.
+    window.Capacitor?.Plugins?.App?.exitApp?.();
+  }
+
+  function registerNativeBackButton(){
+    if(nativeBackListenerRegistered)return;
+    const capacitor=window.Capacitor;
+    if(capacitor?.getPlatform?.()!=='android')return;
+    const app=capacitor?.Plugins?.App;
+    if(!app?.addListener)return;
+    nativeBackListenerRegistered=true;
+    Promise.resolve(app.addListener('backButton',handleNativeBack)).catch(()=>{
+      nativeBackListenerRegistered=false;
+    });
+  }
+  registerNativeBackButton();
+  document.addEventListener('DOMContentLoaded',registerNativeBackButton,{once:true});
+  window.addEventListener('pageshow',registerNativeBackButton);
 
   async function renderDashboard(){
     const [dash,booking]=await Promise.all([request('/dashboard/'),request('/booking/')]);
