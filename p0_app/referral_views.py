@@ -116,7 +116,12 @@ def mobile_club(request):
     tier = membership.tier if membership else None
     tier_slug = (tier.slug or "").strip().lower() if tier and tier.active else ""
     tier_name = (tier.name or "").strip().lower() if tier and tier.active else ""
-    exclusive_eligible = any(name in (tier_slug, tier_name) for name in ("signature", "black", "vip"))
+    membership_active = bool(membership and (membership.valid_until is None or membership.valid_until >= timezone.localdate()))
+    exclusive_eligible = bool(membership_active and any(
+        candidate == label or candidate.startswith(label + "-")
+        for candidate in (tier_slug, tier_name)
+        for label in ("signature", "black", "vip")
+    ))
     exclusive_benefits = [
         {"id": c.pk, "name": c.name, "message": c.message, "ends_at": c.ends_at.isoformat()}
         for c in campaigns if c.audience == "vip"
