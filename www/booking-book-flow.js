@@ -69,6 +69,7 @@
 
   const stateFor = () => ({
     data: null,
+    manageable: null,
     profile: null,
     service: null,
     staff: null,
@@ -321,7 +322,79 @@
           <button class="book-primary" type="button" data-new-booking>Weiteren Termin buchen</button>
         </section>
       </div>
-      <section class="book-my-appointments"><h2>Deine Termine</h2><div data-appointments>${appointmentRows(state.data.appointments)}</div></section>`;
+      <section class="book-my-appointments"><h2>Deine Termine</h2><div data-appointment-status role="status" aria-live="polite"></div><div data-appointments>${appointmentRows(state.data.appointments)}</div></section>`;
+
+    const appointmentsList = card.querySelector('[data-appointments]');
+    const appointmentStatus = card.querySelector('[data-appointment-status]');
+    const paintAppointments = () => {
+      appointmentsList.innerHTML = appointmentRows(state.data.appointments || [], state.manageable);
+    };
+    const reloadCancellations = async () => {
+      appointmentStatus.textContent = 'Stornierungsoptionen werden geladen …';
+      try {
+        state.manageable = await api('/booking/manageable/');
+        if (!card.isConnected) return;
+        paintAppointments();
+        appointmentStatus.textContent = '';
+      } catch (_) {
+        state.manageable = null;
+        if (!card.isConnected) return;
+        paintAppointments();
+        appointmentStatus.textContent = 'Stornierungsoptionen konnten nicht geladen werden. Bitte erneut versuchen.';
+      }
+    };
+    appointmentsList.addEventListener('click', async event => {
+      const target = event.target.closest('button');
+      if (!target || target.disabled) return;
+      const row = target.closest('[data-appointment-id]');
+      if (!row) return;
+      const controls = row.querySelector('[data-cancel-confirmation]');
+      if (target.hasAttribute('data-start-cancel')) {
+        if (controls) controls.hidden = false;
+        return;
+      }
+      if (target.hasAttribute('data-dismiss-cancel')) {
+        if (controls) controls.hidden = true;
+        return;
+      }
+      if (!target.hasAttribute('data-confirm-cancel')) return;
+      const id = target.dataset.confirmCancel;
+      target.disabled = true;
+      target.textContent = 'Wird storniert …';
+      appointmentStatus.textContent = '';
+      try {
+        const result = await api('/booking/'+encodeURIComponent(id)+'/change/', {
+          method:'POST',
+          body:JSON.stringify({ action:'cancel' })
+        });
+        if (!result.ok || result.action !== 'cancel') throw new Error('cancel_not_confirmed');
+        // Update immediately even when refreshing the appointment list fails.
+        state.data.appointments = (state.data.appointments || []).map(item =>
+          String(item.id) === String(id) ? { ...item, status:'Abgesagt', status_code:'cancelled' } : item
+        );
+        state.manageable = {
+          ...state.manageable,
+          appointments:(state.manageable?.appointments||[]).filter(item => String(item.id) !== String(id))
+        };
+        paintAppointments();
+        appointmentStatus.className = 'book-appointment-status is-success';
+        appointmentStatus.textContent = 'Dein Termin wurde erfolgreich storniert. Du erhältst eine Bestätigung per E-Mail.';
+        const fresh = await api('/booking/').catch(() => null);
+        if (fresh?.appointments) {
+          state.data.appointments = fresh.appointments;
+          paintAppointments();
+        }
+      } catch (error) {
+        target.disabled = false;
+        target.textContent = 'Ja, Termin stornieren';
+        appointmentStatus.className = 'book-appointment-status is-error';
+        appointmentStatus.textContent = error.body?.message ||
+          (error.message === 'change_deadline_passed'
+            ? 'Die Stornierungsfrist ist abgelaufen. Bitte kontaktiere die Praxis.'
+            : 'Die Stornierung konnte nicht bestätigt werden. Bitte erneut versuchen.');
+      }
+    });
+    void reloadCancellations();
 
     const host = card.querySelector('[data-book-root]');
     const services = host.querySelector('[data-services]');
@@ -433,7 +506,8 @@
         success.innerHTML = host.querySelector('[data-book-summary]').innerHTML;
         showStep(host, 5);
         const refreshed = await api('/booking/').catch(() => null);
-        if (refreshed) card.querySelector('[data-appointments]').innerHTML = appointmentRows(refreshed.appointments);
+        if (refreshed?.appointments) state.data.appointments = refreshed.appointments;
+        await reloadCancellations();
       } catch (error) {
         const messages = { time_not_available:'Diese Zeit ist inzwischen nicht mehr verfügbar. Bitte wähle eine andere Uhrzeit.', staff_not_found:'Dieser Behandler ist aktuell nicht verfügbar.', service_not_found:'Diese Behandlung ist aktuell nicht verfügbar.' };
         alert(messages[error.message] || 'Die Buchung konnte nicht gespeichert werden. Bitte versuche es erneut.');
