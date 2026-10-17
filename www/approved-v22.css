@@ -982,3 +982,16 @@ body{background:
 .referral-premium [data-referral-feedback][hidden]{display:none!important}
 .referral-premium [data-referral] button[type="submit"]:disabled{opacity:.72;cursor:progress}
 .referral-row strong{overflow-wrap:anywhere;word-break:normal}
+
+/* Interactive, access-aware exclusive benefits */
+.approved-benefit-details[hidden]{display:none!important}
+.approved-benefit-details{padding:18px;border-radius:17px;border:1px solid #e9d9b5;background:#fffaf0;color:#5d5243;line-height:1.6}
+.approved-benefit-details h3{margin:0 0 8px;font-size:15px;color:#25201b}
+.approved-benefit-details p{margin:0;font-size:12px;line-height:1.6}
+.approved-exclusive-offer{padding:12px 0;border-top:1px solid #e9ddc8}
+.approved-exclusive-offer:first-of-type{border-top:0}
+.approved-exclusive-offer strong{font-size:13px;overflow-wrap:anywhere}
+.approved-exclusive-offer small{font-size:11px}
+.approved-exclusive-offer p{margin:5px 0}
+.approved-benefits button[data-exclusive-benefits]:focus-visible{outline:3px solid #cda956;outline-offset:3px}
+.approved-benefits button[data-exclusive-benefits][aria-expanded="true"] b[data-exclusive-chevron]{transform:rotate(90deg)}
