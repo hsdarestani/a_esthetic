@@ -16,37 +16,48 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate Customer Club WOW assets
+      - name: Validate active Customer Club app and archived WOW assets
         run: |
           set -euo pipefail
-          for FILE in index.html app.css app.js p0.js p0-booking-change.js p1.js p2.js p3.js wow.js sw.js; do
-            test -s "www/$FILE"
-          done
-          grep -q 'app.css?v=20260812-wow-v1' www/index.html
-          grep -q 'wow.js?v=20260812-wow-v1' www/index.html
-          grep -q 'p3.js?v=20260812-p3-web' www/index.html
-          grep -q 'auth-showcase' www/app.css
-          grep -q 'dashboard-home' www/app.css
-          grep -q 'feature-tile' www/app.css
-          grep -q 'min-width:980px' www/app.css
-          node --check www/app.js
-          node --check www/p0.js
-          node --check www/p0-booking-change.js
-          node --check www/p1.js
-          node --check www/p2.js
-          node --check www/p3.js
-          node --check www/wow.js
+          test -s www/index.html
+          test -s www/core-app.js
+          test -s www/core-app.css
+          test -s www/approved-v22.css
+          node --check www/core-app.js
           python3 - <<'PY'
           from pathlib import Path
+
           index = Path('www/index.html').read_text()
-          wow = Path('www/wow.js').read_text()
-          css = Path('www/app.css').read_text()
-          required = ['auth-showcase','experience-banner','featureMeta','enhanceHome','enhanceMore']
-          combined = wow + css
-          missing = [item for item in required if item not in combined]
-          if missing:
-              raise SystemExit(f'Missing WOW redesign markers: {missing}')
-          if index.index('p3.js') > index.index('wow.js'):
-              raise SystemExit('wow.js must load after P3 so it can enhance all feature routes.')
-          print('A+ Esthetic WOW redesign static gate passed.')
+          core = Path('www/core-app.js').read_text()
+          style = Path('www/approved-v22.css').read_text()
+
+          # Inspect actual HTML assets, never comments describing deprecated scripts.
+          # Match active asset tags literally; avoid legacy references in comments.
+          if '<script src="./core-app.js?' not in index:
+              raise SystemExit('Active app asset missing: core-app.js')
+          if 'href="./approved-v22.css?' not in index:
+              raise SystemExit('Active app asset missing: approved-v22.css')
+
+          if not all(marker in core for marker in ('renderRecords', 'bindRecordActions', 'data-upload-preview-list', 'type="submit"')):
+              raise SystemExit('Patient-record upload functionality is missing.')
+          if not all(marker in style for marker in ('approved-upload-file', 'overflow-wrap:anywhere')):
+              raise SystemExit('Patient-record attachment preview styles are missing.')
+
+          legacy = '<script src="./wow.js?' in index
+          if legacy:
+              wow = Path('www/wow.js').read_text()
+              css = Path('www/app.css').read_text()
+              required_markers = ['auth-showcase', 'experience-banner', 'featureMeta', 'enhanceHome', 'enhanceMore']
+              combined = wow + css
+              missing = [item for item in required_markers if item not in combined]
+              if missing:
+                  raise SystemExit(f'Missing active WOW redesign markers: {missing}')
+              if '<script src="./p3.js?' not in index:
+                  raise SystemExit('Legacy WOW requires P3.')
+              p3_index = index.index('<script src="./p3.js?')
+              wow_index = index.index('<script src="./wow.js?')
+              if p3_index >= wow_index:
+                  raise SystemExit('WOW must load after P3.')
+
+          print('Active Customer Club app assets verified; archived WOW not required by current shell.')
           PY

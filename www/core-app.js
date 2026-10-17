@@ -284,26 +284,23 @@
     const data=await request('/patient-records/');
     const records=(data.records||[]).sort((a,b)=>new Date(b.captured_at||b.created_at)-new Date(a.captured_at||a.created_at));
     let html=`<section class="approved-page-head"><h1>Meine Akte</h1><p>Deine Dokumente, Fotos und Notizen.<br>Sicher. Persönlich. Jederzeit verfügbar.</p></section>`;
+    if(state.recordsFlash){html+=`<div class="notice success" role="status">${esc(state.recordsFlash)}</div>`;state.recordsFlash=null;}
     html+=`<section class="approved-upload-card">
       <form data-upload enctype="multipart/form-data">
         <label class="approved-upload-zone">
-          <input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.txt,.rtf,.csv">
+          <input name="file" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.txt,.rtf,.csv">
           <span class="approved-upload-icon">↥</span>
           <strong>Neuer Akteneintrag</strong>
           <p>Datei, Foto oder Notiz hier ablegen<br>oder auswählen.</p>
           <b>Datei auswählen</b>
           <small>Fotos, PDF oder Dokumente</small>
         </label>
-        <div class="approved-file-preview" data-upload-preview hidden>
-          <img data-upload-preview-image alt="" hidden>
-          <span class="approved-file-preview-icon" data-upload-preview-icon>▤</span>
-          <div><strong data-upload-preview-name>Datei ausgewählt</strong><small data-upload-preview-meta>Bereit zum Speichern</small></div>
-          <button type="button" data-upload-preview-clear aria-label="Auswahl entfernen">×</button>
-        </div>
+        <div class="approved-upload-files" data-upload-preview-list aria-live="polite"></div>
         <button type="button" class="approved-photo-button" data-native-photo>Foto aufnehmen</button>
         <label class="approved-note-field"><span>Notiz <small>optional</small></span><textarea name="note" placeholder="Zusätzliche Information …"></textarea></label>
         ${!data.health_data_consent?`<label class="approved-consent"><input name="health_data_consent" type="checkbox" value="1" required><span>Ich willige ein, dass diese Gesundheitsdaten zur Behandlung und Dokumentation verarbeitet werden.</span></label>`:'<input type="hidden" name="health_data_consent" value="1">'}
-        <button class="approved-save-record">In Akte speichern</button>
+        <div class="approved-upload-message" data-upload-message role="status" aria-live="polite" hidden></div>
+        <button type="submit" class="approved-save-record">In Akte speichern</button>
       </form>
     </section>`;
     html+=`<div class="approved-record-filters">
@@ -312,7 +309,7 @@
       <button data-record-filter="document">Dokumente</button>
       <button data-record-filter="note">Notizen</button>
     </div>`;
-    html+=`<div class="approved-section-head records-head"><h2>Zuletzt hinzugefügt</h2><span>${records.length}</span></div>
+    html+=`<div class="approved-section-head records-head"><h2>Zuletzt gespeichert</h2><span>${records.length}</span></div>
       <section class="approved-record-timeline">${records.length?records.map(recordRow).join(''):'<div class="empty">Ihre Patientenakte enthält noch keine Einträge.</div>'}</section>`;
     shell(html);
     bindRecordActions();
@@ -348,7 +345,7 @@
   async function nativePhotoToInput(input){
     if(!input) return;
     const camera=window.Capacitor?.Plugins?.Camera;
-    if(!camera?.getPhoto){input.click();return;}
+    if(!camera?.getPhoto){input.click();return null;}
     const photo=await camera.getPhoto({quality:84,resultType:'base64',source:'CAMERA',direction:'REAR',correctOrientation:true,saveToGallery:false,allowEditing:false,width:2048});
     if(!photo?.base64String)return;
     const format=String(photo.format||'jpeg').toLowerCase();
@@ -358,8 +355,7 @@
     const bytes=new Uint8Array(binary.length);
     for(let i=0;i<binary.length;i+=1)bytes[i]=binary.charCodeAt(i);
     const file=new File([bytes],`APlus-${Date.now()}.${ext}`,{type:mime});
-    const transfer=new DataTransfer();transfer.items.add(file);input.files=transfer.files;
-    input.dispatchEvent(new Event('change',{bubbles:true}));
+    return file;
   }
 
   async function openRecordUrl(url){
@@ -373,49 +369,208 @@
   }
 
   function bindRecordActions(){
-    const form=root.querySelector('[data-upload]');if(!form)return;
+    const form=root.querySelector('[data-upload]');
+    if(!form)return;
     const fileInput=form.querySelector('input[type=file]');
-    const preview=form.querySelector('[data-upload-preview]');
-    const previewImage=form.querySelector('[data-upload-preview-image]');
-    const previewIcon=form.querySelector('[data-upload-preview-icon]');
-    const previewName=form.querySelector('[data-upload-preview-name]');
-    const previewMeta=form.querySelector('[data-upload-preview-meta]');
-    let previewObjectUrl='';
+    const list=form.querySelector('[data-upload-preview-list]');
+    const message=form.querySelector('[data-upload-message]');
+    const noteInput=form.querySelector('textarea[name=note]');
+    const saveButton=form.querySelector('button[type=submit]');
+    const photoButton=form.querySelector('[data-native-photo]');
+    const entries=[];
+    let counter=0;
+    let isSaving=false;
+    let savedNoteId='';
+    let savedNoteText='';
+    const allowedExtensions=new Set(['pdf','jpg','jpeg','png','webp','heic','heif','doc','docx','xls','xlsx','txt','rtf','csv']);
+    const maxFileBytes=10*1024*1024;
 
-    const clearPreviewUrl=()=>{if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl='';}};
-    const showPreview=file=>{
-      clearPreviewUrl();
-      if(!file){if(preview)preview.hidden=true;return;}
-      if(preview)preview.hidden=false;
-      if(previewName)previewName.textContent=file.name||'Datei ausgewählt';
-      if(previewMeta)previewMeta.textContent=`${Math.max(1,Math.round((file.size||0)/1024))} KB · bereit zum Speichern`;
-      const image=String(file.type||'').startsWith('image/');
-      if(previewImage){
-        previewImage.hidden=!image;
-        if(image){previewObjectUrl=URL.createObjectURL(file);previewImage.src=previewObjectUrl;}else{previewImage.removeAttribute('src');}
-      }
-      if(previewIcon)previewIcon.hidden=image;
+    const displayError=error=>{
+      const translations={
+        file_type:'Dieser Dateityp ist nicht erlaubt.',
+        file_size:'Eine Datei überschreitet die zulässige Größe von 10 MB.',
+        file_empty:'Die Datei ist leer.',
+        empty_record:'Bitte wählen Sie eine Datei oder schreiben Sie eine Notiz.',
+        patient_record_service_unavailable:'Der Aktenservice ist momentan nicht erreichbar. Ihre Auswahl bleibt erhalten.',
+        identity_service_unavailable:'Die Anmeldung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.',
+        health_data_consent_required:'Bitte stimmen Sie der Datenverarbeitung zu.',
+        authentication_required:'Bitte melden Sie sich erneut an.'
+      };
+      const code=String(error?.code||error?.message||'');
+      return translations[code]||error?.message||'Speichern fehlgeschlagen. Bitte erneut versuchen.';
     };
-    fileInput?.addEventListener('change',()=>showPreview(fileInput.files?.[0]||null));
-    form.querySelector('[data-upload-preview-clear]')?.addEventListener('click',()=>{
-      if(fileInput)fileInput.value='';
-      showPreview(null);
+    const showMessage=(text,success=false)=>{
+      message.hidden=!text;
+      message.textContent=text||'';
+      message.className='approved-upload-message'+(success?' is-success':' is-error');
+    };
+    const releaseEntry=entry=>{
+      if(entry.previewUrl){URL.revokeObjectURL(entry.previewUrl);entry.previewUrl='';}
+    };
+    const drawEntries=()=>{
+      list.replaceChildren();
+      for(const entry of entries){
+        const row=document.createElement('article');
+        row.className='approved-file-preview approved-upload-file';
+        const isImage=String(entry.file.type||'').startsWith('image/');
+        if(isImage){
+          const image=document.createElement('img');
+          image.alt='';
+          if(!entry.previewUrl)entry.previewUrl=URL.createObjectURL(entry.file);
+          image.src=entry.previewUrl;
+          row.appendChild(image);
+        }else{
+          const icon=document.createElement('span');
+          icon.className='approved-file-preview-icon';
+          icon.textContent='▤';
+          row.appendChild(icon);
+        }
+        const details=document.createElement('div');
+        const name=document.createElement('strong');
+        name.textContent=entry.file.name||'Dokument';
+        const meta=document.createElement('small');
+        const size=Math.max(1,Math.round(entry.file.size/1024));
+        meta.textContent=size+' KB · '+(entry.recordId?'Gespeichert, wird überprüft':'Bereit zum Speichern');
+        details.append(name,meta);
+        row.appendChild(details);
+        if(!entry.recordId){
+          const remove=document.createElement('button');
+          remove.type='button';
+          remove.className='approved-upload-remove';
+          remove.dataset.removeEntry=String(entry.id);
+          remove.disabled=isSaving;
+          remove.setAttribute('aria-label','Datei entfernen: '+entry.file.name);
+          remove.textContent='×';
+          row.appendChild(remove);
+        }
+        list.appendChild(row);
+      }
+    };
+    const addFiles=files=>{
+      if(isSaving)return;
+      let skipped=0;
+      for(const file of files){
+        if(!file)continue;
+        const ext=String(file.name||'').split('.').pop().toLowerCase();
+        if(!allowedExtensions.has(ext)||file.size<=0||file.size>maxFileBytes||entries.length>=10){
+          skipped+=1;continue;
+        }
+        const duplicate=entries.some(item=>item.file.name===file.name&&item.file.size===file.size&&item.file.lastModified===file.lastModified);
+        if(duplicate)continue;
+        entries.push({id:++counter,file,recordId:'',previewUrl:''});
+      }
+      drawEntries();
+      if(skipped)showMessage('Bis zu 10 Dateien mit jeweils maximal 10 MB in einem unterstützten Format auswählen.');
+      else showMessage('');
+    };
+    fileInput?.addEventListener('change',()=>{
+      addFiles(Array.from(fileInput.files||[]));
+      fileInput.value='';
     });
-    root.querySelector('[data-native-photo]')?.addEventListener('click',async()=>{try{await nativePhotoToInput(fileInput);}catch(err){form.insertAdjacentHTML('beforebegin',errorBox(new Error('Kamera konnte nicht geöffnet werden.')));}});
+    list.addEventListener('click',event=>{
+      const button=event.target.closest('[data-remove-entry]');
+      if(!button||isSaving)return;
+      const index=entries.findIndex(item=>String(item.id)===button.dataset.removeEntry);
+      if(index<0)return;
+      releaseEntry(entries[index]);
+      entries.splice(index,1);
+      drawEntries();
+      showMessage('');
+    });
+    photoButton?.addEventListener('click',async()=>{
+      if(isSaving)return;
+      try{
+        const file=await nativePhotoToInput(fileInput);
+        if(file)addFiles([file]);
+      }catch(error){showMessage('Kamera konnte nicht geöffnet werden. Bitte erneut versuchen.');}
+    });
+    noteInput?.addEventListener('input',()=>{
+      if(noteInput.value.trim()!==savedNoteText){savedNoteId='';}
+    });
 
-    form.onsubmit=async e=>{e.preventDefault();const btn=form.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Wird gespeichert …';try{const headers=new Headers({'Authorization':`Bearer ${state.token}`});const response=await fetch(`${API}/patient-records/upload/`,{method:'POST',headers,body:new FormData(form)});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Upload fehlgeschlagen');clearPreviewUrl();await renderRecords();}catch(err){btn.disabled=false;btn.textContent='In Akte speichern';form.insertAdjacentHTML('beforebegin',errorBox(err));}};
+    const sendEntry=async (file,note)=>{
+      const body=new FormData();
+      const consent=form.querySelector('[name=health_data_consent]');
+      body.append('health_data_consent',consent?.type==='checkbox'?(consent.checked?'1':'0'):(consent?.value||'1'));
+      if(file)body.append('file',file,file.name);
+      if(note)body.append('note',note);
+      const result=await request('/patient-records/upload/',{method:'POST',body});
+      if(!result?.record_id)throw new Error('Der Server hat keine Speicherbestätigung gesendet.');
+      return String(result.record_id);
+    };
+
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();
+      if(isSaving)return;
+      const consent=form.querySelector('[name=health_data_consent]');
+      if(consent?.type==='checkbox'&&!consent.checked){
+        showMessage('Bitte stimmen Sie der Datenverarbeitung zu.');
+        consent.focus();return;
+      }
+      const note=noteInput.value.trim();
+      if(!entries.length&&!note){
+        showMessage('Bitte wählen Sie eine Datei oder schreiben Sie eine Notiz.');
+        return;
+      }
+      isSaving=true;
+      saveButton.disabled=true;
+      fileInput.disabled=true;
+      photoButton.disabled=true;
+      noteInput.readOnly=true;
+      showMessage('');
+      try{
+        const unsaved=entries.filter(item=>!item.recordId);
+        let index=0;
+        for(const item of unsaved){
+          saveButton.textContent='Datei '+(++index)+' von '+unsaved.length+' speichern …';
+          item.recordId=await sendEntry(item.file,'');
+          drawEntries();
+        }
+        if(note&&(!savedNoteId||savedNoteText!==note)){
+          saveButton.textContent='Notiz speichern …';
+          savedNoteId=await sendEntry(null,note);
+          savedNoteText=note;
+        }
+        saveButton.textContent='Speicherung überprüfen …';
+        const response=await request('/patient-records/');
+        const received=new Set((response.records||[]).map(item=>String(item.id)));
+        const expected=entries.map(item=>item.recordId).concat(savedNoteId?[savedNoteId]:[]);
+        if(!expected.every(id=>received.has(id))){
+          throw new Error('Die Speicherung wurde angenommen, ist aber noch nicht in der Akte sichtbar. Bitte erneut überprüfen.');
+        }
+        entries.forEach(releaseEntry);
+        state.recordsFlash=expected.length+' '+(expected.length===1?'Eintrag wurde':'Einträge wurden')+' erfolgreich gespeichert.';
+        await renderRecords();
+      }catch(error){
+        showMessage(displayError(error));
+        drawEntries();
+      }finally{
+        isSaving=false;
+        if(saveButton.isConnected){
+          saveButton.disabled=false;
+          saveButton.textContent='In Akte speichern';
+          fileInput.disabled=false;
+          photoButton.disabled=false;
+          noteInput.readOnly=false;
+        }
+      }
+    });
 
     root.querySelectorAll('[data-record-file]').forEach(btn=>btn.onclick=async()=>{
       btn.disabled=true;
       try{
         if(btn.dataset.recordUrl){await openRecordUrl(btn.dataset.recordUrl);return;}
-        const url=`${API}/patient-records/${encodeURIComponent(btn.dataset.recordFile)}/file/${btn.dataset.download==='1'?'?download=1':''}`;
-        const response=await fetch(url,{headers:{Authorization:`Bearer ${state.token}`}});
+        const url=API+'/patient-records/'+encodeURIComponent(btn.dataset.recordFile)+'/file/'+(btn.dataset.download==='1'?'?download=1':'');
+        const response=await fetch(url,{headers:{Authorization:'Bearer '+state.token}});
         if(!response.ok)throw new Error('Datei konnte nicht geöffnet werden.');
-        const blob=await response.blob();const object=URL.createObjectURL(blob);
-        if(btn.dataset.download==='1'){const a=document.createElement('a');a.href=object;a.download='APlus-Dokument';document.body.appendChild(a);a.click();a.remove();}else{window.open(object,'_blank');}
+        const blob=await response.blob();
+        const object=URL.createObjectURL(blob);
+        if(btn.dataset.download==='1'){
+          const a=document.createElement('a');a.href=object;a.download='APlus-Dokument';document.body.appendChild(a);a.click();a.remove();
+        }else{window.open(object,'_blank');}
         setTimeout(()=>URL.revokeObjectURL(object),60000);
-      }catch(err){btn.insertAdjacentHTML('afterend',errorBox(err));}finally{btn.disabled=false;}
+      }catch(error){btn.insertAdjacentHTML('afterend',errorBox(error));}
+      finally{btn.disabled=false;}
     });
   }
 
