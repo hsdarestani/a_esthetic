@@ -265,7 +265,7 @@ body{background:
   display:block!important;min-height:220px!important;
   background:
     linear-gradient(90deg,rgba(247,243,235,.98) 0%,rgba(247,243,235,.90) 39%,rgba(247,243,235,.48) 62%,rgba(247,243,235,.08) 100%),
-    url('./assets/site/hero.svg') right center/cover no-repeat!important
+    var(--approved-hero-image, url('./assets/site/hero.svg')) right center/cover no-repeat!important
 }
 .approved-home-copy{max-width:62%!important}
 .approved-home-image{display:none!important}
