@@ -63,7 +63,8 @@ jobs:
           grep -Fq 'RhythmHorizon' app/dashboard/page.tsx
           grep -Fq 'NICHT GESCHÄTZT. GEMESSEN.' app/progress/page.tsx
           grep -Fq 'bd-rhythm-stage' app/bd-art-direction.css
-          grep -Fq 'DEIN GRIND. DEINE SPUREN.' app/progress/page.tsx
+          grep -Fq 'DEIN GRIND.' app/progress/page.tsx
+          grep -Fq 'DEINE SPUREN.' app/progress/page.tsx
           grep -Fq 'DEIN PLAN.' app/training/page.tsx
           grep -Fq 'bd-train-hero' app/athlete-experience.css
           printf 'BUILT_SOURCE_SHA='
