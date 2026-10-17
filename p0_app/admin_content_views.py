@@ -1,3 +1,9 @@
+import io
+import mimetypes
+from urllib.parse import urlencode
+
+from PIL import Image, UnidentifiedImageError
+from django.core.exceptions import ValidationError
 import base64
 import binascii
 import json
@@ -15,7 +21,7 @@ from django.views.decorators.http import require_http_methods
 from platform_app import mobile_api as legacy_mobile_api
 from platform_app.models import AuditLog, UserProfile
 
-from .ops_models import DashboardBanner
+from .ops_models import DashboardBanner, DashboardHeroImage
 
 
 def _json(request):
@@ -127,5 +133,116 @@ def dashboard_banner_cover(request, banner_id):
     except (FileNotFoundError, OSError):
         raise Http404
     response["Cache-Control"] = "public, max-age=3600"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+HERO_LABELS = {
+    "frau": "Damen",
+    "herr": "Herren",
+    "default": "Standard",
+}
+
+
+def hero_image_url(request, hero):
+    """Public marketing image URL; cache-busted when a slot is replaced."""
+    return request.build_absolute_uri(
+        reverse("p0_dashboard_hero_image", kwargs={"variant": hero.variant})
+    ) + "?v=" + str(int(hero.updated_at.timestamp()))
+
+
+def _hero_slot_payload(request, slot):
+    hero = DashboardHeroImage.objects.filter(variant=slot).first()
+    return {
+        "variant": slot,
+        "label": HERO_LABELS[slot],
+        "image_url": hero_image_url(request, hero) if hero and hero.image else "",
+    }
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def mobile_admin_dashboard_hero(request):
+    actor, error = _admin_auth(request)
+    if error:
+        return error
+
+    if request.method == "POST":
+        data = _json(request)
+        slot = str(data.get("variant") or "")
+        if slot not in HERO_LABELS:
+            return JsonResponse({"ok": False, "error": "invalid_hero_variant"}, status=400)
+
+        action = str(data.get("action") or "save").lower()
+        previous = DashboardHeroImage.objects.filter(variant=slot).first()
+        if action == "clear":
+            if previous:
+                old_file = previous.image
+                previous.delete()
+                if old_file:
+                    old_file.delete(save=False)
+        elif action == "save":
+            encoded = str(data.get("image_data") or "")
+            mime = str(data.get("image_type") or "").lower()
+            mime_formats = {
+                "image/jpeg": ("JPEG", ".jpg"),
+                "image/png": ("PNG", ".png"),
+                "image/webp": ("WEBP", ".webp"),
+            }
+            if mime not in mime_formats or not encoded:
+                return JsonResponse({"ok": False, "error": "invalid_image_type"}, status=400)
+            # The admin bridge sends base64 JSON; reject oversized data before decode.
+            if len(encoded) > 9 * 1024 * 1024:
+                return JsonResponse({"ok": False, "error": "hero_image_too_large"}, status=400)
+            try:
+                decoded = base64.b64decode(encoded, validate=True)
+                if not decoded or len(decoded) > 6 * 1024 * 1024:
+                    raise ValueError("image_too_large")
+                with Image.open(io.BytesIO(decoded)) as img:
+                    fmt, width, height = img.format, img.width, img.height
+                    if fmt != mime_formats[mime][0] or width < 600 or height < 350 or width > 6000 or height > 6000:
+                        raise ValueError("invalid_image_dimensions")
+                    img.verify()
+            except (binascii.Error, ValueError, UnidentifiedImageError, OSError, Image.DecompressionBombError):
+                return JsonResponse({"ok": False, "error": "invalid_hero_image"}, status=400)
+
+            hero = previous or DashboardHeroImage(variant=slot)
+            old_name = hero.image.name if previous and hero.image else ""
+            hero.image.save(uuid.uuid4().hex + mime_formats[mime][1], ContentFile(decoded), save=False)
+            hero.full_clean()
+            hero.save()
+            if old_name and old_name != hero.image.name:
+                hero.image.storage.delete(old_name)
+        else:
+            return JsonResponse({"ok": False, "error": "invalid_action"}, status=400)
+
+        AuditLog.objects.create(
+            actor=actor,
+            action="Startseitenbild " + ("gelöscht" if action == "clear" else "gespeichert"),
+            entity_type="DashboardHeroImage",
+            entity_id=slot,
+        )
+
+    return JsonResponse({
+        "ok": True,
+        "hero_images": [_hero_slot_payload(request, slot) for slot in HERO_LABELS],
+    })
+
+
+@require_http_methods(["GET"])
+def dashboard_hero_image(request, variant):
+    if variant not in HERO_LABELS:
+        raise Http404
+    hero = DashboardHeroImage.objects.filter(variant=variant).first()
+    if not hero or not hero.image:
+        raise Http404
+    mime = mimetypes.guess_type(hero.image.name)[0] or "application/octet-stream"
+    if mime not in {"image/jpeg", "image/png", "image/webp"}:
+        raise Http404
+    try:
+        response = FileResponse(hero.image.open("rb"), content_type=mime)
+    except (FileNotFoundError, OSError):
+        raise Http404
+    response["Cache-Control"] = "public, max-age=300"
     response["X-Content-Type-Options"] = "nosniff"
     return response
