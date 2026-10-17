@@ -1,0 +1,99 @@
+name: BE DIFFERENT Apple reviewer ELITE grant on Esthetic
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/bedifferent-reviewer-elite-grant-20261017.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bedifferent-apple-reviewer-entitlement
+  cancel-in-progress: false
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Update only existing Apple reviewer in isolated BE DIFFERENT database and smoke test
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: \${{ secrets.SERVER_HOST }}
+          username: \${{ secrets.SERVER_USER }}
+          port: \${{ secrets.SERVER_PORT }}
+          key: \${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp/current
+            test -s /etc/bedifferent-temp.env
+            test -s "$APP/node_modules/@prisma/client/package.json"
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready >/dev/null
+            cd "$APP"
+            set -a
+            . /etc/bedifferent-temp.env
+            set +a
+            runuser -u bedifferenttemp -- env DATABASE_URL="$DATABASE_URL" "$APP/bin/node" - <<'NODE'
+            const {PrismaClient}=require('@prisma/client');
+            const crypto=require('node:crypto');
+            const db=new PrismaClient();
+            const email='appreview@bedifferent.smarbiz.sbs';
+            const provider='internal_review';
+            const externalId='apple-reviewer-permanent-elite';
+            const origin='http://127.0.0.1:3100';
+            let ephemeralHash;
+            async function main(){
+              const check=await db.user.findUnique({where:{email},select:{id:true,role:true,onboardingCompleted:true,subscriptionTier:true}});
+              if(!check || check.role!=='ATHLETE' || !check.onboardingCompleted) throw Error('Expected onboarded ATHLETE reviewer not found; refusing changes');
+              await db.$transaction(async tx=>{
+                const reviewer=await tx.user.findUnique({where:{email}});
+                if(!reviewer || reviewer.id!==check.id || reviewer.role!=='ATHLETE' || !reviewer.onboardingCompleted) throw Error('Reviewer identity changed');
+                const previous=await tx.subscription.findUnique({where:{provider_externalId:{provider,externalId}}});
+                if(previous && previous.userId!==reviewer.id) throw Error('Existing review grant assigned to a different account');
+                if(previous){
+                  await tx.subscription.update({where:{id:previous.id},data:{tier:'ELITE',status:'active',renewsAt:null,trialEndsAt:null}});
+                }else{
+                  await tx.subscription.create({data:{userId:reviewer.id,provider,externalId,tier:'ELITE',status:'active',renewsAt:null,trialEndsAt:null}});
+                }
+                await tx.user.update({where:{id:reviewer.id},data:{subscriptionTier:'ELITE'}});
+              });
+              const reviewer=await db.user.findUnique({where:{email},select:{id:true,role:true,onboardingCompleted:true,subscriptionTier:true}});
+              const grant=await db.subscription.findUnique({where:{provider_externalId:{provider,externalId}}});
+              if(reviewer?.subscriptionTier!=='ELITE' || grant?.status!=='active' || grant?.tier!=='ELITE' || grant?.renewsAt) throw Error('Persisted ELITE access not verified');
+              console.log('REVIEW_TIER=ELITE');
+              console.log('REVIEW_GRANT=ACTIVE_NO_EXPIRY_NO_PAYMENT');
+              const token=crypto.randomBytes(32).toString('base64url');
+              ephemeralHash=crypto.createHash('sha256').update(token).digest('hex');
+              await db.authSession.create({data:{tokenHash:ephemeralHash,userId:reviewer.id,expiresAt:new Date(Date.now()+120000)}});
+              const headers={'authorization':'Bearer '+token,'x-bd-client':'mobile'};
+              for(const [route,label,verify] of [
+                ['/api/entitlements','FEATURES',d=>d.ok && d.tier==='ELITE' && d.features?.coach_chat===true && d.features?.different_ai===true],
+                ['/api/messages','COACH_CHAT',d=>d.ok && Array.isArray(d.items)],
+                ['/api/ai','DIFFERENT_AI',d=>d.ok && Array.isArray(d.items)]
+              ]){
+                const response=await fetch(origin+route,{headers,signal:AbortSignal.timeout(20000)});
+                if(response.status!==200)throw Error(label+' returned HTTP '+response.status);
+                const data=await response.json();
+                if(!verify(data))throw Error(label+' response missing expected access');
+                console.log('REVIEW_'+label+'=PASS');
+              }
+            }
+            main().catch(e=>{console.error('REVIEW_ELITE_GRANT_ERROR='+e.message);process.exitCode=1}).finally(async()=>{
+              if(ephemeralHash)await db.authSession.deleteMany({where:{tokenHash:ephemeralHash}}).catch(()=>undefined);
+              await db.$disconnect();
+            });
+            NODE
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ >/dev/null
+            echo REVIEW_AND_THREE_LOCAL_APPS_HEALTHY
+      - name: Confirm public BE DIFFERENT and A+ Esthetic are healthy
+        if: always()
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 https://bedifferent.smarbiz.sbs/api/ready >/dev/null
+          curl -fsS --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 20 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo THREE_PUBLIC_APPS_HEALTHY
