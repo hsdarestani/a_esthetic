@@ -79,6 +79,7 @@
     availability: [],
     dayIndex: 0,
     requestId: 0,
+    expandedAppointment: null,
   });
 
   function formatDay(key) {
@@ -100,28 +101,48 @@
     if (!items.length) return '<p class="book-empty">Noch keine Termine.</p>';
     const allowed = new Map((manageable?.appointments || []).map(item => [String(item.id), item]));
     const cutoff = Number(manageable?.change_deadline_hours || 24);
+    const dateFormat = new Intl.DateTimeFormat('de-DE', { day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit' });
     return items.map(item => {
-      const status = String(item.status_code || item.status || '').toLowerCase();
+      const statusCode = String(item.status_code || '').toLowerCase();
+      const statusText = String(item.status || 'Unbekannt');
       const upcoming = new Date(item.starts_at).getTime() > Date.now();
-      const active = upcoming && !['cancelled', 'completed', 'done', 'no_show'].includes(status);
+      const active = upcoming && !['cancelled','completed','done','no_show'].includes(statusCode);
       const editable = allowed.get(String(item.id));
       const canCancel = active && editable?.change_allowed === true;
-      const date = new Intl.DateTimeFormat('de-DE', {
-        day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'
-      }).format(new Date(item.starts_at));
-      const action = canCancel
+      const date = dateFormat.format(new Date(item.starts_at));
+      const explain = statusCode==='new'
+        ? 'Der Termin ist eingetragen und wartet noch auf die Bestätigung der Praxis.'
+        : statusCode==='confirmed'
+          ? 'Dieser Termin wurde bestätigt. Eine weitere Bestätigung ist nicht erforderlich.'
+          : statusCode==='cancelled'
+            ? 'Dieser Termin wurde storniert und findet nicht mehr statt.'
+            : statusCode==='completed'
+              ? 'Dieser Termin ist abgeschlossen.'
+              : 'Den aktuellen Status findest du in deiner Terminübersicht.';
+      const cancellation = canCancel
         ? '<button type="button" class="book-cancel-start" data-start-cancel="'+esc(item.id)+'">Termin stornieren</button>'+
           '<div class="book-cancel-confirm" data-cancel-confirmation hidden>'+
             '<p>Diesen Termin wirklich stornieren?</p>'+
             '<div class="book-cancel-actions"><button type="button" data-confirm-cancel="'+esc(item.id)+'">Ja, Termin stornieren</button>'+
             '<button type="button" data-dismiss-cancel>Termin behalten</button></div></div>'
-        : active && manageable && editable && !editable.change_allowed
-          ? '<small class="book-cancel-deadline">Online-Stornierung nur bis '+cutoff+' Stunden vor dem Termin möglich. Danach bitte die Praxis kontaktieren.</small>'
-          : active && !manageable ? '<small class="book-cancel-deadline">Stornierung gerade nicht verfügbar. Bitte erneut laden.</small>' : '';
-      return '<article class="book-appointment-row" data-appointment-id="'+esc(item.id)+'"><div>'+
-        '<b>'+esc(item.service)+'</b><small>'+esc(date)+'</small>'+
-        '<small>'+esc(item.staff||'')+'</small></div>'+
-        '<span>'+esc(item.status||'')+'</span>'+action+'</article>';
+        : active && editable && !editable.change_allowed
+          ? '<p class="book-cancel-deadline">Online Stornierungen sind nur bis '+cutoff+' Stunden vor Terminbeginn möglich. Danach kontaktiere bitte die Praxis.</p>'
+          : active && !manageable
+            ? '<p class="book-cancel-deadline">Die Stornierungsoptionen konnten nicht geladen werden.</p><button type="button" class="book-cancel-reload" data-reload-cancellations>Erneut versuchen</button>'
+            : '';
+      return '<article class="book-appointment-row" data-appointment-id="'+esc(item.id)+'">'+
+        '<button type="button" class="book-appointment-open" data-open-appointment="'+esc(item.id)+'" aria-expanded="false">'+
+          '<span class="book-appointment-summary"><strong>'+esc(item.service||'Behandlung')+'</strong><small>'+esc(date)+'</small></span>'+
+          '<span class="book-appointment-right"><span class="book-appointment-status-label">'+esc(statusText)+'</span>'+
+            '<span aria-hidden="true" class="book-appointment-chevron">⌄</span></span>'+
+        '</button>'+
+        '<div class="book-appointment-details" data-appointment-details hidden>'+
+          '<dl><div><dt>Behandlung</dt><dd>'+esc(item.service||'—')+'</dd></div>'+
+          '<div><dt>Datum und Uhrzeit</dt><dd>'+esc(date)+'</dd></div>'+
+          '<div><dt>Behandler</dt><dd>'+esc(item.staff||'Wird von der Praxis zugewiesen')+'</dd></div>'+
+          '<div><dt>Status</dt><dd>'+esc(statusText)+'</dd></div></dl>'+
+          '<p class="book-appointment-explanation">'+esc(explain)+'</p>'+cancellation+
+        '</div></article>';
     }).join('');
   }
 
@@ -328,6 +349,17 @@
     const appointmentStatus = card.querySelector('[data-appointment-status]');
     const paintAppointments = () => {
       appointmentsList.innerHTML = appointmentRows(state.data.appointments || [], state.manageable);
+      if(state.expandedAppointment){
+        const expanded=[...appointmentsList.querySelectorAll('[data-appointment-id]')].find(
+          node=>node.dataset.appointmentId===state.expandedAppointment
+        );
+        const detail=expanded?.querySelector('[data-appointment-details]');
+        const toggle=expanded?.querySelector('[data-open-appointment]');
+        if(detail && toggle){
+          detail.hidden=false;
+          toggle.setAttribute('aria-expanded','true');
+        }
+      }
     };
     const reloadCancellations = async () => {
       appointmentStatus.textContent = 'Stornierungsoptionen werden geladen …';
@@ -346,9 +378,19 @@
     appointmentsList.addEventListener('click', async event => {
       const target = event.target.closest('button');
       if (!target || target.disabled) return;
+      if(target.hasAttribute('data-reload-cancellations')) { await reloadCancellations(); return; }
       const row = target.closest('[data-appointment-id]');
       if (!row) return;
       const controls = row.querySelector('[data-cancel-confirmation]');
+      if (target.hasAttribute('data-open-appointment')) {
+        const details=row.querySelector('[data-appointment-details]');
+        if (!details) return;
+        const open=details.hidden;
+        state.expandedAppointment=open?row.dataset.appointmentId:null;
+        details.hidden=!open;
+        target.setAttribute('aria-expanded',String(open));
+        return;
+      }
       if (target.hasAttribute('data-start-cancel')) {
         if (controls) controls.hidden = false;
         return;

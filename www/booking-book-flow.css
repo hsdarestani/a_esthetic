@@ -31,3 +31,30 @@
 .book-appointment-status.is-success{background:#eff8f1;color:#315c43;border:1px solid #cde1d2;padding:11px;border-radius:12px}
 .book-appointment-status.is-error{background:#fff2ef;color:#963f35;border:1px solid #edc9c2;padding:11px;border-radius:12px}
 @media(max-width:375px){.book-appointment-row{gap:8px}.book-cancel-start{width:100%}.book-appointment-row>span{max-width:100%}}
+
+/* Accessible appointment details and status explanations. */
+.book-appointment-row{display:block!important;padding:0!important;border-top:1px solid #eee9de;}
+.book-appointment-open{display:flex;align-items:center;justify-content:space-between;text-align:left;gap:12px;width:100%;min-height:84px;padding:16px 0;border:0;background:transparent;color:var(--book-ink);font:inherit;cursor:pointer}
+.book-appointment-open:focus-visible{outline:3px solid #b79557;outline-offset:3px;border-radius:8px}
+.book-appointment-summary{display:grid;gap:6px;min-width:0;flex:1}
+.book-appointment-summary strong{font-size:17px;line-height:1.32;font-weight:750;overflow-wrap:anywhere}
+.book-appointment-summary small{font-size:12px;color:var(--book-muted)}
+.book-appointment-right{flex:none;display:flex;align-items:center;gap:10px;max-width:45%}
+.book-appointment-status-label{font-size:12px;line-height:1.4;text-align:right;color:#5c5040}
+.book-appointment-chevron{font-size:19px;color:#987745;transform-origin:center;transition:transform .2s}
+.book-appointment-open[aria-expanded="true"] .book-appointment-chevron{transform:rotate(180deg)}
+.book-appointment-details{display:block!important;border:1px solid #e8ddc6;background:#fffcf6;border-radius:14px;padding:14px;margin:0 0 16px}
+.book-appointment-details[hidden]{display:none!important}
+.book-appointment-details dl{margin:0;display:grid;gap:10px}
+.book-appointment-details dl>div{display:grid;grid-template-columns:minmax(105px,40%) minmax(0,1fr);gap:12px}
+.book-appointment-details dt{font-size:12px;color:#756f64}
+.book-appointment-details dd{margin:0;font-size:12px;font-weight:700;overflow-wrap:anywhere;color:#292622}
+.book-appointment-explanation{margin:12px 0!important;color:#6c6355;line-height:1.6;font-size:12px}
+.book-appointment-details .book-cancel-start{margin:8px 0 0}
+.book-appointment-details .book-cancel-confirm{margin:12px 0 0}
+@media(max-width:390px){
+  .book-appointment-open{gap:6px}
+  .book-appointment-right{max-width:42%;gap:5px}
+  .book-appointment-summary strong{font-size:15px}
+  .book-appointment-details dl>div{grid-template-columns:100px minmax(0,1fr);gap:8px}
+}
