@@ -127,3 +127,25 @@ class DashboardBanner(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class DashboardHeroImage(models.Model):
+    """User-selectable homepage imagery, independent of campaign banners."""
+
+    VARIANTS = [
+        ("frau", "Damen (Anrede Frau)"),
+        ("herr", "Herren (Anrede Herr)"),
+        ("default", "Standard (Divers / keine Anrede)"),
+    ]
+    variant = models.CharField(max_length=10, choices=VARIANTS, unique=True)
+    image = models.ImageField(upload_to="dashboard_heroes/%Y/%m/")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "p0_app"
+        verbose_name = "Startseitenbild"
+        verbose_name_plural = "Startseitenbilder"
+        ordering = ["variant"]
+
+    def __str__(self):
+        return self.get_variant_display()

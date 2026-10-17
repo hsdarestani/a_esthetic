@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.urls import reverse
 from django.utils.html import format_html
 
 from .models import (
@@ -8,7 +9,7 @@ from .models import (
     PackageBookingRedemption,
     PackageBookingService,
 )
-from .ops_models import AppNotification, DashboardBanner, PushDevice, RewardRedemption
+from .ops_models import AppNotification, DashboardBanner, DashboardHeroImage, PushDevice, RewardRedemption
 
 
 @admin.register(AccountDeletionRequest)
@@ -94,3 +95,21 @@ class DashboardBannerAdmin(admin.ModelAdmin):
         if not url:
             return "Noch kein Titelbild ausgewählt"
         return format_html('<img src="{}" alt="" style="width:min(100%,560px);height:220px;object-fit:cover;border-radius:16px" />', url)
+
+
+@admin.register(DashboardHeroImage)
+class DashboardHeroImageAdmin(admin.ModelAdmin):
+    list_display = ("variant", "updated_at", "photo_preview")
+    readonly_fields = ("photo_preview", "updated_at")
+    fields = ("variant", "image", "photo_preview", "updated_at")
+    list_display_links = ("variant",)
+
+    @admin.display(description="Vorschau")
+    def photo_preview(self, obj):
+        if not obj or not obj.pk or not obj.image:
+            return "Noch kein Bild hochgeladen"
+        return format_html(
+            '<img src="{}" alt="" style="width:min(100%,580px);'
+            'aspect-ratio:16/9;object-fit:cover;border-radius:16px" />',
+            reverse("p0_dashboard_hero_image", kwargs={"variant": obj.variant}),
+        )

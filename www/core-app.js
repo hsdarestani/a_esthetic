@@ -221,7 +221,9 @@
     const next=upcoming[0];
     const contact=dash.contact||{};
     const banners=dash.campaigns||[];
-    const heroImage='./assets/site/hero.svg';
+    // The authenticated dashboard selects the configured banner from Anrede.
+    // Keep the original asset until an administrator uploads a suitable photo.
+    const heroImage=dash.hero_image_url||'./assets/site/hero.svg';
     const points=Number(dash.points??dash.member?.coins??0).toLocaleString('de-DE');
 
     let html=`<section class="approved-home-hero ${heroImage?'has-image':''}" ${heroImage?`style="--approved-hero-image:url('${esc(heroImage)}')"`:''}>
