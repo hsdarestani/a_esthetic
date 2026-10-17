@@ -312,7 +312,18 @@
       ${card.member_number?`<button data-show-member-qr><span>▣</span><div><strong>Digitale Mitgliedskarte</strong><small>${esc(card.member_number)}</small></div><b>›</b></button>`:''}
     </section>`;
     if(card.member_number){
-      html+=`<section class="approved-member-card" data-member-qr-slot hidden><img data-member-qr alt="Persönlicher QR-Code"><div data-wallet-notice hidden></div>${pass.providers?.apple?.configured?'<button class="secondary" data-wallet-provider="apple">Zu Apple Wallet</button>':''}</section>`;
+      const currentPlatform=window.Capacitor?.getPlatform?.() ||
+        (/Android/i.test(navigator.userAgent)?'android':/iPhone|iPad/i.test(navigator.userAgent)?'ios':'web');
+      const appleAvailable=currentPlatform==='ios'&&pass.providers?.apple?.configured&&
+        !!window.Capacitor?.Plugins?.CapacitorPassToWallet?.addToWallet;
+      const googleAvailable=currentPlatform==='android'&&pass.providers?.google?.configured;
+      html+=`<section class="approved-member-card" data-member-qr-slot hidden>
+        <p class="approved-wallet-guide">Deine digitale Mitgliedskarte mit persönlichem QR-Code. Auch auf Android verfügbar.</p>
+        <img data-member-qr alt="Persönlicher QR-Code der A+ Esthetic Mitgliedskarte">
+        <div data-wallet-notice hidden></div>
+        ${appleAvailable?'<button type="button" class="secondary" data-wallet-provider="apple">Zu Apple Wallet hinzufügen</button>':''}
+        ${googleAvailable?'<button type="button" class="secondary" data-wallet-provider="google">Zu Google Wallet hinzufügen</button>':''}
+      </section>`;
     }
     html+=`<section class="approved-quote">“ Schönheit ist die beste<br>Form der Selbstliebe. ”</section>`;
     html+=`<div class="approved-section-head"><h2>Punkteverlauf</h2><span>${(wallet.transactions||[]).filter(x=>x.kind==='coin').length}</span></div>${pointRows(wallet.transactions)}`;
@@ -351,6 +362,33 @@
         }
       });
     }
+    const googleWalletButton=root.querySelector('[data-wallet-provider="google"]');
+    if(googleWalletButton)googleWalletButton.addEventListener('click',async()=>{
+      if(googleWalletButton.disabled)return;
+      googleWalletButton.disabled=true;
+      googleWalletButton.textContent='Google Wallet wird geöffnet …';
+      const notice=root.querySelector('[data-wallet-notice]');
+      const showWalletError=()=>{
+        if(notice){
+          notice.hidden=false;
+          notice.textContent='Google Wallet konnte nicht geöffnet werden. Deine Karte ist weiterhin über den QR-Code verfügbar.';
+        }
+      };
+      try{
+        const data=await request('/wallet-pass/google/');
+        if(!data?.ok||typeof data.save_url!=='string'||
+          !data.save_url.startsWith('https://pay.google.com/gp/v/save/')){
+          throw new Error('invalid_wallet_url');
+        }
+        const browser=window.Capacitor?.Plugins?.Browser;
+        if(browser?.open)await browser.open({url:data.save_url});
+        else window.open(data.save_url,'_blank','noopener');
+      }catch(_){showWalletError();}
+      finally{
+        googleWalletButton.disabled=false;
+        googleWalletButton.textContent='Zu Google Wallet hinzufügen';
+      }
+    });
     const qrBtn=root.querySelector('[data-show-member-qr]');
     if(qrBtn)qrBtn.onclick=async()=>{
       const slot=root.querySelector('[data-member-qr-slot]');slot.hidden=false;
