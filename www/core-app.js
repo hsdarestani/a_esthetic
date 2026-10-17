@@ -237,7 +237,8 @@
     html+=`<section class="approved-benefits"><div class="approved-page-head compact"><h1>Deine Vorteile</h1><p>Sammle Punkte und freue dich auf exklusive Vorteile und besondere Erlebnisse.</p></div>
       <button data-review-route><span>☆</span><div><strong>Google Bewertung</strong><small>+${Number(reviews.verified_review_points||250)} Punkte nach Verifizierung</small></div><b>›</b></button>
       <button data-friends-route><span>◇</span><div><strong>Freunde einladen</strong><small>Punkte nach erfolgreicher Empfehlung</small></div><b>›</b></button>
-      <div class="approved-benefit-row"><span>✦</span><div><strong>Exklusive Vorteile</strong><small>Früherer Zugang zu Aktionen</small></div><b>›</b></div>
+      <button type="button" data-exclusive-benefits aria-expanded="false" aria-controls="exclusive-benefit-details"><span>✦</span><div><strong>Exklusive Vorteile</strong><small>Angebote und Verfügbarkeit ansehen</small></div><b data-exclusive-chevron>›</b></button>
+      <div id="exclusive-benefit-details" class="approved-benefit-details" data-exclusive-benefit-details role="region" aria-label="Exklusive Vorteile" hidden></div>
       ${card.member_number?`<button data-show-member-qr><span>▣</span><div><strong>Digitale Mitgliedskarte</strong><small>${esc(card.member_number)}</small></div><b>›</b></button>`:''}
     </section>`;
     if(card.member_number){
@@ -249,6 +250,37 @@
     shell(html);
     root.querySelector('[data-review-route]')?.addEventListener('click',()=>go('reviews'));
     root.querySelector('[data-friends-route]')?.addEventListener('click',()=>go('friends'));
+    const exclusiveButton=root.querySelector('[data-exclusive-benefits]');
+    const exclusivePanel=root.querySelector('[data-exclusive-benefit-details]');
+    if(exclusiveButton && exclusivePanel){
+      exclusiveButton.addEventListener('click',async()=>{
+        const opening=exclusiveButton.getAttribute('aria-expanded')!=='true';
+        exclusiveButton.setAttribute('aria-expanded',String(opening));
+        exclusivePanel.hidden=!opening;
+        if(!opening)return;
+        exclusivePanel.innerHTML='<p role="status">Exklusive Vorteile werden geladen …</p>';
+        try{
+          const club=await request('/club/');
+          if(exclusiveButton.getAttribute('aria-expanded')!=='true')return;
+          const offers=Array.isArray(club.exclusive_benefits)?club.exclusive_benefits:[];
+          const access=club.exclusive_access||{};
+          if(offers.length){
+            exclusivePanel.innerHTML='<h3>Für dich verfügbar</h3>'+
+              offers.map(item=>'<article class="approved-exclusive-offer"><strong>'+esc(item.name||'Exklusives Angebot')+'</strong>'+
+                (item.message?'<p>'+esc(item.message)+'</p>':'')+
+                (item.ends_at?'<small>Gültig bis '+esc(new Date(item.ends_at).toLocaleDateString('de-DE'))+'</small>':'')+'</article>').join('');
+          }else if(access.eligible){
+            exclusivePanel.innerHTML='<h3>Derzeit keine exklusiven Aktionen</h3><p>Für deine Mitgliedschaft sind aktuell keine exklusiven Angebote veröffentlicht. Sobald neue Aktionen verfügbar sind, erscheinen sie hier.</p>';
+          }else{
+            exclusivePanel.innerHTML='<h3>Aktuell nichts freigeschaltet</h3><p>Für dein Konto sind derzeit keine exklusiven Aktionen verfügbar. Wenn Angebote für deine Mitgliedschaft freigeschaltet werden, findest du sie hier.</p>';
+          }
+        }catch(err){
+          if(exclusiveButton.getAttribute('aria-expanded')==='true'){
+            exclusivePanel.innerHTML='<div class="notice error">'+esc(err?.message||'Die Vorteile konnten nicht geladen werden. Bitte erneut versuchen.')+'</div>';
+          }
+        }
+      });
+    }
     const qrBtn=root.querySelector('[data-show-member-qr]');
     if(qrBtn)qrBtn.onclick=async()=>{
       const slot=root.querySelector('[data-member-qr-slot]');slot.hidden=false;
@@ -272,12 +304,87 @@
     shell(html);root.querySelector('[data-open-review]').onclick=async()=>{try{await request('/reviews/',{method:'POST',json:{action:'opened'}});}catch(_){}window.open(data.review_url,'_blank','noopener');};root.querySelector('[data-review-submit]').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);try{await request('/reviews/',{method:'POST',json:{action:'submitted',rating:fd.get('rating')||null}});await renderReviews();}catch(err){e.currentTarget.insertAdjacentHTML('beforebegin',errorBox(err));}};
   }
 
+
+  function referralRows(referrals){
+    return referrals.length?referrals.map(ref=>
+      '<article class="referral-row"><strong>'+esc(ref.email||'')+'</strong>'+
+      '<div class="row-sub">'+esc(ref.code||'')+'</div>'+
+      '<span class="status '+esc(ref.status||'pending')+'">'+esc(ref.status||'pending')+'</span>'+
+      (ref.status==='rewarded'?'<div class="point-earned">+'+Number(ref.reward_points||0)+' Punkte</div>':'')+
+      '</article>'
+    ).join(''):'<div class="empty">Noch keine Empfehlungen.</div>';
+  }
+
   async function renderFriends(){
-    const data=await request('/club/');const refs=data.referrals||[];
-    let html=pageHead('EMPFEHLUNGEN','Freunde einladen',`300 Punkte für Sie nach der ersten Buchung Ihrer Empfehlung.`);
-    html+=`<section class="card referral-premium"><h2>Persönlich einladen</h2><p>Die eingeladene Person erhält nach erfolgreicher Registrierung mit Ihrem Code 300 Punkte. Ihre 300 Punkte werden nach der ersten Buchung gutgeschrieben.</p><form data-referral><label class="field"><span>E-Mail</span><input name="invited_email" type="email" placeholder="name@example.com" required></label><button class="primary wide">Einladung senden</button></form></section>`;
-    html+=`<div class="section-title"><h2>Bisherige Einladungen</h2><small>${refs.length}</small></div>${refs.length?refs.map(r=>`<article class="referral-row"><strong>${esc(r.email)}</strong><div class="row-sub">${esc(r.code)}</div><span class="status ${esc(r.status)}">${esc(r.status)}</span>${r.status==='rewarded'?`<div class="point-earned">+${Number(r.reward_points||0)} Punkte</div>`:''}</article>`).join(''):'<div class="empty">Noch keine Empfehlungen.</div>'}`;
-    shell(html);root.querySelector('[data-referral]').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);try{const result=await request('/club/',{method:'POST',json:{invited_email:fd.get('invited_email')}});await renderFriends();if(result.points_awarded)alert(`+${result.points_awarded} Punkte`);}catch(err){e.currentTarget.insertAdjacentHTML('beforebegin',errorBox(err));}};
+    const data=await request('/club/');
+    const refs=Array.isArray(data.referrals)?data.referrals:[];
+    let html=pageHead('EMPFEHLUNGEN','Freunde einladen','300 Punkte für Sie nach der ersten Buchung Ihrer Empfehlung.');
+    html+='<section class="card referral-premium"><h2>Persönlich einladen</h2>'+
+      '<p>Die eingeladene Person erhält nach erfolgreicher Registrierung mit Ihrem Code 300 Punkte. Ihre 300 Punkte werden nach der ersten Buchung gutgeschrieben.</p>'+
+      '<form data-referral><label class="field"><span>E-Mail</span><input name="invited_email" type="email" placeholder="name@example.com" autocomplete="email" required></label>'+
+      '<button class="primary wide" type="submit">Einladung senden</button>'+
+      '<div data-referral-feedback role="status" aria-live="polite" hidden></div></form></section>';
+    html+='<div class="section-title"><h2>Bisherige Einladungen</h2><small data-referral-count>'+refs.length+'</small></div>'+
+      '<div data-referral-list aria-live="polite">'+referralRows(refs)+'</div>';
+    shell(html);
+    const form=root.querySelector('[data-referral]');
+    const emailField=form.querySelector('[name=invited_email]');
+    const button=form.querySelector('button[type=submit]');
+    const feedback=form.querySelector('[data-referral-feedback]');
+    const list=root.querySelector('[data-referral-list]');
+    const counter=root.querySelector('[data-referral-count]');
+    let sending=false;
+
+    const showFeedback=(message,success)=>{
+      feedback.textContent=message;
+      feedback.className='notice '+(success?'success':'error');
+      feedback.hidden=false;
+    };
+
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();
+      if(sending)return;
+      if(!form.reportValidity())return;
+      const email=String(emailField.value||'').trim().toLowerCase();
+      sending=true;
+      button.disabled=true;
+      button.textContent='Einladung wird gesendet …';
+      feedback.hidden=true;
+      feedback.textContent='';
+      try{
+        const result=await request('/club/',{method:'POST',json:{invited_email:email}});
+        if(result.email_sent!==true)throw new Error('Die Einladung wurde nicht als versendet bestätigt.');
+        // POST already carries the authoritative new list: no extra GET needed.
+        if(Array.isArray(result.referrals)){
+          list.innerHTML=referralRows(result.referrals);
+          counter.textContent=String(result.referrals.length);
+        }else{
+          // Keep success feedback if a legacy server omits its referral list.
+          try{
+            const fresh=await request('/club/');
+            if(Array.isArray(fresh.referrals)){
+              list.innerHTML=referralRows(fresh.referrals);
+              counter.textContent=String(fresh.referrals.length);
+            }
+          }catch(_){}
+        }
+        emailField.value='';
+        showFeedback('Die Einladung an '+email+' wurde erfolgreich versendet.',true);
+        if(result.points_awarded)alert('+'+result.points_awarded+' Punkte');
+      }catch(error){
+        const messages={
+          valid_email_required:'Bitte geben Sie eine gültige E-Mail-Adresse ein.',
+          cannot_refer_yourself:'Sie können sich nicht selbst einladen.',
+          already_referred:'Diese Person wurde bereits eingeladen und die Punkte wurden gutgeschrieben.',
+          referral_email_failed:'Die Einladung konnte nicht per E-Mail versendet werden. Bitte versuchen Sie es später erneut.'
+        };
+        showFeedback(messages[error.code]||error.message||'Die Einladung konnte nicht versendet werden.',false);
+      }finally{
+        sending=false;
+        button.disabled=false;
+        button.textContent='Einladung senden';
+      }
+    });
   }
 
   async function renderRecords(){

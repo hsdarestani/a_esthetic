@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from platform_app import mobile_api as legacy_mobile_api
-from platform_app.models import AuditLog, Campaign, GiftCard, Referral, WalletAccount, WalletTransaction
+from platform_app.models import AuditLog, Campaign, GiftCard, MemberAccount, Referral, WalletAccount, WalletTransaction
 
 from .push import create_notification
 
@@ -109,12 +109,34 @@ def mobile_club(request):
     campaigns = Campaign.objects.filter(active=True, starts_at__lte=timezone.now(), ends_at__gte=timezone.now())
     giftcards = GiftCard.objects.filter(purchaser=user)
     referrals = Referral.objects.filter(referrer=user).order_by("-created_at")[:20]
+
+    # Exclusive campaign access is determined on the server. A visible arrow
+    # in the client must never imply entitlement to a VIP-only promotion.
+    membership = MemberAccount.objects.filter(user=user, status="active").select_related("tier").first()
+    tier = membership.tier if membership else None
+    tier_slug = (tier.slug or "").strip().lower() if tier and tier.active else ""
+    tier_name = (tier.name or "").strip().lower() if tier and tier.active else ""
+    membership_active = bool(membership and (membership.valid_until is None or membership.valid_until >= timezone.localdate()))
+    exclusive_eligible = bool(membership_active and any(
+        candidate == label or candidate.startswith(label + "-")
+        for candidate in (tier_slug, tier_name)
+        for label in ("signature", "black", "vip")
+    ))
+    exclusive_benefits = [
+        {"id": c.pk, "name": c.name, "message": c.message, "ends_at": c.ends_at.isoformat()}
+        for c in campaigns if c.audience == "vip"
+    ] if exclusive_eligible else []
     wallet, _ = WalletAccount.objects.get_or_create(user=user)
     payload = {
         "ok": True,
         "member": legacy_mobile_api._member_payload(user),
         "points": wallet.coin_balance,
         "referral_points": REFERRAL_POINTS,
+        "exclusive_access": {
+            "eligible": exclusive_eligible,
+            "tier": tier.name if tier and tier.active else None,
+        },
+        "exclusive_benefits": exclusive_benefits,
         "campaigns": [{"id": c.pk, "name": c.name, "message": c.message, "ends_at": c.ends_at.isoformat()} for c in campaigns],
         "giftcards": [{"id": c.pk, "code": c.code, "status": c.status} for c in giftcards],
         "referrals": [{"id": r.pk, "code": r.code, "email": r.invited_email, "status": r.status, "reward_points": r.reward_coins} for r in referrals],
