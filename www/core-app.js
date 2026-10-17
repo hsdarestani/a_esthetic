@@ -237,7 +237,8 @@
     html+=`<section class="approved-benefits"><div class="approved-page-head compact"><h1>Deine Vorteile</h1><p>Sammle Punkte und freue dich auf exklusive Vorteile und besondere Erlebnisse.</p></div>
       <button data-review-route><span>☆</span><div><strong>Google Bewertung</strong><small>+${Number(reviews.verified_review_points||250)} Punkte nach Verifizierung</small></div><b>›</b></button>
       <button data-friends-route><span>◇</span><div><strong>Freunde einladen</strong><small>Punkte nach erfolgreicher Empfehlung</small></div><b>›</b></button>
-      <div class="approved-benefit-row"><span>✦</span><div><strong>Exklusive Vorteile</strong><small>Früherer Zugang zu Aktionen</small></div><b>›</b></div>
+      <button type="button" data-exclusive-benefits aria-expanded="false" aria-controls="exclusive-benefit-details"><span>✦</span><div><strong>Exklusive Vorteile</strong><small>Angebote und Verfügbarkeit ansehen</small></div><b data-exclusive-chevron>›</b></button>
+      <div id="exclusive-benefit-details" class="approved-benefit-details" data-exclusive-benefit-details role="region" aria-label="Exklusive Vorteile" hidden></div>
       ${card.member_number?`<button data-show-member-qr><span>▣</span><div><strong>Digitale Mitgliedskarte</strong><small>${esc(card.member_number)}</small></div><b>›</b></button>`:''}
     </section>`;
     if(card.member_number){
@@ -249,6 +250,37 @@
     shell(html);
     root.querySelector('[data-review-route]')?.addEventListener('click',()=>go('reviews'));
     root.querySelector('[data-friends-route]')?.addEventListener('click',()=>go('friends'));
+    const exclusiveButton=root.querySelector('[data-exclusive-benefits]');
+    const exclusivePanel=root.querySelector('[data-exclusive-benefit-details]');
+    if(exclusiveButton && exclusivePanel){
+      exclusiveButton.addEventListener('click',async()=>{
+        const opening=exclusiveButton.getAttribute('aria-expanded')!=='true';
+        exclusiveButton.setAttribute('aria-expanded',String(opening));
+        exclusivePanel.hidden=!opening;
+        if(!opening)return;
+        exclusivePanel.innerHTML='<p role="status">Exklusive Vorteile werden geladen …</p>';
+        try{
+          const club=await request('/club/');
+          if(exclusiveButton.getAttribute('aria-expanded')!=='true')return;
+          const offers=Array.isArray(club.exclusive_benefits)?club.exclusive_benefits:[];
+          const access=club.exclusive_access||{};
+          if(offers.length){
+            exclusivePanel.innerHTML='<h3>Für dich verfügbar</h3>'+
+              offers.map(item=>'<article class="approved-exclusive-offer"><strong>'+esc(item.name||'Exklusives Angebot')+'</strong>'+
+                (item.message?'<p>'+esc(item.message)+'</p>':'')+
+                (item.ends_at?'<small>Gültig bis '+esc(new Date(item.ends_at).toLocaleDateString('de-DE'))+'</small>':'')+'</article>').join('');
+          }else if(access.eligible){
+            exclusivePanel.innerHTML='<h3>Derzeit keine exklusiven Aktionen</h3><p>Für deine Mitgliedschaft sind aktuell keine exklusiven Angebote veröffentlicht. Sobald neue Aktionen verfügbar sind, erscheinen sie hier.</p>';
+          }else{
+            exclusivePanel.innerHTML='<h3>Aktuell nichts freigeschaltet</h3><p>Für dein Konto sind derzeit keine exklusiven Aktionen verfügbar. Wenn Angebote für deine Mitgliedschaft freigeschaltet werden, findest du sie hier.</p>';
+          }
+        }catch(err){
+          if(exclusiveButton.getAttribute('aria-expanded')==='true'){
+            exclusivePanel.innerHTML='<div class="notice error">'+esc(err?.message||'Die Vorteile konnten nicht geladen werden. Bitte erneut versuchen.')+'</div>';
+          }
+        }
+      });
+    }
     const qrBtn=root.querySelector('[data-show-member-qr]');
     if(qrBtn)qrBtn.onclick=async()=>{
       const slot=root.querySelector('[data-member-qr-slot]');slot.hidden=false;
