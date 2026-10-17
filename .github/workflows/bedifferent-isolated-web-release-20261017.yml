@@ -42,7 +42,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: hsdarestani/aymantraining
-          ref: a8a15ba7a6c95d59b80c5f1d46953f475f1fcd83
+          ref: 8bd0b0884ed89e362d8c6689fb57f39f4a727571
           persist-credentials: false
 
       - uses: actions/setup-node@v4
@@ -60,7 +60,9 @@ jobs:
           npm run build
           test -s .next/standalone/server.js
           test -d .next/static
-          grep -Fq 'DEINE LAST. DEIN RHYTHMUS.' app/dashboard/page.tsx
+          grep -Fq 'RhythmHorizon' app/dashboard/page.tsx
+          grep -Fq 'NICHT GESCHÄTZT. GEMESSEN.' app/progress/page.tsx
+          grep -Fq 'bd-rhythm-stage' app/bd-art-direction.css
           grep -Fq 'DEIN GRIND. DEINE SPUREN.' app/progress/page.tsx
           grep -Fq 'DEIN PLAN.' app/training/page.tsx
           grep -Fq 'bd-train-hero' app/athlete-experience.css
@@ -132,7 +134,7 @@ jobs:
             set -euo pipefail
             APP=/opt/bedifferent-temp
             SERVICE=bedifferent-temp
-            EXPECTED_SHA=a8a15ba7a6c95d59b80c5f1d46953f475f1fcd83
+            EXPECTED_SHA=8bd0b0884ed89e362d8c6689fb57f39f4a727571
             RELEASE="$APP/releases/${{ github.run_id }}"
             test "$(id -u)" -eq 0
             test -d /opt/a-esthetic-mobile
