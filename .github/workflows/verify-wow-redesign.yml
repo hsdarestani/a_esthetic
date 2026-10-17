@@ -26,27 +26,24 @@ jobs:
           node --check www/core-app.js
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           index = Path('www/index.html').read_text()
           core = Path('www/core-app.js').read_text()
           style = Path('www/approved-v22.css').read_text()
 
           # Inspect actual HTML assets, never comments describing deprecated scripts.
-          scripts = re.findall(r'<script\\s+[^>]*src=["\\\']([^"\\\']+)', index)
-          stylesheets = re.findall(r'<link\\s+[^>]*href=["\\\']([^"\\\']+)', index)
-          required = ('core-app.js', 'approved-v22.css')
-          for asset in required:
-              values = scripts if asset.endswith('.js') else stylesheets
-              if not any(asset in value for value in values):
-                  raise SystemExit(f'Active app asset missing: {asset}')
+          # Match active asset tags literally; avoid legacy references in comments.
+          if '<script src="./core-app.js?' not in index:
+              raise SystemExit('Active app asset missing: core-app.js')
+          if 'href="./approved-v22.css?' not in index:
+              raise SystemExit('Active app asset missing: approved-v22.css')
 
           if not all(marker in core for marker in ('renderRecords', 'bindRecordActions', 'data-upload-preview-list', 'type="submit"')):
               raise SystemExit('Patient-record upload functionality is missing.')
           if not all(marker in style for marker in ('approved-upload-file', 'overflow-wrap:anywhere')):
               raise SystemExit('Patient-record attachment preview styles are missing.')
 
-          legacy = any('/wow.js' in src or src.startswith('./wow.js') for src in scripts)
+          legacy = '<script src="./wow.js?' in index
           if legacy:
               wow = Path('www/wow.js').read_text()
               css = Path('www/app.css').read_text()
@@ -55,10 +52,10 @@ jobs:
               missing = [item for item in required_markers if item not in combined]
               if missing:
                   raise SystemExit(f'Missing active WOW redesign markers: {missing}')
-              if not any('p3.js' in src for src in scripts):
+              if '<script src="./p3.js?' not in index:
                   raise SystemExit('Legacy WOW requires P3.')
-              p3_index = next(i for i, src in enumerate(scripts) if 'p3.js' in src)
-              wow_index = next(i for i, src in enumerate(scripts) if 'wow.js' in src)
+              p3_index = index.index('<script src="./p3.js?')
+              wow_index = index.index('<script src="./wow.js?')
               if p3_index >= wow_index:
                   raise SystemExit('WOW must load after P3.')
 
