@@ -13,3 +13,21 @@
 @media(max-width:390px){.book-time-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.book-progress{margin-bottom:26px}.book-progress-dot{width:30px;height:30px}.book-date-chip{flex-basis:78px;min-height:100px}}
 
 .book-privacy-check a{color:#765b24;text-decoration:underline;text-underline-offset:2px;font-weight:700}
+
+/* Cancellation controls inside a customer's own appointment history. */
+.book-appointment-row{flex-wrap:wrap;align-items:flex-start;min-width:0}
+.book-appointment-row>div:first-child{min-width:0;flex:1 1 160px}
+.book-appointment-row>span{max-width:45%;overflow-wrap:anywhere}
+.book-cancel-start{flex:0 0 auto;border:1px solid #d0b88e;background:#fffaf1;color:#6d5027;border-radius:12px;padding:10px 13px;min-height:42px;font-size:12px;font-weight:800}
+.book-cancel-confirm{width:100%;flex:1 0 100%;background:#fbf7ed;border:1px solid #e6d5b3;border-radius:14px;padding:12px;margin-top:8px}
+.book-cancel-confirm[hidden]{display:none!important}
+.book-cancel-confirm p{margin:0 0 10px;font-size:12px;line-height:1.5}
+.book-cancel-actions{display:flex!important;flex-wrap:wrap;gap:8px}
+.book-cancel-actions button{border:1px solid #d7c8ae;border-radius:10px;min-height:42px;padding:9px 12px;background:#fff;color:#393027;font-size:12px;font-weight:800}
+.book-cancel-actions [data-confirm-cancel]{background:#27231f;color:#fff;border-color:#27231f}
+.book-cancel-actions button:disabled{opacity:.65;cursor:wait}
+.book-cancel-deadline{flex:1 0 100%;line-height:1.5}
+.book-appointment-status{font-size:12px;line-height:1.55;margin:4px 0 10px}
+.book-appointment-status.is-success{background:#eff8f1;color:#315c43;border:1px solid #cde1d2;padding:11px;border-radius:12px}
+.book-appointment-status.is-error{background:#fff2ef;color:#963f35;border:1px solid #edc9c2;padding:11px;border-radius:12px}
+@media(max-width:375px){.book-appointment-row{gap:8px}.book-cancel-start{width:100%}.book-appointment-row>span{max-width:100%}}

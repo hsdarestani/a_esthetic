@@ -170,8 +170,8 @@ jobs:
             grep -q 'ferrari-v18.css?v=20260922-v18' /tmp/aesthetic-focused-local-index.html
             grep -q 'client-v19.css?v=20260923-progress-v21' /tmp/aesthetic-focused-local-index.html
             grep -q 'approved-v22.css?v=20261017-referral-benefits-v4' /tmp/aesthetic-focused-local-index.html
-            grep -q 'core-app.js?v=20261017-referral-benefits-v3' /tmp/aesthetic-focused-local-index.html
-            grep -q 'booking-book-flow.js?v=20261007-domain-v1' /tmp/aesthetic-focused-local-index.html
+            grep -q 'core-app.js?v=20261017-cancel-deeplink-v4' /tmp/aesthetic-focused-local-index.html
+            grep -q 'booking-book-flow.js?v=20261017-cancel-v1' /tmp/aesthetic-focused-local-index.html
 
             if ! curl -fsSL --max-time 20 "https://$DOMAIN/?release=20261007-premium-v35" -o /tmp/aesthetic-focused-index.html; then
               certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
@@ -182,8 +182,8 @@ jobs:
             grep -q 'ferrari-v18.css?v=20260922-v18' /tmp/aesthetic-focused-index.html
             grep -q 'client-v19.css?v=20260923-progress-v21' /tmp/aesthetic-focused-index.html
             grep -q 'approved-v22.css?v=20261017-referral-benefits-v4' /tmp/aesthetic-focused-index.html
-            grep -q 'core-app.js?v=20261017-referral-benefits-v3' /tmp/aesthetic-focused-index.html
-            grep -q 'booking-book-flow.js?v=20261007-domain-v1' /tmp/aesthetic-focused-index.html
+            grep -q 'core-app.js?v=20261017-cancel-deeplink-v4' /tmp/aesthetic-focused-index.html
+            grep -q 'booking-book-flow.js?v=20261017-cancel-v1' /tmp/aesthetic-focused-index.html
             if getent ahosts "$APP_DOMAIN" >/dev/null 2>&1; then
               CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
               if [ -s "$CERT" ] && openssl x509 -in "$CERT" -noout -text 2>/dev/null | grep -Fq "DNS:$APP_DOMAIN"; then
