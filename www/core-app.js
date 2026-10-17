@@ -50,12 +50,18 @@
 
   async function request(path, options={}) {
     const headers = new Headers(options.headers || {});
-    if (state.token) headers.set('Authorization', `Bearer ${state.token}`);
+    if (state.token && path!=='/login/') headers.set('Authorization', `Bearer ${state.token}`);
     if (options.json !== undefined) { headers.set('Content-Type','application/json'); options.body=JSON.stringify(options.json); }
     let response = await fetch(`${API}${path}`, {...options,headers,cache:'no-store'});
-    if (response.status===401 && state.token && !options._authRetried) {
+    if (response.status===401 && path!=='/login/' && state.token && !options._authRetried) {
       await new Promise(resolve => setTimeout(resolve, 700));
       response = await fetch(`${API}${path}`, {...options,headers,cache:'no-store'});
+    }
+    if (response.status===401 && path==='/login/') {
+      const payload=await response.json().catch(()=>({}));
+      const error=new Error('Die E-Mail-Adresse oder das Passwort ist falsch. Bitte überprüfe deine Eingaben und versuche es erneut.');
+      error.code=payload?.error || 'invalid_credentials';
+      throw error;
     }
     if (response.status===401) {
       logout(false);
@@ -136,7 +142,13 @@
       try { await browser.open({url:event.currentTarget.href}); }
       catch (_) { window.location.assign(event.currentTarget.href); }
     });
-    root.querySelector('[data-login]').addEventListener('submit',async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button');btn.disabled=true;btn.textContent='Anmeldung …';try{const fd=new FormData(e.currentTarget);const data=await request('/login/',{method:'POST',json:{email:fd.get('email'),password:fd.get('password')}});state.token=data.token;localStorage.setItem('aplus_token',state.token);await boot();}catch(err){showLogin(err.code==='invalid_credentials'?'E-Mail oder Passwort ist nicht korrekt.':err.message);}});
+    root.querySelector('[data-login]').addEventListener('submit',async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button');btn.disabled=true;btn.textContent='Anmeldung …';try{const fd=new FormData(e.currentTarget);const data=await request('/login/',{method:'POST',json:{email:fd.get('email'),password:fd.get('password')}});state.token=data.token;localStorage.setItem('aplus_token',state.token);await boot();}catch(err){
+      const invalid=err?.code==='invalid_credentials'||err?.code==='authentication_required';
+      const hint=invalid
+        ? 'Die E-Mail-Adresse oder das Passwort ist falsch. Bitte überprüfe deine Eingaben und versuche es erneut.'
+        : 'Die Anmeldung ist gerade nicht möglich. Bitte prüfe deine Verbindung und versuche es erneut.';
+      showLogin(hint);
+    }});
   }
 
   function showReconnect(message='Verbindung wird wiederhergestellt …'){
