@@ -95,9 +95,33 @@
     return new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
   }
 
-  function appointmentRows(items = []) {
+  function appointmentRows(items = [], manageable = null) {
     if (!items.length) return '<p class="book-empty">Noch keine Termine.</p>';
-    return items.map(item => `<div class="book-appointment-row"><div><b>${esc(item.service)}</b><small>${esc(new Intl.DateTimeFormat('de-DE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(item.starts_at)))}</small></div><span>${esc(item.status || '')}</span></div>`).join('');
+    const allowed = new Map((manageable?.appointments || []).map(item => [String(item.id), item]));
+    const cutoff = Number(manageable?.change_deadline_hours || 24);
+    return items.map(item => {
+      const status = String(item.status_code || item.status || '').toLowerCase();
+      const upcoming = new Date(item.starts_at).getTime() > Date.now();
+      const active = upcoming && !['cancelled', 'completed', 'done', 'no_show'].includes(status);
+      const editable = allowed.get(String(item.id));
+      const canCancel = active && editable?.change_allowed === true;
+      const date = new Intl.DateTimeFormat('de-DE', {
+        day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'
+      }).format(new Date(item.starts_at));
+      const action = canCancel
+        ? '<button type="button" class="book-cancel-start" data-start-cancel="'+esc(item.id)+'">Termin stornieren</button>'+
+          '<div class="book-cancel-confirm" data-cancel-confirmation hidden>'+
+            '<p>Diesen Termin wirklich stornieren?</p>'+
+            '<div class="book-cancel-actions"><button type="button" data-confirm-cancel="'+esc(item.id)+'">Ja, Termin stornieren</button>'+
+            '<button type="button" data-dismiss-cancel>Termin behalten</button></div></div>'
+        : active && manageable && editable && !editable.change_allowed
+          ? '<small class="book-cancel-deadline">Online-Stornierung nur bis '+cutoff+' Stunden vor dem Termin möglich. Danach bitte die Praxis kontaktieren.</small>'
+          : active && !manageable ? '<small class="book-cancel-deadline">Stornierung gerade nicht verfügbar. Bitte erneut laden.</small>' : '';
+      return '<article class="book-appointment-row" data-appointment-id="'+esc(item.id)+'"><div>'+
+        '<b>'+esc(item.service)+'</b><small>'+esc(date)+'</small>'+
+        '<small>'+esc(item.staff||'')+'</small></div>'+
+        '<span>'+esc(item.status||'')+'</span>'+action+'</article>';
+    }).join('');
   }
 
   async function loadAvailability(state, root) {
