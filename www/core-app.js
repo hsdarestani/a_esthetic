@@ -309,7 +309,7 @@
       <button data-record-filter="document">Dokumente</button>
       <button data-record-filter="note">Notizen</button>
     </div>`;
-    html+=`<div class="approved-section-head records-head"><h2>Zuletzt hinzugefügt</h2><span>${records.length}</span></div>
+    html+=`<div class="approved-section-head records-head"><h2>Zuletzt gespeichert</h2><span>${records.length}</span></div>
       <section class="approved-record-timeline">${records.length?records.map(recordRow).join(''):'<div class="empty">Ihre Patientenakte enthält noch keine Einträge.</div>'}</section>`;
     shell(html);
     bindRecordActions();
