@@ -539,7 +539,7 @@
           throw new Error('Die Speicherung wurde angenommen, ist aber noch nicht in der Akte sichtbar. Bitte erneut überprüfen.');
         }
         entries.forEach(releaseEntry);
-        state.recordsFlash=expected.length+' Eintrag'+(expected.length===1?' wurde':'e wurden')+' erfolgreich gespeichert.';
+        state.recordsFlash=expected.length+' '+(expected.length===1?'Eintrag wurde':'Einträge wurden')+' erfolgreich gespeichert.';
         await renderRecords();
       }catch(error){
         showMessage(displayError(error));
