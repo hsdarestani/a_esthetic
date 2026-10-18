@@ -23,7 +23,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
       - name: Prepare Capacitor iOS simulator project
         env:
           APP_VERSION_NAME: '1.0.37'
@@ -32,7 +31,7 @@ jobs:
           set -euo pipefail
           node --version
           xcodebuild -version
-          npm ci
+          npm install --no-audit --no-fund
           npx cap add ios
           npx cap sync ios
           python3 scripts/configure_native_camera_permissions.py
@@ -107,7 +106,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -119,7 +117,7 @@ jobs:
           REQUIRE_ANDROID_SIGNING: '0'
         run: |
           set -euo pipefail
-          npm ci
+          npm install --no-audit --no-fund
           bash scripts/build-android.sh
           (cd android && ./gradlew --no-daemon assembleDebug)
           mkdir -p appetize
