@@ -1,0 +1,134 @@
+name: A+ Esthetic Appetize simulator and APK 1.0.37 Build 43
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/appetize-test-build-43.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: aesthetic-appetize-build43
+  cancel-in-progress: false
+jobs:
+  ios-simulator:
+    name: iOS Simulator ZIP for Appetize
+    runs-on: macos-latest
+    timeout-minutes: 65
+    steps:
+      - name: Checkout exact released Build 43 source
+        uses: actions/checkout@v4
+        with:
+          ref: 29baafa43aa24117c039e0df519bb714ea0aa7c4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Prepare Capacitor iOS simulator project
+        env:
+          APP_VERSION_NAME: '1.0.37'
+          APP_BUILD_NUMBER: '43'
+        run: |
+          set -euo pipefail
+          node --version
+          xcodebuild -version
+          npm ci
+          npx cap add ios
+          npx cap sync ios
+          python3 scripts/configure_native_camera_permissions.py
+          mkdir -p assets/ios
+          cp assets/appicon.png assets/ios/icon.png
+          npx @capacitor/assets generate --ios \
+            --iconBackgroundColor '#000000' \
+            --iconBackgroundColorDark '#000000' \
+            --splashBackgroundColor '#F6F3EC' \
+            --splashBackgroundColorDark '#F6F3EC' \
+            --logoSplashScale 0.34
+          python3 - <<'PY'
+          from pathlib import Path
+          import plistlib
+          info=Path('ios/App/App/Info.plist')
+          with info.open('rb') as handle:
+              data=plistlib.load(handle)
+          print('App bundle:',data.get('CFBundleIdentifier'))
+          assert Path('ios/App/App.xcodeproj/project.pbxproj').is_file()
+          PY
+      - name: Compile unsigned Apple Simulator app
+        run: |
+          set -euo pipefail
+          if [ -d ios/App/App.xcworkspace ]; then
+            CONTAINER=(-workspace ios/App/App.xcworkspace)
+          else
+            CONTAINER=(-project ios/App/App.xcodeproj)
+          fi
+          xcodebuild "${CONTAINER[@]}" \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/esthetic-simulator" \
+            MARKETING_VERSION=1.0.37 \
+            CURRENT_PROJECT_VERSION=43 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            TARGETED_DEVICE_FAMILY=1 \
+            build
+      - name: Package iOS simulator .app as Appetize ZIP
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/esthetic-simulator/Build/Products/Debug-iphonesimulator/App.app"
+          test -d "$APP"
+          test -f "$APP/Info.plist"
+          EXEC=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")
+          test -f "$APP/$EXEC"
+          file "$APP/$EXEC"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist"
+          mkdir -p appetize
+          cd "$(dirname "$APP")"
+          ditto -c -k --sequesterRsrc --keepParent App.app "$GITHUB_WORKSPACE/appetize/a-esthetic-ios-simulator-1.0.37-build43.zip"
+          unzip -t "$GITHUB_WORKSPACE/appetize/a-esthetic-ios-simulator-1.0.37-build43.zip" | tail -1
+      - name: Publish Appetize-ready iOS ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-esthetic-ios-appetize-1.0.37-build43
+          path: appetize/a-esthetic-ios-simulator-1.0.37-build43.zip
+          retention-days: 30
+          if-no-files-found: error
+
+  android-apk:
+    name: Android APK for Appetize
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact released Build 43 source
+        uses: actions/checkout@v4
+        with:
+          ref: 29baafa43aa24117c039e0df519bb714ea0aa7c4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build native-configured A+ Esthetic Android APK
+        env:
+          APP_VERSION_NAME: '1.0.37'
+          APP_BUILD_NUMBER: '43'
+          REQUIRE_ANDROID_SIGNING: '0'
+        run: |
+          set -euo pipefail
+          npm ci
+          bash scripts/build-android.sh
+          (cd android && ./gradlew --no-daemon assembleDebug)
+          mkdir -p appetize
+          cp android/app/build/outputs/apk/debug/app-debug.apk appetize/a-esthetic-android-1.0.37-build43.apk
+          test -s appetize/a-esthetic-android-1.0.37-build43.apk
+      - name: Publish Appetize-ready APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-esthetic-android-appetize-1.0.37-build43
+          path: appetize/a-esthetic-android-1.0.37-build43.apk
+          retention-days: 30
+          if-no-files-found: error
