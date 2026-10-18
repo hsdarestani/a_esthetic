@@ -1,4 +1,5 @@
 name: Inspect BE DIFFERENT isolated live release 20261017
+# Verification before BE DIFFERENT 1.2.3 mobile API update
 on:
   push:
     branches: [main]
