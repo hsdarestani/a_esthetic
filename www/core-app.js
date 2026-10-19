@@ -98,6 +98,19 @@
     const node=document.createElement('div');node.className='settings-overlay';
     node.innerHTML=`<div class="settings-card"><div class="settings-head"><h2>Einstellungen & Recht</h2><button class="core-icon-btn" data-close>×</button></div>
       <div class="settings-user"><strong>${esc(state.me?.member?.name||'A+ Kunde')}</strong><span>${esc(email)}</span></div>
+      <form data-profile-salutation class="a39-profile-choice">
+        <label for="a39-salutation">Anrede für dein Startseitenbild</label>
+        <div class="a39-profile-choice-controls">
+          <select id="a39-salutation" name="salutation" required>
+            <option value="" ${!state.me?.profile?.salutation?'selected':''} disabled>Bitte auswählen</option>
+            <option value="herr" ${state.me?.profile?.salutation==='herr'?'selected':''}>Herr</option>
+            <option value="frau" ${state.me?.profile?.salutation==='frau'?'selected':''}>Frau</option>
+            <option value="divers" ${state.me?.profile?.salutation==='divers'?'selected':''}>Divers</option>
+          </select>
+          <button type="submit" class="secondary">Speichern</button>
+        </div>
+        <p data-profile-salutation-message aria-live="polite">Damit das passende Startseitenbild angezeigt wird.</p>
+      </form>
       <a class="settings-link" href="${LEGAL.privacy}">Datenschutz <span>›</span></a>
       <a class="settings-link" href="${LEGAL.terms}">Nutzungsbedingungen <span>›</span></a>
       <a class="settings-link" href="${LEGAL.imprint}">Impressum <span>›</span></a>
@@ -107,6 +120,25 @@
     const close=()=>{node.classList.add('is-closing');setTimeout(()=>node.remove(),120);};
     node.addEventListener('click',e=>{if(e.target===node)close();});node.querySelector('[data-close]').onclick=close;
     node.querySelector('[data-logout]').onclick=()=>{node.remove();requestAnimationFrame(()=>logout());};
+    node.querySelector('[data-profile-salutation]')?.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const form=event.currentTarget;
+      const button=form.querySelector('button[type="submit"]');
+      const feedback=form.querySelector('[data-profile-salutation-message]');
+      const value=form.querySelector('select[name="salutation"]').value;
+      if(!['herr','frau','divers'].includes(value))return;
+      button.disabled=true;
+      feedback.textContent='Wird gespeichert …';
+      try{
+        await request('/profile/',{method:'POST',json:{salutation:value}});
+        if(state.me?.profile)state.me.profile.salutation=value;
+        feedback.textContent='Gespeichert. Das Startseitenbild wird aktualisiert.';
+        setTimeout(()=>{node.remove();go('dashboard');},250);
+      }catch(err){
+        feedback.textContent=err?.message||'Konnte nicht gespeichert werden. Bitte erneut versuchen.';
+        button.disabled=false;
+      }
+    });
   }
 
   function logout(render=true){document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
@@ -218,10 +250,12 @@
     const banners=dash.campaigns||[];
     // The authenticated dashboard selects the configured banner from Anrede.
     // Keep the original asset until an administrator uploads a suitable photo.
-    const heroImage=dash.hero_image_url||'./assets/site/clinic.jpg';
+    const selectedSalutation=String(state.me?.profile?.salutation||'').toLowerCase();
+    const hasExplicitSalutation=['herr','frau','divers'].includes(selectedSalutation);
+    const heroImage=hasExplicitSalutation&&dash.hero_image_url?dash.hero_image_url:'./assets/site/clinic.jpg';
     const points=Number(dash.points??dash.member?.coins??0).toLocaleString('de-DE');
 
-    let html=`<section class="approved-home-hero ${heroImage?'has-image':''}" ${heroImage?`style="--approved-hero-image:url('${esc(heroImage)}')"`:''}>
+    let html=`${!hasExplicitSalutation?'<button type="button" class="a39-choose-photo" data-choose-photo>Anrede auswählen für dein persönliches Startseitenbild <b>›</b></button>':''}<section class="approved-home-hero ${heroImage?'has-image':''}" ${heroImage?`style="--approved-hero-image:url('${esc(heroImage)}')"`:''}>
       <div class="approved-home-copy">
         <span class="approved-kicker">WILLKOMMEN</span>
         <h1>Willkommen${firstName()?',<br>'+esc(firstName())+'.':' bei A+.'}</h1>
@@ -273,6 +307,7 @@
     root.querySelectorAll('[data-dash-book]').forEach(button=>button.addEventListener('click',()=>go('appointments')));
     root.querySelector('[data-dash-call]')?.addEventListener('click',showContactPicker);
     root.querySelector('[data-dash-points]')?.addEventListener('click',()=>go('points'));
+    root.querySelector('[data-choose-photo]')?.addEventListener('click',()=>showSettings(state.me?.profile?.email||''));
   }
 
 
