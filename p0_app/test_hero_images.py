@@ -79,9 +79,23 @@ class DashboardHeroTests(TestCase):
             self.assertEqual(response.status_code, 200, response.content)
             self.assertIn("/dashboard-hero/" + expected + "/", response.json()["hero_image_url"])
 
-    def test_fallback_to_default_when_gender_image_missing(self):
+    def test_default_photo_only_for_unspecified_salutation(self):
         self.put_hero("default")
-        self.assertIn("/dashboard-hero/default/", self.dashboard_for_customer().json()["hero_image_url"])
+        self.assertEqual(self.dashboard_for_customer().json()["hero_image_url"], "")
+        self.profile.salutation = ""
+        self.profile.save(update_fields=["salutation"])
+        result = self.dashboard_for_customer().json()
+        self.assertEqual(result["hero_variant"], "default")
+        self.assertIn("/dashboard-hero/default/", result["hero_image_url"])
+
+    def test_male_image_missing_does_not_show_female_default(self):
+        self.put_hero("default")
+        self.put_hero("frau")
+        self.profile.salutation = "herr"
+        self.profile.save(update_fields=["salutation"])
+        result = self.dashboard_for_customer().json()
+        self.assertEqual(result["hero_variant"], "herr")
+        self.assertEqual(result["hero_image_url"], "")
 
     def test_fallback_to_bundled_image_when_none_uploaded(self):
         self.assertEqual(self.dashboard_for_customer().json()["hero_image_url"], "")
