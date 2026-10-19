@@ -30,6 +30,12 @@ jobs:
           from p0_app.ops_models import DashboardHeroImage
           matches = list(User.objects.filter(Q(first_name__icontains="ashkan") | Q(email__istartswith="ashkan.")).distinct())
           print("MATCHING_ACCOUNTS", len(matches))
+          exact = list(User.objects.filter(email__iexact="ashkan.dian@outlook.de"))
+          print("TARGET_EXACT_MATCH", len(exact))
+          for user in exact:
+              p = UserProfile.objects.filter(user=user).first()
+              print("TARGET_EXACT_SALUTATION", (p.salutation if p else "") or "missing")
+
           for user in matches:
               profile = UserProfile.objects.filter(user=user).first()
               slot = (profile.salutation if profile else "") or "missing"
