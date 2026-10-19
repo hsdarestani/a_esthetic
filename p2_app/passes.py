@@ -97,50 +97,31 @@ def _icon_bytes(size):
 
 
 def _logo_bytes(width, height):
+    """Native Wallet already paints logoText beside this small mark."""
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    mark_size = min(height - 4, int(width * 0.22))
-    draw.rounded_rectangle(
-        (2, 2, mark_size, height - 2),
-        radius=max(5, height // 5),
-        outline=GOLD_LIGHT,
-        width=max(1, height // 22),
-    )
-    mark_font = _font(max(12, int(height * 0.42)), bold=True)
-    bbox = draw.textbbox((0, 0), "A+", font=mark_font)
-    draw.text(
-        ((mark_size - (bbox[2] - bbox[0])) / 2 + 1, (height - (bbox[3] - bbox[1])) / 2 - bbox[1]),
-        "A+",
-        fill=GOLD_LIGHT,
-        font=mark_font,
-    )
-    word_font = _font(max(10, int(height * 0.25)), bold=True)
-    draw.text((mark_size + height * 0.18, height * 0.22), "A+ ESTHETIC", fill=WHITE, font=word_font)
-    small_font = _font(max(7, int(height * 0.14)))
-    draw.text((mark_size + height * 0.18, height * 0.57), "BEAUTY CLUB", fill=GOLD_LIGHT, font=small_font)
+    font = _font(max(18, int(height * .60)), bold=True)
+    mark = "A+"
+    bbox = draw.textbbox((0, 0), mark, font=font)
+    draw.text((3, (height - (bbox[3] - bbox[1])) / 2 - bbox[1]),
+              mark, fill=GOLD_LIGHT, font=font)
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
     return output.getvalue()
 
 
 def _strip_bytes(width, height):
-    image = _gradient(width, height)
+    """Decorative only: native primaryFields occupy the very same strip."""
+    image = _gradient(width, height, start="#181512", end="#30271d")
     draw = ImageDraw.Draw(image, "RGBA")
-    draw.ellipse((width * 0.66, -height * 0.8, width * 1.12, height * 1.5), fill=(199, 154, 98, 50))
-    draw.ellipse(
-        (width * 0.77, -height * 0.55, width * 1.05, height * 1.15),
-        outline=(240, 215, 173, 120),
-        width=max(2, width // 180),
+    draw.arc(
+        (int(width * .78), -int(height * 1.18), int(width * 1.48), int(height * 1.30)),
+        75, 290, fill=(224, 183, 112, 92), width=max(2, width // 240),
     )
-    draw.line(
-        (width * 0.08, height * 0.78, width * 0.52, height * 0.78),
-        fill=(240, 215, 173, 110),
-        width=max(1, width // 260),
+    draw.arc(
+        (int(width * .90), -int(height * .70), int(width * 1.47), int(height * 1.08)),
+        75, 285, fill=(224, 183, 112, 48), width=max(1, width // 350),
     )
-    title_font = _font(max(20, int(height * 0.28)), bold=True)
-    subtitle_font = _font(max(10, int(height * 0.13)))
-    draw.text((width * 0.08, height * 0.21), "A+ BEAUTY CLUB", fill=WHITE, font=title_font)
-    draw.text((width * 0.08, height * 0.56), "YOUR BEAUTY. YOUR BENEFITS.", fill=GOLD_LIGHT, font=subtitle_font)
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
     return output.getvalue()
@@ -159,6 +140,12 @@ def build_apple_pass(user):
         raise ImproperlyConfigured("Apple-Wallet-Konfiguration fehlt: " + ", ".join(missing))
 
     member, wallet, tier, full_name = _member_payload(user)
+    # An email address must never become the oversized visible name on a pass.
+    display_name = (user.get_full_name() or "").strip()
+    if not display_name or "@" in display_name:
+        display_name = "A+ Mitglied"
+    if len(display_name) > 30:
+        display_name = display_name[:29].rstrip() + "…"
     if member.status != "active":
         raise ImproperlyConfigured("Die Mitgliedschaft ist nicht aktiv.")
     record, _ = MemberPass.objects.get_or_create(user=user, provider="apple")
@@ -176,25 +163,22 @@ def build_apple_pass(user):
         "organizationName": "A+ Esthetic",
         "description": "A+ Esthetic Beauty Club Mitgliedskarte",
         "logoText": "A+ Esthetic",
-        "foregroundColor": "rgb(255, 255, 255)",
-        "backgroundColor": "rgb(17, 26, 34)",
+        "foregroundColor": "rgb(250, 246, 235)",
+        "backgroundColor": "rgb(24, 21, 18)",
         "labelColor": "rgb(240, 215, 173)",
         "barcode": barcode,
         "barcodes": [barcode],
         "userInfo": {"memberNumber": member.member_number, "tier": tier},
         "storeCard": {
-            "headerFields": [{"key": "tier", "label": "STATUS", "value": tier}],
-            "primaryFields": [{"key": "name", "label": "MITGLIED", "value": full_name}],
-            "secondaryFields": [
-                {"key": "coins", "label": "A+ COINS", "value": wallet.coin_balance},
-                {"key": "credit", "label": "A+ CREDIT", "value": wallet.balance_cents / 100, "currencyCode": "EUR"},
-            ],
-            "auxiliaryFields": [
-                {"key": "number", "label": "MITGLIEDSNUMMER", "value": member.member_number}
-            ],
+            "headerFields": [{"key": "tier", "label": "CLUB", "value": tier}],
+            "primaryFields": [{"key": "name", "label": "MITGLIED", "value": display_name}],
+            "secondaryFields": [{"key": "coins", "label": "PUNKTE", "value": wallet.coin_balance}],
+            "auxiliaryFields": [],
             "backFields": [
                 {"key": "issuer", "label": "Herausgeber", "value": "A+ Esthetic"},
                 {"key": "website", "label": "Website", "value": "https://a-esthetic.de"},
+                {"key": "number", "label": "Mitgliedsnummer", "value": member.member_number},
+                {"key": "credit", "label": "A+ Guthaben", "value": f"{wallet.balance_cents / 100:.2f} EUR"},
                 {
                     "key": "privacy",
                     "label": "Datenschutz",
