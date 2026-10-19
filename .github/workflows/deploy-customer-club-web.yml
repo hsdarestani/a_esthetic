@@ -24,7 +24,7 @@ jobs:
       - name: Validate focused A+ patient app
         run: |
           set -euo pipefail
-          for FILE in index.html core-app.css core-app.js account-onboarding.js ferrari-v18.css client-v19.css approved-v22.css customer-dashboard-v2.css booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js booking-final-rules.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css apple-wallet-native.js native-interactions.js native-interactions.css mobile-polish.js mobile-polish.css assets/logo.svg; do
+          for FILE in index.html luxury-shell-v38.css core-app.css core-app.js account-onboarding.js ferrari-v18.css client-v19.css approved-v22.css customer-dashboard-v2.css booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js booking-final-rules.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css apple-wallet-native.js native-interactions.js native-interactions.css mobile-polish.js mobile-polish.css assets/logo.svg; do
             test -s "www/$FILE"
           done
           python - <<'PY'
@@ -106,7 +106,7 @@ jobs:
             rm -rf "$RELEASE_DIR"
             mkdir -p "$RELEASE_DIR" "$WEBROOT"
             tar -xzf "$PACKAGE" -C "$RELEASE_DIR"
-            for FILE in index.html core-app.css core-app.js account-onboarding.js ferrari-v18.css client-v19.css approved-v22.css customer-dashboard-v2.css booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js booking-final-rules.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css apple-wallet-native.js native-interactions.js native-interactions.css mobile-polish.js mobile-polish.css customer-luxury.js customer-luxury.css assets/logo.svg; do test -s "$RELEASE_DIR/$FILE"; done
+            for FILE in index.html luxury-shell-v38.css core-app.css core-app.js account-onboarding.js ferrari-v18.css client-v19.css approved-v22.css customer-dashboard-v2.css booking-direct-api.js admin-mode.js booking-book-flow.css booking-book-flow.js booking-consent-bridge.js booking-final-rules.js focused-upgrade.css focused-upgrade.js native-push.js apple-wallet-only.css apple-wallet-native.js native-interactions.js native-interactions.css mobile-polish.js mobile-polish.css customer-luxury.js customer-luxury.css assets/logo.svg; do test -s "$RELEASE_DIR/$FILE"; done
 
             rm -rf "$WEBROOT"/*
             cp -a "$RELEASE_DIR"/. "$WEBROOT"/
@@ -169,8 +169,8 @@ jobs:
             grep -q 'account-onboarding.js?v=20261007-oauth-v2' /tmp/aesthetic-focused-local-index.html
             grep -q 'ferrari-v18.css?v=20260922-v18' /tmp/aesthetic-focused-local-index.html
             grep -q 'client-v19.css?v=20260923-progress-v21' /tmp/aesthetic-focused-local-index.html
-            grep -q 'approved-v22.css?v=20261017-dynamic-hero-v6' /tmp/aesthetic-focused-local-index.html
-            grep -q 'core-app.js?v=20261017-gender-hero-v8' /tmp/aesthetic-focused-local-index.html
+            grep -q 'luxury-shell-v38.css?v=20261019-wallet-v38' /tmp/aesthetic-focused-local-index.html
+            grep -q 'core-app.js?v=20261019-luxury-v38' /tmp/aesthetic-focused-local-index.html
             grep -q 'booking-book-flow.js?v=20261017-details-v2' /tmp/aesthetic-focused-local-index.html
 
             if ! curl -fsSL --max-time 20 "https://$DOMAIN/?release=20261007-premium-v35" -o /tmp/aesthetic-focused-index.html; then
@@ -181,8 +181,8 @@ jobs:
             grep -q 'global-loading.js?v=20260923-intro-v24' /tmp/aesthetic-focused-index.html
             grep -q 'ferrari-v18.css?v=20260922-v18' /tmp/aesthetic-focused-index.html
             grep -q 'client-v19.css?v=20260923-progress-v21' /tmp/aesthetic-focused-index.html
-            grep -q 'approved-v22.css?v=20261017-dynamic-hero-v6' /tmp/aesthetic-focused-index.html
-            grep -q 'core-app.js?v=20261017-gender-hero-v8' /tmp/aesthetic-focused-index.html
+            grep -q 'luxury-shell-v38.css?v=20261019-wallet-v38' /tmp/aesthetic-focused-index.html
+            grep -q 'core-app.js?v=20261019-luxury-v38' /tmp/aesthetic-focused-index.html
             grep -q 'booking-book-flow.js?v=20261017-details-v2' /tmp/aesthetic-focused-index.html
             if getent ahosts "$APP_DOMAIN" >/dev/null 2>&1; then
               CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
