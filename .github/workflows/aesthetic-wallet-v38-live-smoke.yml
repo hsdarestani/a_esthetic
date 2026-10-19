@@ -66,4 +66,4 @@ jobs:
           PY
           PAYLOAD="$(base64 -w0 "$RUNNER_TEMP/wallet-smoke.py")"
           PORT="${SERVER_PORT:-22}"
-          ssh -i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -p "$PORT"             "$SERVER_USER@$SERVER_HOST"             "cd /opt/a-esthetic-mobile && set -a && . ./mobile.env && set +a && export PYTHONPATH=/opt/a-esthetic-mobile/vendor && printf '%s' '$PAYLOAD' | base64 -d | python3 manage.py shell"
+          ssh -i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -p "$PORT"             "$SERVER_USER@$SERVER_HOST"             "cd /opt/a-esthetic-mobile && set -a && . ./mobile.env && set +a && printf '%s' '$PAYLOAD' | base64 -d | ./venv/bin/python manage.py shell"
