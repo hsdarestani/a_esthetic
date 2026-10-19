@@ -470,7 +470,7 @@
     if (!platform || !wrapper) return false;
 
     const canGoogle = Boolean(config.google && config.google_client_id);
-    const canApple = Boolean(config.apple && config.apple_client_id);
+    const canApple = platform === 'ios' && Boolean(config.apple && config.apple_client_id);
 
     const buttons = [];
     if (canGoogle) {
@@ -502,7 +502,7 @@
         try {
           const provider = button.dataset.nativeSocial;
           const browserRequired = (provider === 'google' && (platform === 'android' || (platform === 'ios' && !config.google_ios_client_id)))
-            || (provider === 'apple' && platform === 'android');
+            ;
           if (browserRequired) await browserSocialLogin(provider, config);
           else await nativeSocialLogin(provider, config);
         } catch (error) {
@@ -620,7 +620,8 @@
     }
 
     const config = await getAuthConfig();
-    if ((config.google || config.apple) && !form.querySelector('[data-social-login]')) {
+    const showApple = !/Android/i.test(navigator.userAgent) && Boolean(config.apple);
+    if ((config.google || showApple) && !form.querySelector('[data-social-login]')) {
       const wrapper = document.createElement('div');
       wrapper.dataset.socialLogin = '1';
       form.appendChild(wrapper);
@@ -631,7 +632,7 @@
         '<div class="login-divider"><span>oder</span></div>' +
         '<div class="official-social-grid">' +
           (config.google ? '<div class="official-google" data-google-signin></div>' : '') +
-          (config.apple ? '<div class="official-apple" id="appleid-signin" data-apple-signin data-color="black" data-border="true" data-type="sign-in" data-mode="center-align"></div>' : '') +
+          (showApple ? '<div class="official-apple" id="appleid-signin" data-apple-signin data-color="black" data-border="true" data-type="sign-in" data-mode="center-align"></div>' : '') +
         '</div>';
       await Promise.allSettled([
         renderGoogleButton(config, wrapper.querySelector('[data-google-signin]')),

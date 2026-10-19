@@ -25,17 +25,7 @@
     ['points', '◆', 'Punkte'],
     ['friends', '↗', 'Freunde'],
   ];
-  const NAV_ICONS = {
-    dashboard:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-8Z"/><path d="M9 20v-6h6v6"/></svg>',
-    appointments:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14.5" rx="3"/><path d="M8 3.5v4M16 3.5v4M4 10h16"/><path d="M8 14h8M8 17h5"/></svg>',
-    records:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4V20H7a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2Z"/><path d="M14 3.5v4h4M8.5 12h6M8.5 15.5h6"/></svg>',
-    points:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19 7v10l-7 3.5L5 17V7l7-3.5Z"/><path d="m8.5 12 2.2 2.2 4.8-4.8"/></svg>',
-    friends:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.4-3.2 2.2-4.9 5.5-4.9s5.1 1.7 5.5 4.9M16 7.5h4.5M18.25 5.25v4.5M15 13.5c2.4.35 3.8 1.8 4.1 4.1"/></svg>',
-    settings:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 13.7a7.3 7.3 0 0 0 .05-3.4l1.8-1.4-1.8-3.1-2.25.9a7.5 7.5 0 0 0-3-1.7L13.5 2h-3L10.2 5a7.5 7.5 0 0 0-3 1.7l-2.25-.9-1.8 3.1 1.8 1.4a7.3 7.3 0 0 0 .05 3.4l-1.85 1.4 1.8 3.1 2.3-.9a7.5 7.5 0 0 0 2.95 1.7l.3 3h3l.3-3a7.5 7.5 0 0 0 2.95-1.7l2.3.9 1.8-3.1-1.85-1.4Z"/></svg>',
-    phone:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 10 8.4 8.2 10.2a14.2 14.2 0 0 0 5.6 5.6L15.6 14l4.4 3c.5.3.7.9.45 1.45-.65 1.45-2 2.45-3.6 2.45C9.2 20.9 3.1 14.8 3.1 7.15c0-1.6 1-2.95 2.45-3.6A1.2 1.2 0 0 1 7 4Z"/></svg>',
-    instagram:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r=".8" fill="currentColor" stroke="none"/></svg>',
-    directions:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2.2"/></svg>'
-  };
+  const NAV_ICONS = window.AEstheticIconSet;
   const navIcon = key => NAV_ICONS[key] || '';
   const state = { route: 'dashboard', token: localStorage.getItem('aplus_token') || '', me: null, cache: {} };
   const root = document.getElementById('app');
@@ -108,6 +98,19 @@
     const node=document.createElement('div');node.className='settings-overlay';
     node.innerHTML=`<div class="settings-card"><div class="settings-head"><h2>Einstellungen & Recht</h2><button class="core-icon-btn" data-close>×</button></div>
       <div class="settings-user"><strong>${esc(state.me?.member?.name||'A+ Kunde')}</strong><span>${esc(email)}</span></div>
+      <form data-profile-salutation class="a39-profile-choice">
+        <label for="a39-salutation">Anrede für dein Startseitenbild</label>
+        <div class="a39-profile-choice-controls">
+          <select id="a39-salutation" name="salutation" required>
+            <option value="" ${!state.me?.profile?.salutation?'selected':''} disabled>Bitte auswählen</option>
+            <option value="herr" ${state.me?.profile?.salutation==='herr'?'selected':''}>Herr</option>
+            <option value="frau" ${state.me?.profile?.salutation==='frau'?'selected':''}>Frau</option>
+            <option value="divers" ${state.me?.profile?.salutation==='divers'?'selected':''}>Divers</option>
+          </select>
+          <button type="submit" class="secondary">Speichern</button>
+        </div>
+        <p data-profile-salutation-message aria-live="polite">Damit das passende Startseitenbild angezeigt wird.</p>
+      </form>
       <a class="settings-link" href="${LEGAL.privacy}">Datenschutz <span>›</span></a>
       <a class="settings-link" href="${LEGAL.terms}">Nutzungsbedingungen <span>›</span></a>
       <a class="settings-link" href="${LEGAL.imprint}">Impressum <span>›</span></a>
@@ -117,6 +120,25 @@
     const close=()=>{node.classList.add('is-closing');setTimeout(()=>node.remove(),120);};
     node.addEventListener('click',e=>{if(e.target===node)close();});node.querySelector('[data-close]').onclick=close;
     node.querySelector('[data-logout]').onclick=()=>{node.remove();requestAnimationFrame(()=>logout());};
+    node.querySelector('[data-profile-salutation]')?.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const form=event.currentTarget;
+      const button=form.querySelector('button[type="submit"]');
+      const feedback=form.querySelector('[data-profile-salutation-message]');
+      const value=form.querySelector('select[name="salutation"]').value;
+      if(!['herr','frau','divers'].includes(value))return;
+      button.disabled=true;
+      feedback.textContent='Wird gespeichert …';
+      try{
+        await request('/profile/',{method:'POST',json:{salutation:value}});
+        if(state.me?.profile)state.me.profile.salutation=value;
+        feedback.textContent='Gespeichert. Das Startseitenbild wird aktualisiert.';
+        setTimeout(()=>{node.remove();go('dashboard');},250);
+      }catch(err){
+        feedback.textContent=err?.message||'Konnte nicht gespeichert werden. Bitte erneut versuchen.';
+        button.disabled=false;
+      }
+    });
   }
 
   function logout(render=true){document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
@@ -228,10 +250,12 @@
     const banners=dash.campaigns||[];
     // The authenticated dashboard selects the configured banner from Anrede.
     // Keep the original asset until an administrator uploads a suitable photo.
-    const heroImage=dash.hero_image_url||'./assets/site/hero.svg';
+    const selectedSalutation=String(state.me?.profile?.salutation||'').toLowerCase();
+    const hasExplicitSalutation=['herr','frau','divers'].includes(selectedSalutation);
+    const heroImage=hasExplicitSalutation&&dash.hero_image_url?dash.hero_image_url:'./assets/site/clinic.jpg';
     const points=Number(dash.points??dash.member?.coins??0).toLocaleString('de-DE');
 
-    let html=`<section class="approved-home-hero ${heroImage?'has-image':''}" ${heroImage?`style="--approved-hero-image:url('${esc(heroImage)}')"`:''}>
+    let html=`${!hasExplicitSalutation?'<button type="button" class="a39-choose-photo" data-choose-photo>Anrede auswählen für dein persönliches Startseitenbild <b>›</b></button>':''}<section class="approved-home-hero ${heroImage?'has-image':''}" ${heroImage?`style="--approved-hero-image:url('${esc(heroImage)}')"`:''}>
       <div class="approved-home-copy">
         <span class="approved-kicker">WILLKOMMEN</span>
         <h1>Willkommen${firstName()?',<br>'+esc(firstName())+'.':' bei A+.'}</h1>
@@ -283,6 +307,7 @@
     root.querySelectorAll('[data-dash-book]').forEach(button=>button.addEventListener('click',()=>go('appointments')));
     root.querySelector('[data-dash-call]')?.addEventListener('click',showContactPicker);
     root.querySelector('[data-dash-points]')?.addEventListener('click',()=>go('points'));
+    root.querySelector('[data-choose-photo]')?.addEventListener('click',()=>showSettings(state.me?.profile?.email||''));
   }
 
 
@@ -312,11 +337,11 @@
       <div class="approved-progress"><i style="width:${progress}%"></i></div><b>${balance.toLocaleString('de-DE')} / ${nextMilestone.toLocaleString('de-DE')}</b>
     </section>`;
     html+=`<section class="approved-benefits"><div class="approved-page-head compact"><h1>Deine Vorteile</h1><p>Dein persönlicher A+ Club auf einen Blick.</p></div>
-      <button data-review-route><span>☆</span><div><strong>Google Bewertung</strong><small>+${Number(reviews.verified_review_points||250)} Punkte nach Verifizierung</small></div><b>›</b></button>
-      <button data-friends-route><span>◇</span><div><strong>Freunde einladen</strong><small>Punkte nach erfolgreicher Empfehlung</small></div><b>›</b></button>
-      <button type="button" data-exclusive-benefits aria-expanded="false" aria-controls="exclusive-benefit-details"><span>✦</span><div><strong>Club Vorteile</strong><small>Aktuelle Angebote ansehen</small></div><b data-exclusive-chevron>›</b></button>
+      <button data-review-route><span>${NAV_ICONS.review}</span><div><strong>Google Bewertung</strong><small>+${Number(reviews.verified_review_points||250)} Punkte nach Verifizierung</small></div><b>›</b></button>
+      <button data-friends-route><span>${NAV_ICONS.friends}</span><div><strong>Freunde einladen</strong><small>Punkte nach erfolgreicher Empfehlung</small></div><b>›</b></button>
+      <button type="button" data-exclusive-benefits aria-expanded="false" aria-controls="exclusive-benefit-details"><span>${NAV_ICONS.benefits}</span><div><strong>Club Vorteile</strong><small>Aktuelle Angebote ansehen</small></div><b data-exclusive-chevron>›</b></button>
       <div id="exclusive-benefit-details" class="approved-benefit-details" data-exclusive-benefit-details role="region" aria-label="Exklusive Vorteile" hidden></div>
-      ${card.member_number?`<button data-show-member-qr><span>▣</span><div><strong>Digitale Mitgliedskarte</strong><small>${esc(card.member_number)}</small></div><b>›</b></button>`:''}
+      ${card.member_number?`<button data-show-member-qr><span>${NAV_ICONS.membership}</span><div><strong>Digitale Mitgliedskarte</strong><small>${esc(card.member_number)}</small></div><b>›</b></button>`:''}
     </section>`;
     if(card.member_number){
       const currentPlatform=window.Capacitor?.getPlatform?.() ||

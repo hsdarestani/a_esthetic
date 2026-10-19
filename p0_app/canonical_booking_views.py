@@ -46,15 +46,17 @@ def mobile_dashboard(request):
     # Select only from the user's explicitly recorded Anrede. Never infer
     # gender from appearance, name, or other personal information.
     profile = getattr(user, "profile", None)
-    preferred = profile.salutation if profile and profile.salutation in {"frau", "herr"} else "default"
+    salutation = str(getattr(profile, "salutation", "") or "").strip().lower()
+    preferred = salutation if salutation in {"frau", "herr"} else "default"
     hero = DashboardHeroImage.objects.filter(variant=preferred).first()
-    if not hero or not hero.image:
-        hero = DashboardHeroImage.objects.filter(variant="default").first()
+    # A missing male/female upload must never fall back to the female default.
+    # Only accounts without an explicit salutation may see the default slot.
     selected_hero_url = hero_image_url(request, hero) if hero and hero.image else ""
     return JsonResponse({
         "ok": True,
         "member": member,
         "hero_image_url": selected_hero_url,
+        "hero_variant": preferred,
         "points": int(member.get("coins") or 0),
         "next_appointment": None,
         "last_appointment": None,
