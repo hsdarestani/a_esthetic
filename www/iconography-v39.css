@@ -96,3 +96,13 @@
   .approved-quick-actions b{font-size:9.5px!important}
 }
 @media(prefers-reduced-motion:reduce){.core-shell>.core-nav .nav-btn{transition:none!important}}
+
+.a39-profile-choice{margin:13px 0 17px;padding:14px;border:1px solid rgba(180,145,85,.24);border-radius:15px;background:linear-gradient(120deg,#fffdf8,#f9f1e3)}
+.a39-profile-choice>label{display:block;font-size:12px;color:#473827;font-weight:700;margin-bottom:8px}
+.a39-profile-choice-controls{display:grid;grid-template-columns:minmax(0,1fr) 105px;gap:8px}
+.a39-profile-choice select{width:100%;min-height:44px;padding:0 12px;border:1px solid rgba(157,120,67,.32);border-radius:10px;color:#342719;background:#fffdfa;font-size:13px}
+.a39-profile-choice button{min-height:44px;padding:10px 12px;border-radius:10px;background:#252018;color:#f5dfaf;border:0;font-weight:700;font-size:12px}
+.a39-profile-choice button:disabled{opacity:.6}
+.a39-profile-choice p{margin:8px 0 0!important;font-size:11px!important;line-height:1.4!important;color:#807467!important}
+.a39-choose-photo{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;margin:0 0 12px;min-height:45px;border:1px solid rgba(181,142,72,.32);border-radius:13px;padding:12px 14px;background:#fff8e8;color:#725324;font-size:12px;font-weight:700;text-align:left}
+.a39-choose-photo b{font-size:19px;font-weight:400}
