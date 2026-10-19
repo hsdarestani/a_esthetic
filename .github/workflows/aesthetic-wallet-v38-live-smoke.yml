@@ -1,0 +1,69 @@
+name: A+ Esthetic real signed Apple Wallet pass smoke v38
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/aesthetic-wallet-v38-live-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  signed-wallet-pass:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Generate and verify a real production pkpass
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST" && test -n "$SERVER_USER" && test -n "$SERVER_SSH_KEY"
+          umask 077
+          KEY="$RUNNER_TEMP/aesthetic-wallet-smoke-key"
+          printf '%s\n' "$SERVER_SSH_KEY" | tr -d '\r' > "$KEY"
+          chmod 600 "$KEY"
+          cat > "$RUNNER_TEMP/wallet-smoke.py" <<'PY'
+          import hashlib, json, os, subprocess, tempfile
+          from io import BytesIO
+          from pathlib import Path
+          from zipfile import ZipFile
+          from platform_app.models import MemberAccount
+          from p2_app.passes import build_apple_pass
+
+          active = MemberAccount.objects.filter(status="active").select_related("user").first()
+          assert active is not None, "wallet_live_smoke_no_active_member"
+          data = build_apple_pass(active.user).getvalue()
+          assert len(data) > 1000 and data.startswith(b"PK"), "wallet_live_smoke_invalid_zip"
+          with ZipFile(BytesIO(data)) as archive:
+              names = set(archive.namelist())
+              for name in ("pass.json", "manifest.json", "signature", "strip.png", "logo.png"):
+                  assert name in names, "wallet_missing_" + name
+              p = json.loads(archive.read("pass.json"))
+              manifest = json.loads(archive.read("manifest.json"))
+              for name, digest in manifest.items():
+                  assert hashlib.sha1(archive.read(name)).hexdigest() == digest, "wallet_manifest_mismatch"
+              card = p["storeCard"]
+              assert len(card["primaryFields"][0]["value"]) <= 30, "wallet_name_overflow"
+              assert "@" not in card["primaryFields"][0]["value"], "wallet_email_visible"
+              assert len(card["secondaryFields"]) == 1 and not card["auxiliaryFields"], "wallet_fields_overcrowded"
+              with tempfile.TemporaryDirectory() as temp:
+                  signature = Path(temp) / "signature"
+                  content = Path(temp) / "manifest.json"
+                  signature.write_bytes(archive.read("signature"))
+                  content.write_bytes(archive.read("manifest.json"))
+                  subprocess.run(
+                      ["openssl","smime","-verify","-binary","-inform","DER",
+                       "-in",str(signature),"-content",str(content),"-noverify",
+                       "-out",os.devnull],
+                      capture_output=True, check=True,
+                  )
+          print("APPLE_WALLET_REAL_SIGNED_PASS=success")
+          PY
+          PAYLOAD="$(base64 -w0 "$RUNNER_TEMP/wallet-smoke.py")"
+          PORT="${SERVER_PORT:-22}"
+          ssh -i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -p "$PORT"             "$SERVER_USER@$SERVER_HOST"             "cd /opt/a-esthetic-mobile && set -a && . ./mobile.env && set +a && export PYTHONPATH=/opt/a-esthetic-mobile/vendor && printf '%s' '$PAYLOAD' | base64 -d | python3 manage.py shell"
