@@ -453,9 +453,21 @@ def profile(request):
     profile, _ = UserProfile.objects.get_or_create(user=user)
     if request.method == 'POST':
         data = _json(request)
-        profile.phone = str(data.get('phone') or '')[:40]
-        profile.marketing_consent = bool(data.get('marketing_consent'))
-        profile.save(update_fields=['phone', 'marketing_consent'])
+        fields = []
+        if 'phone' in data:
+            profile.phone = str(data.get('phone') or '')[:40]
+            fields.append('phone')
+        if 'marketing_consent' in data:
+            profile.marketing_consent = bool(data.get('marketing_consent'))
+            fields.append('marketing_consent')
+        if 'salutation' in data:
+            salutation = str(data.get('salutation') or '').strip().lower()
+            if salutation not in {'herr', 'frau', 'divers'}:
+                return JsonResponse({'ok': False, 'error': 'invalid_salutation'}, status=400)
+            profile.salutation = salutation
+            fields.append('salutation')
+        if fields:
+            profile.save(update_fields=fields)
     return JsonResponse({
         'ok': True,
         'profile': {
@@ -464,6 +476,7 @@ def profile(request):
             'last_name': user.last_name,
             'email': user.email,
             'phone': profile.phone,
+            'salutation': profile.salutation,
             'marketing_consent': profile.marketing_consent,
         },
     })
