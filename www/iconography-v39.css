@@ -1,0 +1,98 @@
+/* A+ Signature UI 39: deliberate icon design, no generic tile/pill patterns. */
+:root{--a39-bronze:#ad854c;--a39-ink:#1f1a15;--a39-pearl:#fbf7ee;}
+.core-shell>.core-nav{
+  width:min(530px,calc(100vw - 22px))!important;
+  background:linear-gradient(145deg,#28231c 0%,#181511 100%)!important;
+  border:1px solid rgba(219,178,104,.46)!important;
+  border-radius:18px!important;padding:8px 6px 7px!important;
+  box-shadow:0 16px 36px rgba(23,17,10,.25)!important;
+}
+.core-shell>.core-nav .nav-btn{
+  min-height:58px!important;align-content:center!important;gap:6px!important;
+  color:#b9ab97!important;background:transparent!important;
+  border:0!important;border-radius:9px!important;position:relative;
+  transition:color .18s ease!important;
+}
+.core-shell>.core-nav .nav-btn.is-active{
+  color:#f2d49d!important;background:transparent!important;
+  box-shadow:none!important;
+}
+.core-shell>.core-nav .nav-btn.is-active::after{
+  content:"";position:absolute;bottom:0;left:calc(50% - 14px);
+  height:2px;width:28px;border-radius:2px;
+  background:linear-gradient(90deg,#9b6c2c,#f4d58b,#9b6c2c);
+}
+.core-shell>.core-nav .nav-icon,
+.core-shell>.core-nav .nav-btn>span:first-child{
+  display:grid!important;place-items:center!important;
+  min-height:24px!important;height:24px!important;
+}
+.core-shell>.core-nav .nav-icon svg,
+.core-shell>.core-nav .nav-btn>span:first-child svg{
+  display:block;width:24px!important;height:24px!important;
+  fill:none;stroke:currentColor;stroke-width:1.75!important;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+.core-shell>.core-nav .nav-label{
+  font-size:10px!important;letter-spacing:.015em!important;
+  font-weight:500!important;color:inherit!important;
+}
+.core-shell>.core-nav .nav-btn:focus-visible{outline:2px solid #e8c990;outline-offset:-2px}
+.approved-quick-actions{gap:8px!important}
+.approved-quick-actions>button,
+.approved-quick-actions>a{
+  min-width:0!important;min-height:90px!important;
+  border-radius:17px!important;border:1px solid rgba(178,146,95,.18)!important;
+  background:linear-gradient(145deg,#fffefb,#f5eee2)!important;
+  box-shadow:0 8px 24px rgba(66,48,24,.04)!important;
+}
+.approved-quick-actions>button>span,
+.approved-quick-actions>a>span{
+  width:39px!important;height:39px!important;
+  color:#a3793f!important;border-radius:50%!important;
+  display:grid!important;place-items:center!important;
+  background:radial-gradient(circle,#f4e6cb,#f9f4eb)!important;
+}
+.approved-quick-actions svg{
+  width:23px!important;height:23px!important;
+  stroke:currentColor!important;stroke-width:1.8!important;
+  stroke-linecap:round;stroke-linejoin:round;fill:none;
+}
+.approved-quick-actions b{font-size:10.5px!important;font-weight:650!important;color:#31271d!important}
+.approved-benefits{gap:0!important;padding-top:4px!important}
+.approved-benefits>.approved-page-head{margin-bottom:13px!important}
+.approved-benefits>button{
+  min-height:77px!important;border-radius:0!important;
+  border:0!important;border-bottom:1px solid rgba(154,126,82,.22)!important;
+  padding:13px 3px!important;background:transparent!important;
+  box-shadow:none!important;grid-template-columns:53px minmax(0,1fr) 20px!important;
+  gap:13px!important;
+}
+.approved-benefits>button:first-of-type{border-top:1px solid rgba(154,126,82,.22)!important}
+.approved-benefits>button>span{
+  background:transparent!important;border:1px solid rgba(158,124,69,.43)!important;
+  border-radius:50%!important;width:50px!important;height:50px!important;
+  display:grid!important;place-items:center!important;
+  color:#997037!important;
+}
+.approved-benefits>button>span svg{
+  width:25px!important;height:25px!important;
+  stroke-width:1.65!important;display:block;
+}
+.approved-benefits>button strong{font-size:13px!important;font-weight:660!important;letter-spacing:.005em!important}
+.approved-benefits>button small{font-size:11px!important;line-height:1.4!important}
+.approved-benefits>button>b{font-size:19px!important;font-weight:300!important;color:#9f7b46!important}
+.approved-benefit-details{margin:9px 0!important}
+.approved-benefits>button:focus-visible{outline:2px solid #ae8649!important;outline-offset:1px}
+.core-header .premium-brand-settings svg{width:21px!important;height:21px!important;stroke-width:1.8!important}
+.approved-member-card [data-wallet-provider]{margin-top:18px!important}
+.appointment-feature{min-height:unset!important;padding:21px 24px!important;box-shadow:0 12px 30px rgba(34,22,11,.10)!important}
+.appointment-feature .appointment-time{font-size:29px!important;margin:13px 0 8px!important}
+.book-my-appointments{min-height:unset!important}
+@media(max-width:370px){
+  .core-shell>.core-nav .nav-label{font-size:9px!important}
+  .approved-quick-actions{gap:5px!important}
+  .approved-quick-actions>button,.approved-quick-actions>a{min-height:81px!important}
+  .approved-quick-actions b{font-size:9.5px!important}
+}
+@media(prefers-reduced-motion:reduce){.core-shell>.core-nav .nav-btn{transition:none!important}}
