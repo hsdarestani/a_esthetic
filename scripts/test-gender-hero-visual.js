@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const app = fs.readFileSync('www/core-app.js', 'utf8');
 const css = fs.readFileSync('www/approved-v22.css', 'utf8');
 const html = fs.readFileSync('www/index.html', 'utf8');
-assert(app.includes("dash.hero_image_url||'./assets/site/hero.svg'"), "Authenticated dashboard must use the uploaded hero URL.");
+assert(app.includes("dash.hero_image_url||'./assets/site/clinic.jpg'"), "Authenticated dashboard must use the uploaded hero URL.");
 assert(app.includes('--approved-hero-image:url('), "Dashboard must expose the image URL as a CSS custom property.");
 assert(css.includes("var(--approved-hero-image, url('./assets/site/hero.svg')) right center/cover no-repeat!important"),
   "Hero background must use the configured image, with the original SVG as fallback.");
