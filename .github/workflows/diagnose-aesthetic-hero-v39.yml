@@ -1,0 +1,42 @@
+name: Inspect A+ Esthetic hero selection v39
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/diagnose-aesthetic-hero-v39.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read only production profile and image status
+        env:
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER: ${{ secrets.SERVER_USER }}
+          PORT: ${{ secrets.SERVER_PORT }}
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > "$RUNNER_TEMP/id"
+          chmod 600 "$RUNNER_TEMP/id"
+          cat > "$RUNNER_TEMP/inspect.py" <<'PY'
+          from django.contrib.auth.models import User
+          from django.db.models import Q
+          from platform_app.models import UserProfile
+          from p0_app.ops_models import DashboardHeroImage
+          matches = list(User.objects.filter(Q(first_name__icontains="ashkan") | Q(email__istartswith="ashkan.")).distinct())
+          print("MATCHING_ACCOUNTS", len(matches))
+          for user in matches:
+              profile = UserProfile.objects.filter(user=user).first()
+              slot = (profile.salutation if profile else "") or "missing"
+              print("ACCOUNT_SALUTATION", slot)
+          for variant in ["default", "frau", "herr"]:
+              hero = DashboardHeroImage.objects.filter(variant=variant).first()
+              print("HERO_SLOT", variant, "row", bool(hero), "image", bool(hero and hero.image), "file_exists", bool(hero and hero.image and hero.image.storage.exists(hero.image.name)))
+          PY
+          PAYLOAD="$(base64 -w0 "$RUNNER_TEMP/inspect.py")"
+          ssh -i "$RUNNER_TEMP/id" -p "${PORT:-22}" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$USER@$HOST" "cd /opt/a-esthetic-mobile && printf '%s' '$PAYLOAD' | base64 -d | ./venv/bin/python manage.py shell"
