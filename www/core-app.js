@@ -46,7 +46,12 @@
   const fmt = value => value ? new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)) : '—';
   const dateBits = value => { const d=new Date(value); return {day:d.toLocaleDateString('de-DE',{day:'2-digit'}),month:d.toLocaleDateString('de-DE',{month:'short'}),full:d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'}),time:d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}; };
   const isPast = a => new Date(a.starts_at).getTime() < Date.now() || ['cancelled','completed','done'].includes(String(a.status_code||a.status||'').toLowerCase());
-  const firstName = () => String(state.me?.member?.name || 'A+ Member').trim().split(/\s+/)[0] || 'A+ Member';
+  const firstName = () => {
+    const raw=String(state.me?.profile?.first_name || state.me?.member?.name || '').trim();
+    const candidate=raw.includes('@')?raw.split('@')[0].split(/[._\s-]/)[0]:raw.split(/\s+/)[0];
+    if(!candidate || /^A\+$/i.test(candidate)) return '';
+    return candidate.charAt(0).toLocaleUpperCase('de-DE')+candidate.slice(1,24);
+  };
 
   async function request(path, options={}) {
     const headers = new Headers(options.headers || {});
@@ -82,7 +87,7 @@
 
   function shell(content){
     const email=state.me?.profile?.email||'';
-    root.innerHTML=`<div class="core-shell">
+    root.innerHTML=`<div class="core-shell route-${state.route}">
       <header class="core-header premium-brand-header">
         <div class="core-brand" aria-label="A+ Esthetic">
           <span class="core-brand-emblem"><img src="./assets/logo.svg" alt="A+ Esthetic"></span>
@@ -229,7 +234,7 @@
     let html=`<section class="approved-home-hero ${heroImage?'has-image':''}" ${heroImage?`style="--approved-hero-image:url('${esc(heroImage)}')"`:''}>
       <div class="approved-home-copy">
         <span class="approved-kicker">WILLKOMMEN</span>
-        <h1>Willkommen,<br>${esc(firstName())}.</h1>
+        <h1>Willkommen${firstName()?',<br>'+esc(firstName())+'.':' bei A+.'}</h1>
         <p>Schön, dass du da bist.<br>Schönheit, die sich nach dir richtet.</p>
       </div>
       <div class="approved-home-image" aria-hidden="true"></div>
@@ -264,7 +269,7 @@
 
     html+=`<section class="approved-points-preview" data-dash-points>
       <div><span>A+ PUNKTE</span><strong>${points}</strong></div>
-      <p>Punkte sammeln.<br>Vorteile später freischalten.</p><b>›</b>
+      <p>Deine Punkte.<br>Deine Vorteile.</p><b>›</b>
     </section>`;
 
     if(banners.length){
@@ -303,13 +308,13 @@
     let html=`<section class="approved-points-hero">
       <span>A+ PUNKTE</span>
       <div class="approved-points-balance"><strong>${balance.toLocaleString('de-DE')}</strong><p>Deine Punkte</p><em>Schönheit<br>lohnt sich.</em></div>
-      <small>Noch ${remaining.toLocaleString('de-DE')} Punkte bis zu deinem nächsten Vorteil</small>
+      <small>Noch ${remaining.toLocaleString('de-DE')} Punkte bis zur nächsten Punktestufe</small>
       <div class="approved-progress"><i style="width:${progress}%"></i></div><b>${balance.toLocaleString('de-DE')} / ${nextMilestone.toLocaleString('de-DE')}</b>
     </section>`;
-    html+=`<section class="approved-benefits"><div class="approved-page-head compact"><h1>Deine Vorteile</h1><p>Sammle Punkte und freue dich auf exklusive Vorteile und besondere Erlebnisse.</p></div>
+    html+=`<section class="approved-benefits"><div class="approved-page-head compact"><h1>Deine Vorteile</h1><p>Dein persönlicher A+ Club auf einen Blick.</p></div>
       <button data-review-route><span>☆</span><div><strong>Google Bewertung</strong><small>+${Number(reviews.verified_review_points||250)} Punkte nach Verifizierung</small></div><b>›</b></button>
       <button data-friends-route><span>◇</span><div><strong>Freunde einladen</strong><small>Punkte nach erfolgreicher Empfehlung</small></div><b>›</b></button>
-      <button type="button" data-exclusive-benefits aria-expanded="false" aria-controls="exclusive-benefit-details"><span>✦</span><div><strong>Exklusive Vorteile</strong><small>Angebote und Verfügbarkeit ansehen</small></div><b data-exclusive-chevron>›</b></button>
+      <button type="button" data-exclusive-benefits aria-expanded="false" aria-controls="exclusive-benefit-details"><span>✦</span><div><strong>Club Vorteile</strong><small>Aktuelle Angebote ansehen</small></div><b data-exclusive-chevron>›</b></button>
       <div id="exclusive-benefit-details" class="approved-benefit-details" data-exclusive-benefit-details role="region" aria-label="Exklusive Vorteile" hidden></div>
       ${card.member_number?`<button data-show-member-qr><span>▣</span><div><strong>Digitale Mitgliedskarte</strong><small>${esc(card.member_number)}</small></div><b>›</b></button>`:''}
     </section>`;
@@ -320,10 +325,10 @@
         !!window.Capacitor?.Plugins?.CapacitorPassToWallet?.addToWallet;
       const googleAvailable=currentPlatform==='android'&&pass.providers?.google?.configured;
       html+=`<section class="approved-member-card" data-member-qr-slot hidden>
-        <p class="approved-wallet-guide">Deine digitale Mitgliedskarte mit persönlichem QR-Code. Auch auf Android verfügbar.</p>
+        <div class="approved-wallet-head"><span>A+ ESTHETIC</span><strong>Deine Mitgliedskarte</strong><small>Persönlich. Digital. Jederzeit.</small></div>
         <img data-member-qr alt="Persönlicher QR-Code der A+ Esthetic Mitgliedskarte">
         <div data-wallet-notice hidden></div>
-        ${appleAvailable?'<button type="button" class="secondary" data-wallet-provider="apple">Zu Apple Wallet hinzufügen</button>':''}
+        ${appleAvailable?'<button type="button" class="secondary wallet-add-btn" data-wallet-provider="apple">Zu Apple Wallet hinzufügen</button>':''}
         ${googleAvailable?'<button type="button" class="secondary" data-wallet-provider="google">Zu Google Wallet hinzufügen</button>':''}
       </section>`;
     }
@@ -353,9 +358,9 @@
                 (item.message?'<p>'+esc(item.message)+'</p>':'')+
                 (item.ends_at?'<small>Gültig bis '+esc(new Date(item.ends_at).toLocaleDateString('de-DE'))+'</small>':'')+'</article>').join('');
           }else if(access.eligible){
-            exclusivePanel.innerHTML='<h3>Derzeit keine exklusiven Aktionen</h3><p>Für deine Mitgliedschaft sind aktuell keine exklusiven Angebote veröffentlicht. Sobald neue Aktionen verfügbar sind, erscheinen sie hier.</p>';
+            exclusivePanel.innerHTML='<h3>Bald wieder etwas Besonderes</h3><p>Derzeit gibt es keine aktuellen Club Angebote.</p>';
           }else{
-            exclusivePanel.innerHTML='<h3>Aktuell nichts freigeschaltet</h3><p>Für dein Konto sind derzeit keine exklusiven Aktionen verfügbar. Wenn Angebote für deine Mitgliedschaft freigeschaltet werden, findest du sie hier.</p>';
+            exclusivePanel.innerHTML='<h3>Deine Club Vorteile</h3><p>Für dein Konto ist momentan kein exklusives Angebot verfügbar.</p>';
           }
         }catch(err){
           if(exclusiveButton.getAttribute('aria-expanded')==='true'){
