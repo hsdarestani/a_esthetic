@@ -50,14 +50,26 @@
         throw new Error(data.error || `wallet_http_${response.status}`);
       }
 
+      const mime = response.headers.get('content-type') || '';
+      if (!mime.includes('application/vnd.apple.pkpass')) throw new Error('invalid_pass_response');
       const blob = await response.blob();
+      if (blob.size < 1000) throw new Error('empty_pass');
       const base64 = await blobToBase64(blob);
       await plugin.addToWallet({ base64 });
+      const host = document.querySelector('[data-wallet-notice]');
+      if (host) { host.hidden = true; host.textContent = ''; }
       return true;
     } catch (error) {
-      const text = error?.message === 'wallet_provider_not_configured'
-        ? 'Apple Wallet ist serverseitig noch nicht eingerichtet.'
-        : 'Die A+ Karte konnte gerade nicht zu Apple Wallet hinzugefügt werden.';
+      const reason = String(error?.message || '');
+      const text = reason.includes('wallet_provider_not_configured')
+        ? 'Apple Wallet ist momentan nicht verfügbar. Deine Mitgliedskarte mit QR Code bleibt nutzbar.'
+        : reason.includes('wallet_http_401')
+        ? 'Bitte melde dich erneut an und versuche es noch einmal.'
+        : reason.includes('wallet_generation_failed') || reason.includes('wallet_http_500')
+        ? 'Deine Karte konnte nicht erstellt werden. Bitte versuche es später erneut.'
+        : reason.includes('invalid_pass_response') || reason.includes('empty_pass')
+        ? 'Die Wallet Karte wurde unvollständig übertragen. Bitte versuche es erneut.'
+        : 'Apple Wallet konnte die Karte nicht hinzufügen. Bitte versuche es auf einem iPhone erneut.';
       notice(text);
       return true;
     } finally {
