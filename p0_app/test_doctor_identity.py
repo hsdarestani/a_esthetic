@@ -1,4 +1,4 @@
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
 from django.test import TestCase
 
 from platform_app.mobile_api import _token_for
@@ -14,6 +14,7 @@ class DoctorIdentityTests(TestCase):
         profile, _ = UserProfile.objects.get_or_create(user=user)
         profile.role = 'specialist'
         profile.save(update_fields=['role'])
+        user.groups.add(Group.objects.get_or_create(name='aesthetic_qamar_doctor')[0])
         auth = {'HTTP_AUTHORIZATION': 'Bearer ' + _token_for(user)}
         response = self.client.get('/api/mobile/doctor/', **auth)
         self.assertEqual(response.status_code, 200)
