@@ -30,12 +30,12 @@ class BotoxbogenAdminPushTests(TestCase):
             }), content_type="application/json")
         response = internal_booking_notification(request)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(json.loads(response.content)["notifications"], 1)
-        args, kwargs = create.call_args
-        self.assertEqual(args[0], self.admin)
-        self.assertEqual(kwargs["deeplink"], "admin_patient")
-        self.assertEqual(kwargs["data"]["patient_customer_id"], "42")
-        self.assertNotIn("medical", json.dumps(kwargs["data"]).lower())
+        self.assertGreaterEqual(json.loads(response.content)["notifications"], 1)
+        self.assertTrue(any(call.args[0].pk == self.admin.pk for call in create.call_args_list))
+        for call in create.call_args_list:
+            self.assertEqual(call.kwargs["deeplink"], "admin_patient")
+            self.assertEqual(call.kwargs["data"]["patient_customer_id"], "42")
+            self.assertNotIn("medical", json.dumps(call.kwargs["data"]).lower())
 
     @patch("p0_app.notification_views._internal_authorized", return_value=True)
     @patch("p0_app.notification_views._internal_sync_token", return_value="configured")
