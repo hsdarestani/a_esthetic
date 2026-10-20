@@ -6,6 +6,7 @@ from . import (
     admin_mobile_views,
     billing_admin_views,
     book_billing_bridge,
+    book_wallet_bridge,
     admin_wallet_history_views,
     book_admin_proxy_views,
     canonical_booking_views,
@@ -64,6 +65,8 @@ urlpatterns = [
     path("api/mobile/admin/billing/services/<int:service_id>/", billing_admin_views.billing_service, name="p0_mobile_admin_billing_service"),
     # Private service bridge: called only from authenticated Booking server.
     path("api/mobile/internal/book-billing/<str:operation>/", book_billing_bridge.book_billing, name="p0_internal_book_billing"),
+    path("api/mobile/internal/book-wallet/<str:operation>/", book_wallet_bridge.book_wallet, name="p0_internal_book_wallet"),
+    path("api/mobile/internal/book-wallet/<str:operation>/<int:item_id>/", book_wallet_bridge.book_wallet, name="p0_internal_book_wallet_item"),
     path("api/mobile/internal/book-billing/<str:operation>/<int:item_id>/", book_billing_bridge.book_billing, name="p0_internal_book_billing_item"),
     path("api/mobile/admin/billing/invoices/", billing_admin_views.billing_invoices, name="p0_mobile_admin_billing_invoices"),
     path("api/mobile/admin/billing/invoices/<int:invoice_id>/finalize/", billing_admin_views.billing_invoice_finalize, name="p0_mobile_admin_billing_invoice_finalize"),
