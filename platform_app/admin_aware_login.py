@@ -6,6 +6,7 @@ from django.views.decorators.http import require_http_methods
 
 from . import mobile_api
 from .models import AuditLog, UserProfile
+from p0_app.doctor_views import _is_qamar_doctor
 from .account_state import account_state
 
 
@@ -41,22 +42,24 @@ def login(request):
         return JsonResponse({'ok': False, 'error': 'invalid_credentials'}, status=401)
 
     is_admin = _is_admin(user)
+    is_doctor = not is_admin and _is_qamar_doctor(user)
     AuditLog.objects.create(
         actor=user,
         action='Mobile App Login',
-        entity_type='AdminAccount' if is_admin else 'UserAccount',
+        entity_type='AdminAccount' if is_admin else ('DoctorAccount' if is_doctor else 'UserAccount'),
         entity_id=str(user.pk),
-        metadata={'channel': 'book_admin_app' if is_admin else 'customer_club_app'},
+        metadata={'channel': 'doctor_bookings_app' if is_doctor else ('book_admin_app' if is_admin else 'customer_club_app')},
         ip_address=request.META.get('REMOTE_ADDR'),
     )
 
     payload = {
         'ok': True,
         'token': mobile_api._token_for(user),
-        'admin': is_admin,
-        'account_type': 'admin' if is_admin else 'customer',
+        'admin': is_admin or is_doctor,
+        'doctor': is_doctor,
+        'account_type': 'admin' if is_admin else ('doctor' if is_doctor else 'customer'),
     }
-    if is_admin:
+    if is_admin or is_doctor:
         payload['admin_profile'] = {
             'id': user.pk,
             'name': user.get_full_name() or user.username,
