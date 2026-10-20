@@ -53,6 +53,7 @@
       wallet: 'points',
       points: 'points',
       admin_booking: '__admin_booking__',
+      doctor_calendar: '__admin_booking__',
       booking_admin: '__admin_booking__',
       review: 'reviews',
       reviews: 'reviews',
