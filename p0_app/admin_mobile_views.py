@@ -38,6 +38,15 @@ def _json(request):
 
 
 def _admin_auth(request):
+    # An authenticated, explicitly allowlisted server-to-server billing bridge
+    # sets this in-process attribute after validating its shared credential.
+    # HTTP clients cannot set Python request attributes through headers.
+    internal_actor = getattr(request, "_book_internal_billing_actor", None)
+    if internal_actor is not None:
+        profile, _ = UserProfile.objects.get_or_create(user=internal_actor)
+        if internal_actor.is_active and (internal_actor.is_superuser or profile.role == "admin"):
+            return internal_actor, None
+        return None, JsonResponse({"ok": False, "error": "internal_admin_required"}, status=403)
     user, error = legacy_mobile_api._auth(request)
     if error:
         return None, error
