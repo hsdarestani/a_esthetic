@@ -110,6 +110,48 @@ class CustomerOpsTests(TestCase):
         self.assertEqual(allowed.status_code, 200, allowed.content)
         self.assertEqual(allowed.json()["links"]["book_admin"], "https://book.a-esthetic.de/verwaltung/")
 
+    def test_private_doctor_booking_push_targets_only_own_device_account(self):
+        from django.contrib.auth.models import Group
+        doctor = User.objects.create_user(
+            username="qamar", email="qamar@a-esthetic.de", password="DoctorTest123!",
+            first_name="Qamar", last_name="Hameed")
+        UserProfile.objects.create(user=doctor, role="specialist")
+        doctor.groups.add(Group.objects.get_or_create(name="aesthetic_qamar_doctor")[0])
+        unrelated = User.objects.create_user(
+            username="different-doctor", first_name="Andere", last_name="Ärztin",
+            password="DoctorTest123!")
+        UserProfile.objects.create(user=unrelated, role="specialist")
+
+        payload = {"target": "doctor", "event": "booking_created",
+                   "staff_name": "Qamar Hameed", "title": "Neuer Termin",
+                   "body": "Meine Patientin"}
+        with mock.patch("p0_app.notification_views._internal_sync_token", return_value="relay-secret"):
+            with mock.patch("p0_app.notification_views.create_notification") as created:
+                created.return_value.push_result = {"devices": []}
+                response = self.client.post(
+                    "/api/mobile/internal/booking-notifications/",
+                    data=json.dumps(payload), content_type="application/json",
+                    HTTP_X_AESTHETIC_PATIENT_SYNC="relay-secret")
+                self.assertEqual(response.status_code, 200, response.content)
+                self.assertEqual(response.json()["recipients"], 1)
+                self.assertEqual(created.call_args.args[0].pk, doctor.pk)
+                self.assertEqual(created.call_args.kwargs["deeplink"], "doctor_calendar")
+                created.reset_mock()
+                payload["staff_name"] = "Andere Ärztin"
+                response = self.client.post(
+                    "/api/mobile/internal/booking-notifications/",
+                    data=json.dumps(payload), content_type="application/json",
+                    HTTP_X_AESTHETIC_PATIENT_SYNC="relay-secret")
+                self.assertEqual(response.json()["recipients"], 0)
+                created.assert_not_called()
+                payload["staff_name"] = "Qamar Hameed"
+                denied = self.client.post(
+                    "/api/mobile/internal/booking-notifications/",
+                    data=json.dumps(payload), content_type="application/json",
+                    HTTP_X_AESTHETIC_PATIENT_SYNC="wrong")
+                self.assertEqual(denied.status_code, 403)
+                self.assertFalse(AppNotification.objects.filter(user=unrelated).exists())
+
     def test_shop_is_hard_disabled(self):
         response = self.client.get("/api/mobile/shop/", **self.auth)
         self.assertEqual(response.status_code, 200, response.content)
