@@ -160,7 +160,7 @@ def internal_booking_notification(request):
     title = str(data.get("title") or "").strip()[:180]
     body = str(data.get("body") or "").strip()[:5000]
     email = str(data.get("customer_email") or "").strip().lower()[:254]
-    if target not in {"admin", "customer"}:
+    if target not in {"admin", "customer", "doctor"}:
         return JsonResponse({"ok": False, "error": "invalid_notification_target"}, status=400)
     if not title or not body:
         return JsonResponse({"ok": False, "error": "notification_content_required"}, status=400)
@@ -173,6 +173,23 @@ def internal_booking_notification(request):
             recipients = [customer]
         else:
             missing_customer = True
+    elif target == "doctor":
+        # Never fan out general admin traffic to a physician.
+        # Names are verified against the booking's owner and the app's
+        # dedicated doctor role. The relay itself requires the shared secret.
+        if str(data.get("staff_name") or "").strip().casefold() != "qamar hameed":
+            return JsonResponse({
+                "ok": True, "target": "doctor", "event": event,
+                "recipients": 0, "notifications": 0, "push_deliveries": 0,
+                "skipped": "different_doctor",
+            })
+        recipients = list(
+            User.objects.filter(
+                is_active=True, is_superuser=False,
+                first_name__iexact="Qamar", last_name__iexact="Hameed",
+                groups__name="aesthetic_qamar_doctor", profile__role="specialist",
+            ).distinct().order_by("id")
+        )
     else:
         recipients = list(
             User.objects.filter(is_active=True)
@@ -194,7 +211,7 @@ def internal_booking_notification(request):
         "booking_starts_at": str(data.get("starts_at") or "")[:80],
         "booking_source": str(data.get("source") or "")[:40],
     }
-    deeplink = "admin_booking" if target == "admin" else "appointments"
+    deeplink = "admin_booking" if target == "admin" else ("doctor_calendar" if target == "doctor" else "appointments")
     for recipient in recipients:
         item = create_notification(
             recipient,
