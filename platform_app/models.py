@@ -166,6 +166,7 @@ class CheckInSession(models.Model):
 
 class Invoice(models.Model):
     STATUS=[('draft','Entwurf'),('issued','Ausgestellt'),('cancelled','Storniert')]
+    billing_method=models.CharField(max_length=12,choices=[('standard','Standard'),('goae','GOÄ')],default='standard')
     user=models.ForeignKey(User,on_delete=models.PROTECT,related_name='invoices')
     appointment=models.ForeignKey(Appointment,null=True,blank=True,on_delete=models.SET_NULL,related_name='invoices')
     number=models.CharField(max_length=40,null=True,blank=True,unique=True)
@@ -189,6 +190,10 @@ class Invoice(models.Model):
 
 class InvoiceItem(models.Model):
     invoice=models.ForeignKey(Invoice,on_delete=models.CASCADE,related_name='items')
+    goae_number=models.CharField(max_length=24,blank=True)
+    goae_factor=models.DecimalField(max_digits=4,decimal_places=2,blank=True,null=True)
+    goae_base_cents=models.PositiveIntegerField(blank=True,null=True)
+    goae_justification=models.TextField(blank=True)
     service=models.ForeignKey(Service,null=True,blank=True,on_delete=models.SET_NULL)
     description=models.CharField(max_length=220)
     quantity=models.DecimalField(max_digits=8,decimal_places=2,default=1)
