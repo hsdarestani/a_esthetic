@@ -9,6 +9,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from platform_app.book_sync import sync_service_catalog_from_book
+from platform_app.goae_billing import create_goae_draft
 from platform_app.models import (
     AuditLog,
     Invoice,
@@ -71,6 +72,7 @@ def _invoice_payload(item):
         "id": item.pk,
         "number": item.number,
         "status": item.status,
+        "billing_method": item.billing_method,
         "status_label": item.get_status_display(),
         "service_date": item.service_date.strftime("%d.%m.%Y"),
         "issued_on": item.issued_on.strftime("%d.%m.%Y") if item.issued_on else None,
@@ -234,6 +236,17 @@ def billing_invoices(request):
     customer = User.objects.filter(
         pk=data.get("customer_id"), is_active=True, is_superuser=False, profile__role="customer"
     ).select_related("profile").first()
+    if data.get("billing_method") == "goae":
+        service_date = _parse_service_date(data.get("service_date"))
+        if not customer or not service_date:
+            return JsonResponse({"ok": False, "error": "customer_service_date_required"}, status=400)
+        try:
+            invoice = create_goae_draft(user=customer, actor=actor,
+                                        service_date=service_date, data=data)
+        except ValueError as exc:
+            return JsonResponse({"ok": False, "error": "invalid_goae_draft",
+                                 "message": str(exc)}, status=400)
+        return JsonResponse({"ok": True, "invoice": _invoice_payload(invoice)}, status=201)
     service = Service.objects.filter(pk=data.get("service_id"), active=True).first()
     service_date = _parse_service_date(data.get("service_date"))
 
@@ -298,6 +311,8 @@ def billing_invoice_finalize(request, invoice_id):
             return JsonResponse({"ok": False, "error": "invoice_not_found"}, status=404)
         if invoice.status != "draft":
             return JsonResponse({"ok": True, "invoice": _invoice_payload(invoice)})
+        if invoice.billing_method == "goae":
+            return JsonResponse({"ok": False, "error": "goae_template_pending"}, status=409)
 
         settings, _ = InvoiceSettings.objects.select_for_update().get_or_create(pk=1)
         if not settings.ready_for_issue:
