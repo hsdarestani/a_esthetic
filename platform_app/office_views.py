@@ -16,6 +16,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 from .book_sync import sync_customer_to_book, sync_service_catalog_from_book
+from .goae_billing import create_goae_draft, goae_draft_pdf_bytes
 from .models import (
     AuditLog,
     CheckInSession,
@@ -160,6 +161,8 @@ def _money(cents):
 
 
 def _invoice_pdf_bytes(invoice, settings):
+    if invoice.billing_method == "goae":
+        return goae_draft_pdf_bytes(invoice, settings)
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
@@ -368,6 +371,22 @@ def office_dashboard(request):
                 expires_at=timezone.now() + timedelta(minutes=30),
             )
             return redirect("office_checkin", token=session.token)
+
+        if action == "new_goae_invoice":
+            customer = User.objects.filter(pk=request.POST.get("customer_id"), is_active=True).first()
+            service_date = _parse_service_date(request.POST.get("service_date"))
+            if not customer or not service_date:
+                error = "Kunde und Leistungsdatum sind erforderlich."
+            else:
+                try:
+                    invoice = create_goae_draft(
+                        user=customer, actor=request.user,
+                        service_date=service_date, data=request.POST,
+                    )
+                except ValueError as exc:
+                    error = str(exc)
+                else:
+                    return redirect("office_invoice_detail", invoice_id=invoice.pk)
 
         if action == "new_invoice":
             customer = User.objects.filter(pk=request.POST.get("customer_id"), is_active=True).first()
@@ -672,6 +691,8 @@ def office_invoice_finalize(request, invoice_id):
         settings, _ = InvoiceSettings.objects.select_for_update().get_or_create(pk=1)
         if invoice.status != "draft":
             return redirect("office_invoice_detail", invoice_id=invoice.pk)
+        if invoice.billing_method == "goae":
+            return HttpResponse("GOÄ Entwurf: Endgültige Ausstellung erst nach Freigabe der Rechnungsvorlage.", status=409)
         if not settings.ready_for_issue:
             return HttpResponse("Steuernummer oder USt-IdNr. fehlt in den Rechnungseinstellungen.", status=409)
         if not all([invoice.customer_street, invoice.customer_postal_code, invoice.customer_city]):
