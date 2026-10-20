@@ -68,7 +68,18 @@
   }
 
   function openNotification(event) {
-    const deeplink = event?.notification?.data?.deeplink || event?.notification?.data?.route || '';
+    const incoming = event?.notification?.data || {};
+    // iOS APNs may wrap custom fields inside a nested data object.
+    const data = incoming?.data && typeof incoming.data === 'object'
+      ? { ...incoming.data, ...incoming } : incoming;
+    const deeplink = data.deeplink || data.route || '';
+    if (deeplink === 'admin_patient') {
+      const patientId = String(data.patient_customer_id || '').trim();
+      if (/^[1-9][0-9]{0,11}$/.test(patientId)) {
+        window.APlusAdminMode?.open?.({ patientId });
+      }
+      return;
+    }
     const target = routeForDeeplink(deeplink);
     if (target === '__admin_booking__') {
       if (window.APlusAdminMode?.open) window.APlusAdminMode.open();
