@@ -1,0 +1,25 @@
+<section class="card">
+  <div class="sectionhead"><div><h2>Rechnung nach GOÄ</h2>
+    <p>Privatpraxis Ariane Regaei · ärztlicher Entwurf</p></div></div>
+  <form method="post" class="formgrid">
+    {% csrf_token %}<input type="hidden" name="action" value="new_goae_invoice">
+    <div class="field"><label>Patient</label><select name="customer_id" required>
+      <option value="">Bitte wählen</option>{% for c in customers %}
+      <option value="{{ c.id }}">{{ c.get_full_name|default:c.email }} · {{ c.email }}</option>
+      {% endfor %}</select></div>
+    <div class="field"><label>Leistungsdatum</label><input type="date" name="service_date" required></div>
+    <div class="field"><label>GOÄ Nummer</label><input name="goae_number" maxlength="24" required></div>
+    <div class="field"><label>Leistungsbeschreibung</label><input name="goae_description" maxlength="220" required></div>
+    <div class="field"><label>Einfachsatz in EUR (prüfen)</label>
+      <input name="goae_base_eur" inputmode="decimal" placeholder="10,00" required></div>
+    <div class="field"><label>Steigerungsfaktor</label>
+      <input name="goae_factor" inputmode="decimal" placeholder="2,30" required></div>
+    <div class="field"><label>Umsatzsteuerstatus</label><select name="goae_vat_rate" required>
+      <option value="">Bitte prüfen</option><option value="0">0 %</option>
+      <option value="7">7 %</option><option value="19">19 %</option></select></div>
+    <div class="field"><label>Begründung bei erhöhtem Faktor</label>
+      <input name="goae_justification" maxlength="1500"></div>
+    <button class="btn gold" type="submit">GOÄ Entwurf erstellen</button>
+  </form>
+  <div class="callout">Nicht zur Zahlung. Endgültige Freigabe nach Prüfung der Gebühren und Vorlage.</div>
+</section>
