@@ -107,8 +107,17 @@
           cache: 'no-store',
         });
         if (response.status === 403) {
-          adminState = false;
-          return false;
+          // Doctors use a separate, identity-scoped endpoint. They must not
+          // receive generic admin access to patients, wallets or settings.
+          const clinical = await nativeFetch(`${API_BASE}/doctor/`, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${value}`, Accept: 'application/json' },
+            cache: 'no-store',
+          });
+          const identity = clinical.ok ? await clinical.json().catch(() => ({})) : {};
+          adminState = Boolean(identity && identity.ok && identity.doctor);
+          if (adminState) showAdminGateway();
+          return adminState;
         }
         if (!response.ok) {
           adminState = false;
