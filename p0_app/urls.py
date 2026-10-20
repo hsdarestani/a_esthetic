@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import (
+    doctor_views,
     admin_content_views,
     admin_mobile_views,
     billing_admin_views,
@@ -33,6 +34,7 @@ urlpatterns = [
     path("api/mobile/internal/booking-notifications/", notification_views.internal_booking_notification, name="p0_internal_booking_notification"),
     path("api/mobile/internal/referral-booking/", notification_views.internal_referral_booking, name="p0_internal_referral_booking"),
     path("api/mobile/admin/", admin_mobile_views.mobile_admin_overview, name="p0_mobile_admin_overview"),
+    path("api/mobile/doctor/", doctor_views.doctor_identity, name="p0_mobile_doctor_identity"),
     path("api/mobile/admin/customers/", admin_mobile_views.mobile_admin_customers, name="p0_mobile_admin_customers"),
     path("api/mobile/admin/customers/<int:customer_id>/", admin_mobile_views.mobile_admin_customer, name="p0_mobile_admin_customer"),
     path("api/mobile/admin/customers/<int:customer_id>/wallet-history/", admin_wallet_history_views.mobile_admin_wallet_history, name="p0_mobile_admin_wallet_history"),

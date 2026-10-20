@@ -225,6 +225,7 @@ jobs:
             "$VENV/bin/python" manage.py collectstatic --noinput
             "$VENV/bin/python" manage.py check
             "$VENV/bin/python" manage.py ensure_info_admin --email info@a-esthetic.de
+            "$VENV/bin/python" manage.py ensure_qamar_doctor
 
             cat > /etc/systemd/system/a-esthetic-mobile.service <<SERVICE
             [Unit]
