@@ -8,7 +8,9 @@ from platform_app.models import UserProfile
 
 def _is_qamar_doctor(user):
     """An ordinary customer cannot impersonate a clinician by choosing a name."""
-    if not user.is_staff or not user.is_active or user.is_superuser:
+    if not user.is_active or user.is_superuser:
+        return False
+    if not user.groups.filter(name='aesthetic_qamar_doctor').exists():
         return False
     profile, _ = UserProfile.objects.get_or_create(user=user)
     return (
