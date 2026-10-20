@@ -24,8 +24,9 @@ class DoctorIdentityTests(TestCase):
     def test_self_registered_identity_is_not_promoted(self):
         user = User.objects.create_user('qamar-customer', password='test-password',
             first_name='Qamar', last_name='Hameed')
-        user.profile.role = 'specialist'
-        user.profile.save()
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile.role = 'specialist'
+        profile.save(update_fields=['role'])
         response = self.client.get('/api/mobile/doctor/',
             HTTP_AUTHORIZATION='Bearer ' + _token_for(user))
         self.assertEqual(response.status_code, 403)
