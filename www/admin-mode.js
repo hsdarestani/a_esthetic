@@ -68,7 +68,7 @@
     });
   }
 
-  async function openExactBookAdmin(value = token()) {
+  async function openExactBookAdmin(value = token(), patientId = null) {
     if (!value || redirecting) return;
     redirecting = true;
     adminState = true;
@@ -86,7 +86,9 @@
     }
     // The bearer lives only in the fragment. The Book bridge immediately removes
     // it from the address bar and exchanges it for a normal first-party staff session.
-    window.location.replace(`${BOOK_ENTRY}#token=${encodeURIComponent(value)}`);
+    const id = String(patientId ?? '').trim();
+    const patient = /^[1-9][0-9]{0,11}$/.test(id) ? `?patient=${encodeURIComponent(id)}` : '';
+    window.location.replace(`${BOOK_ENTRY}${patient}#token=${encodeURIComponent(value)}`);
   }
 
   async function isAdmin(force = false) {
@@ -171,7 +173,7 @@
   if (!justLoggedOut && token()) void isAdmin();
 
   window.APlusAdminMode = {
-    open: () => openExactBookAdmin(),
+    open: (options = {}) => openExactBookAdmin(token(), options?.patientId),
     check: () => isAdmin(true),
     logout: () => {
       clearAdminToken();
