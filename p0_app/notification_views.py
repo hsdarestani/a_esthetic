@@ -212,6 +212,21 @@ def internal_booking_notification(request):
         "booking_source": str(data.get("source") or "")[:40],
     }
     deeplink = "admin_booking" if target == "admin" else ("doctor_calendar" if target == "doctor" else "appointments")
+    if event == "botoxbogen_submitted":
+        # This notification always belongs to a privileged admin, never a patient
+        # or a clinician-only account. No form answers or diagnoses enter push.
+        if target != "admin":
+            return JsonResponse({"ok": False, "error": "invalid_form_target"}, status=400)
+        customer_id = str(data.get("patient_customer_id") or "").strip()
+        record_id = str(data.get("patient_record_id") or "").strip()
+        if not customer_id.isdecimal() or len(customer_id) > 12 or not record_id or len(record_id) > 80:
+            return JsonResponse({"ok": False, "error": "invalid_patient_reference"}, status=400)
+        relay_data = {
+            "event": event,
+            "patient_customer_id": customer_id,
+            "patient_record_id": record_id,
+        }
+        deeplink = "admin_patient"
     for recipient in recipients:
         item = create_notification(
             recipient,
