@@ -5,7 +5,9 @@ from django.db import transaction
 from platform_app.models import UserProfile
 
 
-USERNAME = 'doctor.qamar.hameed'
+USERNAME = 'qamar'
+OLD_USERNAME = 'doctor.qamar.hameed'
+LOGIN_EMAIL = 'qamar@a-esthetic.de'
 GROUP_NAME = 'aesthetic_qamar_doctor'
 
 
@@ -15,7 +17,12 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         group, _ = Group.objects.get_or_create(name=GROUP_NAME)
-        user = User.objects.filter(username=USERNAME).first()
+        user = User.objects.filter(username=OLD_USERNAME).first()
+        if not user:
+            existing_short = User.objects.filter(username=USERNAME).first()
+            if existing_short and not existing_short.groups.filter(name=GROUP_NAME).exists():
+                raise ValueError('Username qamar belongs to an unrelated account')
+            user = existing_short
 
         if not user:
             candidates = User.objects.filter(
@@ -32,6 +39,12 @@ class Command(BaseCommand):
             user = User(username=USERNAME)
             user.set_unusable_password()
 
+        if User.objects.filter(username=USERNAME).exclude(pk=user.pk if user.pk else None).exists():
+            raise ValueError('Username qamar is already in use')
+        if User.objects.filter(email__iexact=LOGIN_EMAIL).exclude(pk=user.pk if user.pk else None).exists():
+            raise ValueError('Login email is already in use')
+        user.username = USERNAME
+        user.email = LOGIN_EMAIL
         user.first_name = 'Qamar'
         user.last_name = 'Hameed'
         user.is_active = True
