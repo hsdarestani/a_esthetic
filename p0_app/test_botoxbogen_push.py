@@ -1,5 +1,6 @@
 import json
-from unittest.mock import patch, SimpleNamespace
+from unittest.mock import patch
+from types import SimpleNamespace
 
 from django.contrib.auth.models import User
 from django.test import TestCase, RequestFactory
