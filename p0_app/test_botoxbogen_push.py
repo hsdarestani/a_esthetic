@@ -30,7 +30,7 @@ class BotoxbogenAdminPushTests(TestCase):
             }), content_type="application/json")
         response = internal_booking_notification(request)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["notifications"], 1)
+        self.assertEqual(json.loads(response.content)["notifications"], 1)
         args, kwargs = create.call_args
         self.assertEqual(args[0], self.admin)
         self.assertEqual(kwargs["deeplink"], "admin_patient")
