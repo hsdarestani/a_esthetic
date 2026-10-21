@@ -19,6 +19,8 @@ if [ ! -d ios ]; then
   npx cap add ios
 fi
 npx cap sync ios
+# Keep this explicit even if the Capacitor after-sync hook is bypassed.
+python3 scripts/configure_native_camera_permissions.py
 
 # Sign in with Apple must use the native AuthenticationServices entitlement.
 # Keep it scoped to the generated App target. Push is added to the same
