@@ -68,6 +68,14 @@ jobs:
           DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
         run: python manage.py test p0_app --verbosity 2
 
+      - name: Verify iOS social-login callback and native URL registration
+        env:
+          DJANGO_DEBUG: "1"
+          DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
+        run: |
+          python3 scripts/test_ios_social_deeplink.py
+          python manage.py test platform_app.test_social_redirect --verbosity 2
+
       - name: Verify Store positioning
         run: python scripts/store_positioning_check.py
 
