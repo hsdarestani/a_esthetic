@@ -37,7 +37,7 @@ jobs:
       - name: Generate app and assert callback registration
         run: |
           set -euo pipefail
-          npm ci --no-audit --no-fund
+          npm install --no-audit --no-fund
           npx cap add ios
           npx cap sync ios
           python3 scripts/configure_native_camera_permissions.py
@@ -106,7 +106,7 @@ jobs:
             echo 'Apple signing credentials unavailable; no signed IPA was produced.'
             exit 0
           fi
-          npm ci --no-audit --no-fund
+          npm install --no-audit --no-fund
           printf '%s' "$APPLE_AUTH_KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
           chmod 600 "$RUNNER_TEMP/AuthKey.p8"
           export APPLE_AUTH_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
