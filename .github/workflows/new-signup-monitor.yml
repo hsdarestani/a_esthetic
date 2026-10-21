@@ -1,0 +1,81 @@
+name: A+ Esthetic new signups monitor setup
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "ops/monitor_new_signups.py"
+      - ".github/workflows/new-signup-monitor.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-new-signup-monitor-install
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload registration monitor
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "ops/monitor_new_signups.py"
+          target: "/tmp/aesthetic-signup-monitor-release"
+
+      - name: Install and run server-side half-hourly monitor
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            APP_ROOT=/opt/a-esthetic-mobile
+            test -f "$APP_ROOT/manage.py"
+            test -x "$APP_ROOT/venv/bin/python"
+            test -f "$APP_ROOT/mobile.env"
+            install -d -m 0700 "$APP_ROOT/ops"
+            install -m 0600 /tmp/aesthetic-signup-monitor-release/ops/monitor_new_signups.py "$APP_ROOT/ops/monitor_new_signups.py"
+            cat > /etc/systemd/system/a-esthetic-new-signups.service <<'SERVICE'
+            [Unit]
+            Description=A+ Esthetic new customer registration notifications
+            After=network-online.target a-esthetic-mobile.service
+            Wants=network-online.target
+            [Service]
+            Type=oneshot
+            WorkingDirectory=/opt/a-esthetic-mobile
+            EnvironmentFile=/opt/a-esthetic-mobile/mobile.env
+            ExecStart=/opt/a-esthetic-mobile/venv/bin/python /opt/a-esthetic-mobile/ops/monitor_new_signups.py
+            UMask=0077
+            NoNewPrivileges=true
+            [Install]
+            WantedBy=multi-user.target
+            SERVICE
+            cat > /etc/systemd/system/a-esthetic-new-signups.timer <<'TIMER'
+            [Unit]
+            Description=Check A+ Esthetic new signups every 30 minutes
+            [Timer]
+            OnCalendar=*-*-* *:00,30:00
+            Persistent=true
+            AccuracySec=30s
+            RandomizedDelaySec=0
+            Unit=a-esthetic-new-signups.service
+            [Install]
+            WantedBy=timers.target
+            TIMER
+            systemctl daemon-reload
+            systemctl enable --now a-esthetic-new-signups.timer
+            systemctl start a-esthetic-new-signups.service
+            systemctl is-active --quiet a-esthetic-new-signups.timer
+            systemctl list-timers a-esthetic-new-signups.timer --no-pager
+            journalctl -u a-esthetic-new-signups.service -n 15 --no-pager --output=cat
