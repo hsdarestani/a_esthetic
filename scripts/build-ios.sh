@@ -21,6 +21,19 @@ fi
 npx cap sync ios
 # Keep this explicit even if the Capacitor after-sync hook is bypassed.
 python3 scripts/configure_native_camera_permissions.py
+# Browser based Google OAuth must be handled by the installed iOS app.
+python3 - "$ROOT/ios/App/App/Info.plist" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+with Path(sys.argv[1]).open("rb") as f:
+    info = plistlib.load(f)
+schemes = [scheme for entry in info.get("CFBundleURLTypes", [])
+           for scheme in entry.get("CFBundleURLSchemes", [])]
+if "de.aplusesthetic.app" not in schemes:
+    raise SystemExit("FATAL: iOS callback URL scheme missing from Info.plist")
+print("Confirmed iOS OAuth callback scheme registered in source App Info.plist.")
+PY
 
 # Sign in with Apple must use the native AuthenticationServices entitlement.
 # Keep it scoped to the generated App target. Push is added to the same
@@ -280,5 +293,27 @@ if [ -z "$IPA" ]; then
   exit 3
 fi
 cp "$IPA" artifacts/a-esthetic.ipa
+
+# Verify the actual distributable binary, not just the generated source plist.
+# An IPA that lacks this handler would reproduce Safari's invalid-address error.
+python3 - "$ROOT/artifacts/a-esthetic.ipa" <<'PY'
+import plistlib
+import sys
+import zipfile
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with zipfile.ZipFile(path, "r") as archive:
+    matches = [n for n in archive.namelist()
+               if n.startswith("Payload/") and n.endswith(".app/Info.plist")]
+    if len(matches) != 1:
+        raise SystemExit("FATAL: cannot uniquely locate compiled App Info.plist inside IPA")
+    info = plistlib.loads(archive.read(matches[0]))
+schemes = [scheme for entry in info.get("CFBundleURLTypes", [])
+           for scheme in entry.get("CFBundleURLSchemes", [])]
+if "de.aplusesthetic.app" not in schemes:
+    raise SystemExit("FATAL: distributable IPA is missing Google OAuth return scheme")
+print("PASS: signed IPA contains the de.aplusesthetic.app URL scheme.")
+PY
 
 echo "iOS artifact: $ROOT/artifacts/a-esthetic.ipa"
