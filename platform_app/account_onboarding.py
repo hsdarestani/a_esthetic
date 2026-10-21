@@ -24,6 +24,8 @@ from django.core.validators import validate_email
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
+from django.urls import reverse
+from django.utils.html import escape
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -798,7 +800,7 @@ def _prepare_browser_social_user(user):
     return profile
 
 
-def _social_browser_html(deep_link, message):
+def _social_browser_html(deep_link, message, fallback_html=""):
     response = HttpResponse(
         f"""<!doctype html>
 <html lang="de">
@@ -818,6 +820,13 @@ def _social_browser_html(deep_link, message):
     p{{font-size:15px;line-height:1.55;color:#5b554b;margin:0 0 24px}}
     .open{{display:block;width:100%;padding:16px 20px;border-radius:16px;background:#211e19;color:#fff;text-decoration:none;font-weight:700;font-size:16px}}
     .hint{{font-size:12px;color:#8d8578;margin-top:16px}}
+    .fallback{{margin:18px 0 22px;text-align:left;padding:18px;border:1px solid #ddcda9;border-radius:17px;background:#fbf7ef}}
+    .fallback h2{{font:600 20px Georgia,serif;margin:0 0 10px}}
+    .fallback p{{font-size:14px;margin:0 0 13px}}
+    .fallback ol{{padding-left:20px;margin:0 0 14px;font-size:14px;line-height:1.7}}
+    .fallback .open{{text-align:center;margin:12px 0}}
+    .fallback small{{display:block;font-size:12px;line-height:1.55;color:#635b50}}
+    .secondary-link{{display:block;margin-top:15px;font-size:13px;color:#605747}}
   </style>
 </head>
 <body>
@@ -826,6 +835,7 @@ def _social_browser_html(deep_link, message):
     <div class="caption">Ästhetik · Präzision · Ruhe</div>
     <h1>Zur App zurückkehren</h1>
     <p>{message}</p>
+    {fallback_html}
     <a class="open" href="{deep_link}">A+ Esthetic App öffnen</a>
     <div class="hint">Tippen Sie auf die Schaltfläche, um die Anmeldung in der App abzuschließen. Falls sich die App nicht öffnet, aktualisieren Sie sie bitte im App Store.</div>
   </main>
@@ -877,9 +887,42 @@ def social_browser_finish(request):
         "de.aplusesthetic.app://social-login?code="
         + quote(code, safe="")
     )
+    # Older iOS binaries cannot handle our app callback scheme. Provide an
+    # immediately usable password based sign in for existing Google accounts,
+    # without changing credentials automatically or requiring a native update.
+    # The allauth set password page requires this authenticated OAuth session
+    # and Django's normal CSRF and password validation protections.
+    ua = request.META.get("HTTP_USER_AGENT", "")
+    fallback_html = ""
+    if re.search(r"iPhone|iPad|iPod", ua, re.I) and not settings.GOOGLE_IOS_CLIENT_ID:
+        if user.has_usable_password():
+            fallback_html = (
+                '<section class="fallback"><h2>Ohne Update anmelden</h2>'
+                '<p>Das Google Konto wurde bestätigt. Für die App kann '
+                'das bereits eingerichtete Passwort verwendet werden.</p>'
+                '<ol><li>Oben links zurück zu A+ Esthetic wechseln.</li>'
+                '<li>Im Bildschirm Anmelden E Mail und Passwort eingeben.</li></ol>'
+                '<small>Falls das Passwort nicht mehr bekannt ist, '
+                'in der App auf „Passwort vergessen?“ tippen.</small></section>'
+            )
+        else:
+            set_password_url = escape(reverse("account_set_password"))
+            fallback_html = (
+                '<section class="fallback"><h2>Jetzt ohne Update anmelden</h2>'
+                '<p>Die Google Anmeldung war erfolgreich. Für die aktuelle '
+                'App Version bitte einmalig ein eigenes App Passwort festlegen.</p>'
+                '<a class="open" href="' + set_password_url + '">'
+                'App Passwort festlegen</a>'
+                '<ol><li>App Passwort erstellen und speichern.</li>'
+                '<li>Zur installierten A+ Esthetic App zurückkehren.</li>'
+                '<li>Bei Anmelden dieselbe Google E Mail und das neue Passwort eingeben.</li></ol>'
+                '<small>Das Google Passwort bleibt unverändert. '
+                'Die Anmeldung erfolgt im selben A+ Esthetic Konto.</small></section>'
+            )
     return _social_browser_html(
         deep_link,
-        "Anmeldung erfolgreich. Sie werden zur App zurückgeleitet.",
+        "Google Anmeldung erfolgreich. Ihr Konto ist bestätigt.",
+        fallback_html=fallback_html,
     )
 
 

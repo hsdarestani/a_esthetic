@@ -1,7 +1,8 @@
 from django.contrib.auth.models import AnonymousUser, User
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.http import HttpResponse, HttpResponseRedirect
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
+from django.urls import reverse
 
 from .adapters import AestheticAccountAdapter
 from .middleware import MobileSocialRedirectMiddleware
@@ -115,3 +116,53 @@ class MobileSocialRedirectTests(TestCase):
         # navigation automatically before the user can tap the app link.
         self.assertNotIn("window.location.href", body)
         self.assertIn("Tippen Sie auf die Schaltfläche", body)
+
+    @override_settings(GOOGLE_IOS_CLIENT_ID="")
+    def test_ios_google_user_can_set_app_password_without_rebuild(self):
+        user = User.objects.create_user(
+            "google-ios-fallback", "google-fallback@example.com"
+        )
+        user.set_unusable_password()
+        user.save(update_fields=["password"])
+        self.client.force_login(user)
+        response = self.client.get(
+            "/mobile-social/finish/", HTTP_USER_AGENT="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit"
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("Jetzt ohne Update anmelden", body)
+        self.assertIn(reverse("account_set_password"), body)
+        self.assertIn("App Passwort festlegen", body)
+        self.assertIn("dieselbe Google E Mail", body)
+        # Showing the recovery instructions must not silently change credentials.
+        user.refresh_from_db()
+        self.assertFalse(user.has_usable_password())
+
+    @override_settings(GOOGLE_IOS_CLIENT_ID="")
+    def test_ios_existing_password_shows_manual_login_instructions(self):
+        user = User.objects.create_user(
+            "google-existing", "google-existing@example.com", "ExistingStrong-123!"
+        )
+        self.client.force_login(user)
+        response = self.client.get(
+            "/mobile-social/finish/", HTTP_USER_AGENT="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)"
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("Ohne Update anmelden", body)
+        self.assertIn("bereits eingerichtete Passwort", body)
+        self.assertNotIn("App Passwort festlegen", body)
+
+    @override_settings(GOOGLE_IOS_CLIENT_ID="")
+    def test_android_browser_flow_still_uses_app_return_link(self):
+        user = User.objects.create_user(
+            "google-android", "google-android@example.com"
+        )
+        self.client.force_login(user)
+        response = self.client.get(
+            "/mobile-social/finish/", HTTP_USER_AGENT="Mozilla/5.0 (Linux; Android 16)"
+        )
+        body = response.content.decode()
+        self.assertIn("de.aplusesthetic.app://social-login?code=", body)
+        self.assertNotIn("Ohne Update anmelden", body)
+        self.assertNotIn("Jetzt ohne Update anmelden", body)
