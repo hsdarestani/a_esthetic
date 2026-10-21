@@ -111,3 +111,7 @@ class MobileSocialRedirectTests(TestCase):
         body = response.content.decode()
         self.assertIn("A+ Esthetic App öffnen", body)
         self.assertIn("de.aplusesthetic.app://social-login?code=", body)
+        # iOS blocks unsupported schemes in Safari; never trigger an invalid
+        # navigation automatically before the user can tap the app link.
+        self.assertNotIn("window.location.href", body)
+        self.assertIn("Tippen Sie auf die Schaltfläche", body)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Make native camera / scanner permissions deterministic after `cap sync`.
+"""Make native camera permissions and iOS social login URL handling deterministic after `cap sync`.
 
 The A+ app opens both its packaged customer UI and the remote management UI inside
 Capacitor. Native Camera and Barcode Scanner are used on iOS/Android, while
@@ -61,10 +61,25 @@ def patch_ios():
         if info.get(key) != value:
             info[key] = value
             changed = True
+    # Browser-based Google OAuth returns to the Capacitor app via this URL.
+    # Register it in the native bundle; merely defining appUrlOpen in JS is
+    # insufficient for iOS to open de.aplusesthetic.app://social-login.
+    scheme = "de.aplusesthetic.app"
+    url_types = info.setdefault("CFBundleURLTypes", [])
+    if not any(
+        scheme in (entry.get("CFBundleURLSchemes") or [])
+        for entry in url_types if isinstance(entry, dict)
+    ):
+        url_types.append({
+            "CFBundleURLName": scheme,
+            "CFBundleTypeRole": "Editor",
+            "CFBundleURLSchemes": [scheme],
+        })
+        changed = True
     if changed:
         with IOS_INFO.open("wb") as handle:
             plistlib.dump(info, handle, sort_keys=False)
-        print("Configured iOS camera/photo usage descriptions for native scanner and photo capture.")
+        print("Configured iOS native permissions and social login callback scheme.")
 
 
 if __name__ == "__main__":
