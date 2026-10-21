@@ -1,0 +1,65 @@
+name: A+ Esthetic Appetize Android OAuth test APK Build 46
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/appetize-android-oauth-build46.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  android-appetize:
+    name: Android APK ZIP for Appetize with verified OAuth callback
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout exact OAuth fixed source for iOS Build 46
+        uses: actions/checkout@v4
+        with:
+          ref: 85b1b9e601a68539c92fb87f0e2d70baea101557
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build real native Android APK with OAuth intent filter
+        env:
+          APP_VERSION_NAME: '1.0.40'
+          APP_BUILD_NUMBER: '46'
+          REQUIRE_ANDROID_SIGNING: '0'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '85b1b9e601a68539c92fb87f0e2d70baea101557'
+          npm install --no-audit --no-fund
+          bash scripts/build-android.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('android/app/src/main/AndroidManifest.xml').read_text()
+          assert 'android:scheme="de.aplusesthetic.app"' in s, 'Google return scheme missing in generated Android manifest'
+          assert 'android:host="social-login"' in s, 'Google return host missing in generated Android manifest'
+          assert 'android.intent.category.BROWSABLE' in s
+          print('PASS: Android Google OAuth callback is registered')
+          PY
+          (cd android && ./gradlew --no-daemon assembleDebug)
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" | tail -n 1
+          mkdir -p appetize
+          cp "$APK" appetize/A_Esthetic_Android_OAuth_Build46.apk
+          cd appetize
+          zip -9 A_Esthetic_Android_Appetize_Ready.zip A_Esthetic_Android_OAuth_Build46.apk
+          unzip -t A_Esthetic_Android_Appetize_Ready.zip
+      - name: Upload Appetize Android APK and zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-esthetic-android-appetize-oauth-build46
+          path: |
+            appetize/A_Esthetic_Android_OAuth_Build46.apk
+            appetize/A_Esthetic_Android_Appetize_Ready.zip
+          retention-days: 30
+          if-no-files-found: error
