@@ -799,7 +799,6 @@ def _prepare_browser_social_user(user):
 
 
 def _social_browser_html(deep_link, message):
-    target = json.dumps(deep_link)
     response = HttpResponse(
         f"""<!doctype html>
 <html lang="de">
@@ -828,11 +827,8 @@ def _social_browser_html(deep_link, message):
     <h1>Zur App zurückkehren</h1>
     <p>{message}</p>
     <a class="open" href="{deep_link}">A+ Esthetic App öffnen</a>
-    <div class="hint">Falls die App nicht automatisch geöffnet wird, tippen Sie auf die Schaltfläche.</div>
+    <div class="hint">Tippen Sie auf die Schaltfläche, um die Anmeldung in der App abzuschließen. Falls sich die App nicht öffnet, aktualisieren Sie sie bitte im App Store.</div>
   </main>
-  <script>
-    setTimeout(function(){{ window.location.href = {target}; }}, 350);
-  </script>
 </body>
 </html>""",
         content_type="text/html; charset=utf-8",
