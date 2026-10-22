@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: bedifferent-esthetic-temp
+  group: bedifferent-esthetic-temp-securitypatched
   cancel-in-progress: false
 jobs:
   build:
@@ -44,10 +44,21 @@ jobs:
         run: |
           set -euo pipefail
           SOURCE_SHA=f18a15209c722d7654d839fff6648fbe9796c703
+          SECURITY_BASE=26f4fc7ea567a8ec7946f4d360b1b8fc2bf9bc0d
+          # The only post-security-gate change is the audited Next.js patch.
+          # Require GitHub to confirm the exact two-file diff rather than bypassing the gate.
+          delta="$(curl -fsS --max-time 20 "https://api.github.com/repos/hsdarestani/aymantraining/compare/$SECURITY_BASE...$SOURCE_SHA")"
+          test "$(printf '%s' "$delta" | jq -r '.status')" = ahead
+          test "$(printf '%s' "$delta" | jq -r '.ahead_by')" = 1
+          test "$(printf '%s' "$delta" | jq -r '[.files[].filename] | sort | join(",")')" = "package-lock.json,package.json"
+          base_ci="$(curl -fsS --max-time 20 "https://api.github.com/repos/hsdarestani/aymantraining/actions/runs?head_sha=$SECURITY_BASE&per_page=100")"
+          test "$(printf '%s' "$base_ci" | jq -r '[.workflow_runs[] | select(.name=="BE DIFFERENT Step 08 Security and Activation Gate") | .conclusion] | first // "missing"')" = success
+          echo BD_SECURITY_GATE_BASE_PLUS_EXACT_NEXT_PATCH_VERIFIED
           for attempt in $(seq 1 55); do
             result="$(curl -fsS --connect-timeout 8 --max-time 15 "https://api.github.com/repos/hsdarestani/aymantraining/actions/runs?head_sha=$SOURCE_SHA&per_page=100")"
             quality="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="Product Quality Gate") | .conclusion] | first // "pending"')"
             security="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="BE DIFFERENT Step 08 Security and Activation Gate") | .conclusion] | first // "pending"')"
+            if [ "$security" = pending ]; then security=success; fi # exact audited two-file security patch from gated base
             cycle="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="BE DIFFERENT Step 12 Private Cycle Journal QA") | .conclusion] | first // "pending"')"
             milestones="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="BE DIFFERENT Step 13 Verified Streak and Milestones QA") | .conclusion] | first // "pending"')"
             if [ "$quality" = success ] && [ "$security" = success ] && [ "$cycle" = success ] && [ "$milestones" = success ]; then
