@@ -1,0 +1,63 @@
+name: BE DIFFERENT shared Esthetic host preflight
+on:
+  push:
+    branches:
+      - feature/bedifferent-sharedhost-safe-release-20261022
+    paths:
+      - ".github/workflows/bedifferent-sharedhost-safe-release-20261022.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bedifferent-esthetic-temp
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify three public services before
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready | jq '{ok,service,journey}'
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+      - name: Verify real shared systemd installation using Esthetic credentials (read only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 4m
+          script: |
+            set -euo pipefail
+            test -d /opt/a-esthetic-mobile
+            test -d /opt/aesthetic-book
+            test -L /opt/bedifferent-temp/current
+            test -s /etc/bedifferent-temp.env
+            test -s /etc/systemd/system/bedifferent-temp.service
+            for svc in bedifferent-temp a-esthetic-mobile aesthetic-book postgresql nginx; do
+              systemctl is-active --quiet "$svc" || exit 1
+              echo "SERVICE_$svc=running"
+            done
+            printf 'BD_RELEASE_SHA='; cat /opt/bedifferent-temp/current/.source-sha 2>/dev/null || echo unknown
+            printf 'BD_RELEASE_DIR='; readlink -f /opt/bedifferent-temp/current
+            printf 'BD_DB_EXISTS='; runuser -u postgres -- psql -XAt -d postgres -c "select count(*) from pg_database where datname='bedifferent_temp'"
+            printf 'BD_JOURNEY_LEVEL_TABLE='; runuser -u postgres -- psql -XAt -d bedifferent_temp -c "select count(*) from information_schema.tables where table_schema='public' and table_name='JourneyEnrollment'"
+            echo 'BD_CURRENT_ENV_FLAGS:'
+            for k in JOURNEY_ONBOARDING_ENABLED JOURNEY_EDITOR_ENABLED JOURNEY_TESTS_ENABLED JOURNEY_OVERVIEW_ENABLED JOURNEY_DAILY_ENABLED; do
+              if grep -q "^$k=true" /etc/bedifferent-temp.env; then echo "$k=true"; else echo "$k=false"; fi
+            done
+            printf 'AVAILABLE_MEMORY_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo
+            printf 'FREE_DISK_KB='; df -Pk /opt/bedifferent-temp | awk 'NR==2{print $4}'
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready
+            curl -fsS --max-time 10 http://127.0.0.1:8770/api/mobile/status/ >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8017/api/health/ >/dev/null
+            echo SHARED_HOST_AUDIT=PASS
+      - name: Verify Esthetic and booking still healthy after
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo ESTHETIC_SERVICE_ISOLATION=PASS
