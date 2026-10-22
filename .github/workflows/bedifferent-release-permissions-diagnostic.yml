@@ -40,6 +40,8 @@ jobs:
             runuser -u bedifferenttemp -- test -r "$R/prisma/schema.prisma"; echo "SCHEMA_READ_RESULT=$?"
             echo EXECUTION_CHECK
             runuser -u bedifferenttemp -- "$P" --version; echo "EXEC_RESULT=$?"
+            echo SAFE_PRISMA_DIFF_NO_DB_ACCESS
+            runuser -u bedifferenttemp -- "$R/bin/node" "$R/node_modules/prisma/build/index.js" migrate diff --from-empty --to-schema-datamodel "$R/prisma/schema.prisma" --script > /dev/null; echo "PRISMA_DIFF_STATUS=$?"
             echo DYNAMIC_LINKER
             ldd "$P" | head -20 || true
             echo BD_PRISMA_DIAG_END
