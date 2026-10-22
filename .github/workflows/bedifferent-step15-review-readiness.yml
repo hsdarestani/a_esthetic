@@ -1,0 +1,37 @@
+name: BE DIFFERENT Step 15 Read-only Reviewer Preflight
+on:
+  push:
+    branches: [feature/bedifferent-sharedhost-safe-release-20261022]
+    paths: [".github/workflows/bedifferent-step15-review-readiness.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-only-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Verify isolated live service, reviewer, and health (no changes)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 8m
+          script: |
+            set -eu
+            test -L /opt/bedifferent-temp/current
+            test -d /opt/a-esthetic-mobile
+            test -d /opt/aesthetic-book
+            systemctl is-active --quiet bedifferent-temp
+            systemctl is-active --quiet a-esthetic-mobile
+            systemctl is-active --quiet aesthetic-book
+            cd /opt/bedifferent-temp/current
+            echo -n "STEP15_LIVE_COMMIT="; cat .source-sha
+            curl -fsS --max-time 12 http://127.0.0.1:3100/api/ready |
+              python3 -c 'import json,sys; v=json.load(sys.stdin); assert v["ok"] and all(v["stepFeatures"].values()); print("STEP15_LIVE_FLAGS_OK")'
+            # Only fixed reviewer identity and tier (no passwords or user records).
+            runuser -u postgres -- psql -d bedifferent_temp -tAc "SELECT 'STEP15_REVIEWER ' || role || ' ' || \"subscriptionTier\" FROM \"User\" WHERE email='appreview@bedifferent.smarbiz.sbs'" |
+              grep 'STEP15_REVIEWER ATHLETE'
+            echo STEP15_REVIEWER_AND_ESTHETIC_HEALTH_VERIFIED
