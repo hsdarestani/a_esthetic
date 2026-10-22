@@ -43,16 +43,18 @@ jobs:
       - name: Require green main quality and Step08 gate for exact tested source
         run: |
           set -euo pipefail
-          SOURCE_SHA=50e6557769ed22f5726b520794c4b9d19fb16fd7
+          SOURCE_SHA=26f4fc7ea567a8ec7946f4d360b1b8fc2bf9bc0d
           for attempt in $(seq 1 55); do
             result="$(curl -fsS --connect-timeout 8 --max-time 15 "https://api.github.com/repos/hsdarestani/aymantraining/actions/runs?head_sha=$SOURCE_SHA&per_page=100")"
             quality="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="Product Quality Gate") | .conclusion] | first // "pending"')"
             security="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="BE DIFFERENT Step 08 Security and Activation Gate") | .conclusion] | first // "pending"')"
-            if [ "$quality" = success ] && [ "$security" = success ]; then
+            cycle="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="BE DIFFERENT Step 12 Private Cycle Journal QA") | .conclusion] | first // "pending"')"
+            milestones="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="BE DIFFERENT Step 13 Verified Streak and Milestones QA") | .conclusion] | first // "pending"')"
+            if [ "$quality" = success ] && [ "$security" = success ] && [ "$cycle" = success ] && [ "$milestones" = success ]; then
               echo "BD_SOURCE_QUALITY_AND_SECURITY_GREEN"
               exit 0
             fi
-            if [ "$quality" = failure ] || [ "$security" = failure ] || [ "$quality" = cancelled ] || [ "$security" = cancelled ]; then
+            if [ "$quality" = failure ] || [ "$security" = failure ] || [ "$cycle" = failure ] || [ "$milestones" = failure ] || [ "$quality" = cancelled ] || [ "$security" = cancelled ] || [ "$cycle" = cancelled ] || [ "$milestones" = cancelled ]; then
               echo "BLOCKED: production candidate has failed CI" >&2
               exit 1
             fi
@@ -64,7 +66,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: hsdarestani/aymantraining
-          ref: 50e6557769ed22f5726b520794c4b9d19fb16fd7
+          ref: 26f4fc7ea567a8ec7946f4d360b1b8fc2bf9bc0d
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -73,8 +75,13 @@ jobs:
       - name: Verify source and build without touching production
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "50e6557769ed22f5726b520794c4b9d19fb16fd7"
+          test "$(git rev-parse HEAD)" = "26f4fc7ea567a8ec7946f4d360b1b8fc2bf9bc0d"
           npm ci
+          # The bundled migrator needs jiti at runtime (previous release stopped safely here).
+          if [ ! -f node_modules/jiti/package.json ]; then
+            npm install --no-save --no-package-lock jiti@2.6.1
+          fi
+          test -s node_modules/jiti/package.json
           npx prisma generate
           npm run check
           bash -n scripts/activate-journey-esthetic-sharedhost.sh
@@ -93,10 +100,14 @@ jobs:
           cp -a node_modules/.prisma "$STAGE/node_modules/"
           cp -a node_modules/@prisma/. "$STAGE/node_modules/@prisma/"
           cp -a node_modules/prisma "$STAGE/node_modules/"
+          cp -a node_modules/jiti "$STAGE/node_modules/"
+          test -s "$STAGE/node_modules/jiti/package.json"
+          # Fail on the runner rather than discovering a missing CLI dependency on the shared VPS.
+          "$STAGE/bin/node" "$STAGE/node_modules/prisma/build/index.js" --version >/dev/null
           cp prisma/schema.prisma "$STAGE/prisma/schema.prisma"
           cp scripts/backfill-published-journey-snapshots.mjs "$STAGE/scripts/"
           cp scripts/activate-journey-esthetic-sharedhost.sh "$STAGE/scripts/"
-          printf '%s\n' "50e6557769ed22f5726b520794c4b9d19fb16fd7" > "$STAGE/.source-sha"
+          printf '%s\n' "26f4fc7ea567a8ec7946f4d360b1b8fc2bf9bc0d" > "$STAGE/.source-sha"
           test -s "$STAGE/node_modules/prisma/build/index.js"
           test -s "$STAGE/node_modules/@prisma/client/package.json"
           test -s "$STAGE/server.js"
@@ -151,17 +162,17 @@ jobs:
             test ! -e "$RELEASE"
             mkdir -p "$RELEASE"
             tar -xzf /tmp/bd-journey-isolated.tgz -C "$RELEASE"
-            test "$(cat "$RELEASE/.source-sha")" = "50e6557769ed22f5726b520794c4b9d19fb16fd7"
+            test "$(cat "$RELEASE/.source-sha")" = "26f4fc7ea567a8ec7946f4d360b1b8fc2bf9bc0d"
             chown -R root:root "$RELEASE"
             chmod -R go-w "$RELEASE"
             mkdir -p "$RELEASE/.next/cache"
             chown -R bedifferenttemp:bedifferenttemp "$RELEASE/.next/cache"
-            bash "$RELEASE/scripts/activate-journey-esthetic-sharedhost.sh" "50e6557769ed22f5726b520794c4b9d19fb16fd7" "${{ github.run_id }}"
+            bash "$RELEASE/scripts/activate-journey-esthetic-sharedhost.sh" "26f4fc7ea567a8ec7946f4d360b1b8fc2bf9bc0d" "${{ github.run_id }}"
             rm -f /tmp/bd-journey-isolated.tgz
       - name: Verify all three services after deploy
         run: |
           set -euo pipefail
-          curl -fsS --max-time 18 https://bedifferent.smarbiz.sbs/api/ready | jq -e '.ok == true and .journey.onboarding == true and .journey.overview == true and .journey.tests == true and .journey.editor == true and .journey.daily == true'
+          curl -fsS --max-time 18 https://bedifferent.smarbiz.sbs/api/ready | jq -e '.ok == true and .journey.onboarding == true and .journey.overview == true and .journey.tests == true and .journey.editor == true and .journey.daily == true and .stepFeatures.womenDashboard == true and .stepFeatures.cycleJournal == true and .stepFeatures.milestones == true'
           curl -fsS --max-time 18 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
           curl -fsS --max-time 18 https://book.a-esthetic.de/api/health/ >/dev/null
-          echo BE_DIFFERENT_ACTIVE_ESTHETIC_BOOKING_HEALTHY
+          echo BE_DIFFERENT_STEPS_01_13_ACTIVE_ESTHETIC_BOOKING_HEALTHY
