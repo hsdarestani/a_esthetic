@@ -1,0 +1,52 @@
+name: BE DIFFERENT shared Esthetic host preflight
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/bedifferent-shared-host-preflight.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Validate all public services
+        run: |
+          set -euo pipefail
+          for url in https://bedifferent.smarbiz.sbs/api/ready https://esthetic.smarbiz.sbs/api/mobile/status/ https://book.a-esthetic.de/api/health/; do
+            curl -fsS --connect-timeout 8 --max-time 20 "$url" >/dev/null
+          done
+      - name: Inspect only BE DIFFERENT isolated service on actual Esthetic VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 3m
+          script: |
+            set -euo pipefail
+            for svc in nginx postgresql a-esthetic-mobile aesthetic-book bedifferent-temp; do
+              systemctl is-active --quiet "$svc" || { echo "UNHEALTHY_SERVICE=$svc"; exit 1; }
+              echo "SERVICE_OK=$svc"
+            done
+            test -L /opt/bedifferent-temp/current
+            test -s /etc/bedifferent-temp.env
+            test -x /opt/bedifferent-temp/current/bin/node
+            test -d /opt/a-esthetic-mobile
+            test -d /opt/aesthetic-book
+            test -n "$(runuser -u postgres -- psql -XAt -c "SELECT 1 FROM pg_database WHERE datname='bedifferent_temp'")"
+            printf 'BE_DIFFERENT_RELEASE='; readlink -f /opt/bedifferent-temp/current
+            printf 'RAM_AVAILABLE_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo
+            printf 'DISK_AVAILABLE_KB='; df -Pk /opt/bedifferent-temp | awk 'NR==2 {print $4}'
+            echo "BE_DIFFERENT_READY:"
+            curl -fsS --max-time 8 http://127.0.0.1:3100/api/ready
+            echo
+            echo "BE_DIFFERENT_ISOLATED_TOPOLOGY_OK"
+      - name: Verify Esthetic and booking stay healthy
+        if: always()
+        run: |
+          set -euo pipefail
+          curl -fsS --connect-timeout 8 --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --connect-timeout 8 --max-time 20 https://book.a-esthetic.de/api/health/ >/dev/null
