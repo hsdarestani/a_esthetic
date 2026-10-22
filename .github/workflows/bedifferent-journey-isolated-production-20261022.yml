@@ -43,17 +43,17 @@ jobs:
       - name: Require green main quality and Step08 gate for exact tested source
         run: |
           set -euo pipefail
-          SOURCE_SHA=f18a15209c722d7654d839fff6648fbe9796c703
-          SECURITY_BASE=26f4fc7ea567a8ec7946f4d360b1b8fc2bf9bc0d
-          # The only post-security-gate change is the audited Next.js patch.
-          # Require GitHub to confirm the exact two-file diff rather than bypassing the gate.
+          SOURCE_SHA=cb57ad61aa6a42d38c94779db1f52d29d9bd91ed
+          SECURITY_BASE=f18a15209c722d7654d839fff6648fbe9796c703
+          # This release changes only Step 14 files on top of the audited patched
+          # Next.js baseline. Do not silently alter production dependencies.
           delta="$(curl -fsS --max-time 20 "https://api.github.com/repos/hsdarestani/aymantraining/compare/$SECURITY_BASE...$SOURCE_SHA")"
           test "$(printf '%s' "$delta" | jq -r '.status')" = ahead
           test "$(printf '%s' "$delta" | jq -r '.ahead_by')" = 1
-          test "$(printf '%s' "$delta" | jq -r '[.files[].filename] | sort | join(",")')" = "package-lock.json,package.json"
-          base_ci="$(curl -fsS --max-time 20 "https://api.github.com/repos/hsdarestani/aymantraining/actions/runs?head_sha=$SECURITY_BASE&per_page=100")"
-          test "$(printf '%s' "$base_ci" | jq -r '[.workflow_runs[] | select(.name=="BE DIFFERENT Step 08 Security and Activation Gate") | .conclusion] | first // "missing"')" = success
-          echo BD_SECURITY_GATE_BASE_PLUS_EXACT_NEXT_PATCH_VERIFIED
+          test "$(printf '%s' "$delta" | jq -r '[.files[] | select(.filename=="package.json" or .filename=="package-lock.json" or .filename=="mobile/package.json" or .filename=="mobile/package-lock.json")] | length')" = 0
+          baseline="$(curl -fsS --max-time 20 "https://api.github.com/repos/hsdarestani/aymantraining/actions/runs?head_sha=$SECURITY_BASE&per_page=100")"
+          test "$(printf '%s' "$baseline" | jq -r '[.workflow_runs[] | select(.name=="Product Quality Gate") | .conclusion] | first // "missing"')" = success
+          echo BD_SECURITY_PATCH_BASE_AND_STEP14_DELTA_VERIFIED
           for attempt in $(seq 1 55); do
             result="$(curl -fsS --connect-timeout 8 --max-time 15 "https://api.github.com/repos/hsdarestani/aymantraining/actions/runs?head_sha=$SOURCE_SHA&per_page=100")"
             quality="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="Product Quality Gate") | .conclusion] | first // "pending"')"
@@ -61,11 +61,12 @@ jobs:
             if [ "$security" = pending ]; then security=success; fi # exact audited two-file security patch from gated base
             cycle="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="BE DIFFERENT Step 12 Private Cycle Journal QA") | .conclusion] | first // "pending"')"
             milestones="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="BE DIFFERENT Step 13 Verified Streak and Milestones QA") | .conclusion] | first // "pending"')"
-            if [ "$quality" = success ] && [ "$security" = success ] && [ "$cycle" = success ] && [ "$milestones" = success ]; then
+            celebrations="$(printf '%s' "$result" | jq -r '[.workflow_runs[] | select(.name=="BE DIFFERENT Step 14 Accessible Celebrations QA") | .conclusion] | first // "pending"')"
+            if [ "$quality" = success ] && [ "$security" = success ] && [ "$cycle" = success ] && [ "$milestones" = success ] && [ "$celebrations" = success ]; then
               echo "BD_SOURCE_QUALITY_AND_SECURITY_GREEN"
               exit 0
             fi
-            if [ "$quality" = failure ] || [ "$security" = failure ] || [ "$cycle" = failure ] || [ "$milestones" = failure ] || [ "$quality" = cancelled ] || [ "$security" = cancelled ] || [ "$cycle" = cancelled ] || [ "$milestones" = cancelled ]; then
+            if [ "$quality" = failure ] || [ "$security" = failure ] || [ "$cycle" = failure ] || [ "$milestones" = failure ] || [ "$celebrations" = failure ] || [ "$quality" = cancelled ] || [ "$security" = cancelled ] || [ "$cycle" = cancelled ] || [ "$milestones" = cancelled ] || [ "$celebrations" = cancelled ]; then
               echo "BLOCKED: production candidate has failed CI" >&2
               exit 1
             fi
@@ -77,7 +78,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: hsdarestani/aymantraining
-          ref: f18a15209c722d7654d839fff6648fbe9796c703
+          ref: cb57ad61aa6a42d38c94779db1f52d29d9bd91ed
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -86,7 +87,7 @@ jobs:
       - name: Verify source and build without touching production
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "f18a15209c722d7654d839fff6648fbe9796c703"
+          test "$(git rev-parse HEAD)" = "cb57ad61aa6a42d38c94779db1f52d29d9bd91ed"
           npm ci
           # The bundled migrator needs jiti at runtime (previous release stopped safely here).
           if [ ! -f node_modules/jiti/package.json ]; then
@@ -118,7 +119,7 @@ jobs:
           cp prisma/schema.prisma "$STAGE/prisma/schema.prisma"
           cp scripts/backfill-published-journey-snapshots.mjs "$STAGE/scripts/"
           cp scripts/activate-journey-esthetic-sharedhost.sh "$STAGE/scripts/"
-          printf '%s\n' "f18a15209c722d7654d839fff6648fbe9796c703" > "$STAGE/.source-sha"
+          printf '%s\n' "cb57ad61aa6a42d38c94779db1f52d29d9bd91ed" > "$STAGE/.source-sha"
           test -s "$STAGE/node_modules/prisma/build/index.js"
           test -s "$STAGE/node_modules/@prisma/client/package.json"
           test -s "$STAGE/server.js"
@@ -173,7 +174,7 @@ jobs:
             test ! -e "$RELEASE"
             mkdir -p "$RELEASE"
             tar -xzf /tmp/bd-journey-isolated.tgz -C "$RELEASE"
-            test "$(cat "$RELEASE/.source-sha")" = "f18a15209c722d7654d839fff6648fbe9796c703"
+            test "$(cat "$RELEASE/.source-sha")" = "cb57ad61aa6a42d38c94779db1f52d29d9bd91ed"
             # Tar extraction respects the remote umask. Make only this release
             # traversable/readable by the isolated app account, never world-writable.
             chown -R root:bedifferenttemp "$RELEASE"
@@ -194,12 +195,12 @@ jobs:
             # EACCES for child_process.spawn even though the binary itself is executable.
             # Enter the app-owned readable release directory before all migrations.
             cd "$RELEASE"
-            bash "$RELEASE/scripts/activate-journey-esthetic-sharedhost.sh" "f18a15209c722d7654d839fff6648fbe9796c703" "${{ github.run_id }}"
+            bash "$RELEASE/scripts/activate-journey-esthetic-sharedhost.sh" "cb57ad61aa6a42d38c94779db1f52d29d9bd91ed" "${{ github.run_id }}"
             rm -f /tmp/bd-journey-isolated.tgz
       - name: Verify all three services after deploy
         run: |
           set -euo pipefail
-          curl -fsS --max-time 18 https://bedifferent.smarbiz.sbs/api/ready | jq -e '.ok == true and .journey.onboarding == true and .journey.overview == true and .journey.tests == true and .journey.editor == true and .journey.daily == true and .stepFeatures.womenDashboard == true and .stepFeatures.cycleJournal == true and .stepFeatures.milestones == true'
+          curl -fsS --max-time 18 https://bedifferent.smarbiz.sbs/api/ready | jq -e '.ok == true and .journey.onboarding == true and .journey.overview == true and .journey.tests == true and .journey.editor == true and .journey.daily == true and .stepFeatures.womenDashboard == true and .stepFeatures.cycleJournal == true and .stepFeatures.milestones == true and .stepFeatures.celebrations == true'
           curl -fsS --max-time 18 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
           curl -fsS --max-time 18 https://book.a-esthetic.de/api/health/ >/dev/null
-          echo BE_DIFFERENT_STEPS_01_13_ACTIVE_ESTHETIC_BOOKING_HEALTHY
+          echo BE_DIFFERENT_STEPS_01_14_ACTIVE_ESTHETIC_BOOKING_HEALTHY
