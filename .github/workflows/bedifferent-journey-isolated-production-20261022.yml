@@ -186,6 +186,7 @@ jobs:
             mkdir -p "$RELEASE/.next/cache"
             chown -R bedifferenttemp:bedifferenttemp "$RELEASE/.next/cache"
             # Catch any access regressions before backup/migration on the shared host.
+            cd "$RELEASE"
             runuser -u bedifferenttemp -- test -r "$RELEASE/prisma/schema.prisma"
             runuser -u bedifferenttemp -- test -x "$RELEASE/node_modules/@prisma/engines/schema-engine-debian-openssl-3.0.x"
             runuser -u bedifferenttemp -- "$RELEASE/bin/node" "$RELEASE/node_modules/prisma/build/index.js" migrate diff \
