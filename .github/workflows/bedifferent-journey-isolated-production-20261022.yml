@@ -174,10 +174,21 @@ jobs:
             mkdir -p "$RELEASE"
             tar -xzf /tmp/bd-journey-isolated.tgz -C "$RELEASE"
             test "$(cat "$RELEASE/.source-sha")" = "f18a15209c722d7654d839fff6648fbe9796c703"
-            chown -R root:root "$RELEASE"
+            # Tar extraction respects the remote umask. Make only this release
+            # traversable/readable by the isolated app account, never world-writable.
+            chown -R root:bedifferenttemp "$RELEASE"
+            find "$RELEASE" -type d -exec chmod 0750 {} +
+            find "$RELEASE" -type f -exec chmod g+r {} +
+            find "$RELEASE/node_modules/@prisma/engines" -maxdepth 1 -type f -name 'schema-engine-*' -exec chmod 0750 {} +
+            chmod 0750 "$RELEASE/bin/node"
             chmod -R go-w "$RELEASE"
             mkdir -p "$RELEASE/.next/cache"
             chown -R bedifferenttemp:bedifferenttemp "$RELEASE/.next/cache"
+            # Catch any access regressions before backup/migration on the shared host.
+            runuser -u bedifferenttemp -- test -r "$RELEASE/prisma/schema.prisma"
+            runuser -u bedifferenttemp -- test -x "$RELEASE/node_modules/@prisma/engines/schema-engine-debian-openssl-3.0.x"
+            runuser -u bedifferenttemp -- "$RELEASE/bin/node" "$RELEASE/node_modules/prisma/build/index.js" migrate diff \
+              --from-empty --to-schema-datamodel "$RELEASE/prisma/schema.prisma" --script > /dev/null
             bash "$RELEASE/scripts/activate-journey-esthetic-sharedhost.sh" "f18a15209c722d7654d839fff6648fbe9796c703" "${{ github.run_id }}"
             rm -f /tmp/bd-journey-isolated.tgz
       - name: Verify all three services after deploy
