@@ -1,0 +1,45 @@
+name: Diagnose isolated BE DIFFERENT Prisma permissions
+on:
+  push:
+    branches: [feature/bedifferent-sharedhost-safe-release-20261022]
+    paths:
+      - .github/workflows/bedifferent-release-permissions-diagnostic.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Read-only schema-engine execution diagnostics
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 4m
+          script: |
+            set -u
+            R=/opt/bedifferent-temp/releases/39829606305
+            P="$R/node_modules/@prisma/engines/schema-engine-debian-openssl-3.0.x"
+            echo BD_PRISMA_DIAG_BEGIN
+            echo -n CURRENT_SHA=; (cat /opt/bedifferent-temp/current/.source-sha || true)
+            echo ACCOUNT; id bedifferenttemp || true
+            echo PATH_PERMISSIONS
+            namei -l "$P" || true
+            echo ENGINE_STAT
+            stat -Lc '%A %a %U %G %F %n' "$P" "$R/bin/node" "$R/prisma/schema.prisma" || true
+            echo FILE_DETAILS
+            file "$P" "$R/bin/node" || true
+            echo MOUNT_OPTIONS
+            (findmnt -T "$P" -o TARGET,FSTYPE,OPTIONS || true)
+            echo ACCESS_CHECK
+            runuser -u bedifferenttemp -- test -x "$P"; echo "ENGINE_ACCESS_RESULT=$?"
+            runuser -u bedifferenttemp -- test -r "$R/prisma/schema.prisma"; echo "SCHEMA_READ_RESULT=$?"
+            echo EXECUTION_CHECK
+            runuser -u bedifferenttemp -- "$P" --version; echo "EXEC_RESULT=$?"
+            echo DYNAMIC_LINKER
+            ldd "$P" | head -20 || true
+            echo BD_PRISMA_DIAG_END
