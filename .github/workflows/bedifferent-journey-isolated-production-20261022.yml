@@ -189,6 +189,11 @@ jobs:
             runuser -u bedifferenttemp -- test -x "$RELEASE/node_modules/@prisma/engines/schema-engine-debian-openssl-3.0.x"
             runuser -u bedifferenttemp -- "$RELEASE/bin/node" "$RELEASE/node_modules/prisma/build/index.js" migrate diff \
               --from-empty --to-schema-datamodel "$RELEASE/prisma/schema.prisma" --script > /dev/null
+            # Prisma launches schema-engine as a child of the dedicated app account.
+            # The SSH session starts in root-only /root: an inaccessible cwd triggers
+            # EACCES for child_process.spawn even though the binary itself is executable.
+            # Enter the app-owned readable release directory before all migrations.
+            cd "$RELEASE"
             bash "$RELEASE/scripts/activate-journey-esthetic-sharedhost.sh" "f18a15209c722d7654d839fff6648fbe9796c703" "${{ github.run_id }}"
             rm -f /tmp/bd-journey-isolated.tgz
       - name: Verify all three services after deploy
