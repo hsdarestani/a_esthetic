@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Temporarily test the authorized account as a PRO athlete
+      - name: Test FREE athlete access on the explicitly authorized QA account
         env:
           HOST: ${{ secrets.SERVER_HOST }}
           SSH_PORT: ${{ secrets.SERVER_PORT }}
@@ -57,10 +57,10 @@ jobs:
             await db.$transaction(async tx=>{
               await tx.subscription.upsert({
                 where:{provider_externalId:{provider:'internal_qa',externalId:'hossein-live-qa-20261023'}},
-                create:{userId:user.id,tier:'PRO',provider:'internal_qa',externalId:'hossein-live-qa-20261023',status:'active'},
-                update:{tier:'PRO',status:'active',renewsAt:null,trialEndsAt:null}
+                create:{userId:user.id,tier:'PRO',provider:'internal_qa',externalId:'hossein-live-qa-20261023',status:'expired'},
+                update:{tier:'PRO',status:'active',renewsAt:new Date(0),trialEndsAt:null}
               });
-              await tx.user.update({where:{id:user.id},data:{subscriptionTier:'PRO',role:'ATHLETE'}});
+              await tx.user.update({where:{id:user.id},data:{subscriptionTier:'FREE',role:'ATHLETE'}});
             });
             const after=await db.user.findUnique({where:{id:user.id},select:{role:true,subscriptionTier:true}});
             console.log('QA_ACCOUNT_VERIFIED',after);
