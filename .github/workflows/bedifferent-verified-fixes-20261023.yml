@@ -1,0 +1,184 @@
+name: Release BE DIFFERENT verified workout and language fixes
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/bedifferent-verified-fixes-20261023.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bedifferent-esthetic-temp-securitypatched
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: bedifferent
+          POSTGRES_PASSWORD: build_test
+          POSTGRES_DB: bedifferent_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bedifferent -d bedifferent_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://bedifferent:build_test@127.0.0.1:5432/bedifferent_test?schema=public
+      NEXT_PUBLIC_APP_URL: https://bedifferent.smarbiz.sbs
+      NEXT_PUBLIC_JOURNEY_ONBOARDING_ENABLED: "true"
+      NEXT_PUBLIC_JOURNEY_OVERVIEW_ENABLED: "true"
+      JOURNEY_ONBOARDING_ENABLED: "true"
+      JOURNEY_EDITOR_ENABLED: "true"
+      JOURNEY_TESTS_ENABLED: "true"
+      JOURNEY_OVERVIEW_ENABLED: "true"
+      JOURNEY_DAILY_ENABLED: "true"
+    steps:
+      - name: Checkout pinned BE DIFFERENT source
+        uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/aymantraining
+          ref: f2b3637e3e82c7f3fbf06375759c637697def804
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify source and build without touching production
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "f2b3637e3e82c7f3fbf06375759c637697def804"
+          npm ci
+          # The bundled migrator needs jiti at runtime (previous release stopped safely here).
+          if [ ! -f node_modules/jiti/package.json ]; then
+            npm install --no-save --no-package-lock jiti@2.6.1
+          fi
+          test -s node_modules/jiti/package.json
+          npx prisma generate
+          npm run check
+          npm audit --omit=dev --audit-level=high
+          node scripts/test-languages.mjs
+          node scripts/test-workout-regressions.mjs
+          node scripts/test-step13-streak.mjs
+          node scripts/test-step14-celebration-contract.mjs
+          node scripts/check-visible-copy.mjs
+          bash -n scripts/activate-journey-esthetic-sharedhost.sh
+          npx prisma db push
+          node scripts/test-journey-step03.mjs
+          node scripts/test-journey-step05.mjs
+          node scripts/test-journey-step06.mjs
+          node scripts/test-journey-step07.mjs
+          node scripts/test-journey-step08.mjs
+          npm run build
+          test -s .next/standalone/server.js
+      - name: Build versioned web plus Prisma migrator release
+        run: |
+          set -euo pipefail
+          STAGE="$(mktemp -d)"
+          cp -a .next/standalone/. "$STAGE/"
+          mkdir -p "$STAGE/.next" "$STAGE/bin" "$STAGE/node_modules/@prisma" "$STAGE/prisma" "$STAGE/scripts"
+          cp -a .next/static "$STAGE/.next/static"
+          cp -a public "$STAGE/public"
+          cp "$(command -v node)" "$STAGE/bin/node"
+          cp -a node_modules/.prisma "$STAGE/node_modules/"
+          cp -a node_modules/@prisma/. "$STAGE/node_modules/@prisma/"
+          cp -a node_modules/prisma "$STAGE/node_modules/"
+          cp -a node_modules/jiti "$STAGE/node_modules/"
+          test -s "$STAGE/node_modules/jiti/package.json"
+          # Fail on the runner rather than discovering a missing CLI dependency on the shared VPS.
+          "$STAGE/bin/node" "$STAGE/node_modules/prisma/build/index.js" --version >/dev/null
+          cp prisma/schema.prisma "$STAGE/prisma/schema.prisma"
+          cp scripts/backfill-published-journey-snapshots.mjs "$STAGE/scripts/"
+          cp scripts/activate-journey-esthetic-sharedhost.sh "$STAGE/scripts/"
+          printf '%s\n' "f2b3637e3e82c7f3fbf06375759c637697def804" > "$STAGE/.source-sha"
+          test -s "$STAGE/node_modules/prisma/build/index.js"
+          test -s "$STAGE/node_modules/@prisma/client/package.json"
+          test -s "$STAGE/server.js"
+          tar -C "$STAGE" -czf bd-journey-isolated.tgz .
+          test -s bd-journey-isolated.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bd-journey-isolated
+          path: bd-journey-isolated.tgz
+          retention-days: 7
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Verify all production websites prior to changes
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready | jq -e '.ok == true'
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          name: bd-journey-isolated
+      - name: Transfer web release to temp only
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: bd-journey-isolated.tgz
+          target: /tmp
+      - name: Back up only BE DIFFERENT, migrate additive, enable flags, and switch systemd service
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 29m
+          script_stop: true
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp
+            RELEASE="$APP/releases/${{ github.run_id }}"
+            test "$(id -u)" -eq 0
+            test -d /opt/a-esthetic-mobile
+            test -d /opt/aesthetic-book
+            test -L "$APP/current"
+            test -s /tmp/bd-journey-isolated.tgz
+            test ! -e "$RELEASE"
+            mkdir -p "$RELEASE"
+            tar -xzf /tmp/bd-journey-isolated.tgz -C "$RELEASE"
+            test "$(cat "$RELEASE/.source-sha")" = "f2b3637e3e82c7f3fbf06375759c637697def804"
+            # Tar extraction respects the remote umask. Make only this release
+            # traversable/readable by the isolated app account, never world-writable.
+            chown -R root:bedifferenttemp "$RELEASE"
+            find "$RELEASE" -type d -exec chmod 0750 {} +
+            find "$RELEASE" -type f -exec chmod g+r {} +
+            find "$RELEASE/node_modules/@prisma/engines" -maxdepth 1 -type f -name 'schema-engine-*' -exec chmod 0750 {} +
+            chmod 0750 "$RELEASE/bin/node"
+            chmod -R go-w "$RELEASE"
+            mkdir -p "$RELEASE/.next/cache"
+            chown -R bedifferenttemp:bedifferenttemp "$RELEASE/.next/cache"
+            # Catch any access regressions before backup/migration on the shared host.
+            cd "$RELEASE"
+            runuser -u bedifferenttemp -- test -r "$RELEASE/prisma/schema.prisma"
+            runuser -u bedifferenttemp -- test -x "$RELEASE/node_modules/@prisma/engines/schema-engine-debian-openssl-3.0.x"
+            runuser -u bedifferenttemp -- "$RELEASE/bin/node" "$RELEASE/node_modules/prisma/build/index.js" migrate diff \
+              --from-empty --to-schema-datamodel "$RELEASE/prisma/schema.prisma" --script > /dev/null
+            # Prisma launches schema-engine as a child of the dedicated app account.
+            # The SSH session starts in root-only /root: an inaccessible cwd triggers
+            # EACCES for child_process.spawn even though the binary itself is executable.
+            # Enter the app-owned readable release directory before all migrations.
+            cd "$RELEASE"
+            bash "$RELEASE/scripts/activate-journey-esthetic-sharedhost.sh" "f2b3637e3e82c7f3fbf06375759c637697def804" "${{ github.run_id }}"
+            rm -f /tmp/bd-journey-isolated.tgz
+      - name: Verify all three services after deploy
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 18 https://bedifferent.smarbiz.sbs/api/ready | jq -e '.ok == true and .journey.onboarding == true and .journey.overview == true and .journey.tests == true and .journey.editor == true and .journey.daily == true and .stepFeatures.womenDashboard == true and .stepFeatures.cycleJournal == true and .stepFeatures.milestones == true and .stepFeatures.celebrations == true'
+          curl -fsS --max-time 18 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 18 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo BE_DIFFERENT_STEPS_01_14_ACTIVE_ESTHETIC_BOOKING_HEALTHY
