@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Grant verified PRO entitlement while preserving ADMIN role
+      - name: Temporarily test the authorized account as a PRO athlete
         env:
           HOST: ${{ secrets.SERVER_HOST }}
           SSH_PORT: ${{ secrets.SERVER_PORT }}
@@ -60,7 +60,7 @@ jobs:
                 create:{userId:user.id,tier:'PRO',provider:'internal_qa',externalId:'hossein-live-qa-20261023',status:'active'},
                 update:{tier:'PRO',status:'active',renewsAt:null,trialEndsAt:null}
               });
-              await tx.user.update({where:{id:user.id},data:{subscriptionTier:'PRO'}});
+              await tx.user.update({where:{id:user.id},data:{subscriptionTier:'PRO',role:'ATHLETE'}});
             });
             const after=await db.user.findUnique({where:{id:user.id},select:{role:true,subscriptionTier:true}});
             console.log('QA_ACCOUNT_VERIFIED',after);
