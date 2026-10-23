@@ -1,0 +1,69 @@
+name: BE DIFFERENT authorized test account access
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bedifferent-qa-access-20261023.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bedifferent-admin-pro-single-account
+  cancel-in-progress: false
+jobs:
+  grant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Grant verified PRO entitlement while preserving ADMIN role
+        env:
+          HOST: ${{ secrets.SERVER_HOST }}
+          SSH_PORT: ${{ secrets.SERVER_PORT }}
+          SSH_USER: ${{ secrets.SERVER_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SSH_KEY_PASSPHRASE: ${{ secrets.SERVER_SSH_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$SSH_PRIVATE_KEY" && test -n "$SSH_USER"
+          PORT="${SSH_PORT:-22}"
+          umask 077
+          KEY="$RUNNER_TEMP/bedifferent-admin-pro-key"
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > "$KEY"
+          chmod 600 "$KEY"
+          if [ -n "$SSH_KEY_PASSPHRASE" ]; then
+            eval "$(ssh-agent -s)" >/dev/null
+            ASKPASS="$RUNNER_TEMP/bedifferent-pro-askpass"
+            printf '%s\n' '#!/bin/sh' 'printf "%s" "$SSH_KEY_PASSPHRASE"' > "$ASKPASS"
+            chmod 700 "$ASKPASS"
+            DISPLAY=:0 SSH_ASKPASS="$ASKPASS" SSH_ASKPASS_REQUIRE=force setsid ssh-add "$KEY" </dev/null
+          fi
+          install -d -m 700 "$HOME/.ssh"
+          ssh-keyscan -T 10 -p "$PORT" -H "$HOST" >> "$HOME/.ssh/known_hosts" 2>/dev/null
+          test -s "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          ssh -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "$PORT" "$SSH_USER@$HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          APP=/opt/bedifferent-temp/current
+          test -s /etc/bedifferent-temp.env
+          cd "$APP"
+          set -a; . /etc/bedifferent-temp.env; set +a
+          runuser -u bedifferenttemp -- env DATABASE_URL="$DATABASE_URL" "$APP/bin/node" - <<'NODE'
+          const {PrismaClient}=require('@prisma/client');
+          const db=new PrismaClient();
+          (async()=>{
+            const email='hsdf313@gmail.com';
+            const user=await db.user.findUnique({where:{email}});
+            if(!user||!user.onboardingCompleted)throw Error('Expected onboarded test account missing');
+            await db.$transaction(async tx=>{
+              await tx.subscription.upsert({
+                where:{provider_externalId:{provider:'internal_qa',externalId:'hossein-live-qa-20261023'}},
+                create:{userId:user.id,tier:'PRO',provider:'internal_qa',externalId:'hossein-live-qa-20261023',status:'active'},
+                update:{tier:'PRO',status:'active',renewsAt:null,trialEndsAt:null}
+              });
+              await tx.user.update({where:{id:user.id},data:{subscriptionTier:'PRO'}});
+            });
+            const after=await db.user.findUnique({where:{id:user.id},select:{role:true,subscriptionTier:true}});
+            console.log('QA_ACCOUNT_VERIFIED',after);
+          })().catch(e=>{console.error(e.message);process.exitCode=1}).finally(()=>db.$disconnect());
+          NODE
+          REMOTE
