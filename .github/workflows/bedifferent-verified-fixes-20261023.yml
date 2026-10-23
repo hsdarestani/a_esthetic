@@ -39,12 +39,16 @@ jobs:
       JOURNEY_TESTS_ENABLED: "true"
       JOURNEY_OVERVIEW_ENABLED: "true"
       JOURNEY_DAILY_ENABLED: "true"
+      WOMEN_DASHBOARD_ENABLED: "true"
+      CYCLE_JOURNAL_ENABLED: "true"
+      MILESTONES_ENABLED: "true"
+      CELEBRATIONS_ENABLED: "true"
     steps:
       - name: Checkout pinned BE DIFFERENT source
         uses: actions/checkout@v4
         with:
           repository: hsdarestani/aymantraining
-          ref: 6ac110b2f40d144fd55528da74b6f98ba651b8b0
+          ref: dc2aa1aa58a3a0790922bd4582e3fa1fad289213
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -53,7 +57,7 @@ jobs:
       - name: Verify source and build without touching production
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "6ac110b2f40d144fd55528da74b6f98ba651b8b0"
+          test "$(git rev-parse HEAD)" = "dc2aa1aa58a3a0790922bd4582e3fa1fad289213"
           npm ci
           # The bundled migrator needs jiti at runtime (previous release stopped safely here).
           if [ ! -f node_modules/jiti/package.json ]; then
@@ -75,6 +79,7 @@ jobs:
           node scripts/test-journey-step06.mjs
           node scripts/test-journey-step07.mjs
           node scripts/test-journey-step08.mjs
+          node scripts/test-milestone-events.mjs
           npm run build
           test -s .next/standalone/server.js
       - name: Build versioned web plus Prisma migrator release
@@ -96,7 +101,7 @@ jobs:
           cp prisma/schema.prisma "$STAGE/prisma/schema.prisma"
           cp scripts/backfill-published-journey-snapshots.mjs "$STAGE/scripts/"
           cp scripts/activate-journey-esthetic-sharedhost.sh "$STAGE/scripts/"
-          printf '%s\n' "6ac110b2f40d144fd55528da74b6f98ba651b8b0" > "$STAGE/.source-sha"
+          printf '%s\n' "dc2aa1aa58a3a0790922bd4582e3fa1fad289213" > "$STAGE/.source-sha"
           test -s "$STAGE/node_modules/prisma/build/index.js"
           test -s "$STAGE/node_modules/@prisma/client/package.json"
           test -s "$STAGE/server.js"
@@ -151,7 +156,7 @@ jobs:
             test ! -e "$RELEASE"
             mkdir -p "$RELEASE"
             tar -xzf /tmp/bd-journey-isolated.tgz -C "$RELEASE"
-            test "$(cat "$RELEASE/.source-sha")" = "6ac110b2f40d144fd55528da74b6f98ba651b8b0"
+            test "$(cat "$RELEASE/.source-sha")" = "dc2aa1aa58a3a0790922bd4582e3fa1fad289213"
             # Tar extraction respects the remote umask. Make only this release
             # traversable/readable by the isolated app account, never world-writable.
             chown -R root:bedifferenttemp "$RELEASE"
@@ -173,7 +178,7 @@ jobs:
             # EACCES for child_process.spawn even though the binary itself is executable.
             # Enter the app-owned readable release directory before all migrations.
             cd "$RELEASE"
-            bash "$RELEASE/scripts/activate-journey-esthetic-sharedhost.sh" "6ac110b2f40d144fd55528da74b6f98ba651b8b0" "${{ github.run_id }}"
+            bash "$RELEASE/scripts/activate-journey-esthetic-sharedhost.sh" "dc2aa1aa58a3a0790922bd4582e3fa1fad289213" "${{ github.run_id }}"
             rm -f /tmp/bd-journey-isolated.tgz
       - name: Verify all three services after deploy
         run: |
