@@ -1,7 +1,7 @@
 name: BE DIFFERENT authorized test account access
 on:
   push:
-    branches: [main]
+    branches: [fix/bedifferent-authorized-qa-admin-20261023]
     paths:
       - '.github/workflows/bedifferent-qa-access-20261023.yml'
   workflow_dispatch:
@@ -60,7 +60,7 @@ jobs:
                 create:{userId:user.id,tier:'PRO',provider:'internal_qa',externalId:'hossein-live-qa-20261023',status:'active'},
                 update:{tier:'PRO',status:'active',renewsAt:null,trialEndsAt:null}
               });
-              await tx.user.update({where:{id:user.id},data:{subscriptionTier:'PRO'}});
+              await tx.user.update({where:{id:user.id},data:{subscriptionTier:'PRO',role:'ADMIN'}});
             });
             const after=await db.user.findUnique({where:{id:user.id},select:{role:true,subscriptionTier:true}});
             console.log('QA_ACCOUNT_VERIFIED',after);
