@@ -15,7 +15,22 @@
       headers.set('Content-Type', 'application/json');
       options.body = JSON.stringify(options.json);
     }
-    const response = await fetch(API + path, {...options, headers, cache:'no-store'});
+    // A suspended iOS WebView request must not wait forever.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), options.method === 'POST' ? 25000 : 12000);
+    let response;
+    try {
+      response = await fetch(API + path, {...options, headers, cache:'no-store', signal:controller.signal});
+    } catch(error) {
+      if(error?.name === 'AbortError'){
+        const timedOut = new Error('Die Verbindung hat zu lange gedauert. Bitte erneut versuchen.');
+        timedOut.code = 'request_timeout';
+        throw timedOut;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data?.ok === false) {
       const error = new Error(data?.message || data?.error || ('HTTP ' + response.status));
@@ -46,6 +61,7 @@
       invalid_referral_code:'Der Empfehlungscode ist nicht gültig.',
       referral_code_used:'Dieser Empfehlungscode wurde bereits verwendet.',
       cannot_refer_yourself:'Der eigene Empfehlungscode kann nicht verwendet werden.',
+      request_timeout:'Die Verbindung hat zu lange gedauert. Bitte erneut versuchen.',
       invalid_code:'Der Bestätigungscode ist nicht korrekt.',
       verification_expired:'Der Bestätigungscode ist abgelaufen. Bitte fordern Sie einen neuen an.',
       too_many_attempts:'Zu viele Versuche. Bitte fordern Sie einen neuen Code an.',
@@ -167,24 +183,51 @@
       '<button class="text-btn" type="button" ' + resendAttr + '>' + resendLabel + '</button></article>';
   }
 
+  async function finishVerification(){
+    if(typeof window.APlusRefreshAuth === 'function') await window.APlusRefreshAuth();
+    else location.reload();
+  }
+
+  let onboardingGeneration = 0;
   async function showOnboarding(message='') {
+    const host = root();
+    if (!host) return;
+    const generation = ++onboardingGeneration;
+    if (!host.querySelector('.onboarding-card')) {
+      host.innerHTML = '<div class="login-shell"><section class="login-card onboarding-card">' +
+        logo() + '<h1>Registrierung wird geladen …</h1>' +
+        '<p>Der Kontostatus wird überprüft.</p><div class="spinner" role="status" aria-label="Laden"></div></section></div>';
+    }
     let data;
     try {
       data = await api('/onboarding/');
-    } catch (_) {
-      localStorage.removeItem('aplus_token');
-      location.reload();
+    } catch (error) {
+      if (generation !== onboardingGeneration) return;
+      if (error?.status === 401) {
+        localStorage.removeItem('aplus_token');
+        await finishVerification();
+        return;
+      }
+      host.innerHTML = '<div class="login-shell"><section class="login-card onboarding-card">' +
+        logo() + '<h1>Verbindung unterbrochen</h1>' +
+        '<p>Ihre Registrierung bleibt gespeichert. ' + esc(errorText(error)) + '</p>' +
+        '<button class="primary wide" type="button" data-onboarding-retry>Erneut versuchen</button>' +
+        '<button class="text-btn wide" type="button" data-onboarding-logout>Abmelden</button>' +
+        '</section></div>';
+      host.querySelector('[data-onboarding-retry]')?.addEventListener('click', () => showOnboarding(message));
+      host.querySelector('[data-onboarding-logout]')?.addEventListener('click', () => {
+        localStorage.removeItem('aplus_token');
+        finishVerification();
+      });
       return;
     }
+    if (generation !== onboardingGeneration) return;
     const profile = data.profile || {};
     const account = data.account || {};
     if (account.profile_complete) {
-      location.reload();
+      await finishVerification();
       return;
     }
-
-    const host = root();
-    if (!host) return;
     host.innerHTML =
       '<div class="login-shell"><section class="login-card onboarding-card">' +
       logo() +
@@ -227,7 +270,7 @@
       event.preventDefault();
       try {
         const result = await saveProfile();
-        if (result.account?.profile_complete) return location.reload();
+        if (result.account?.profile_complete) return finishVerification();
         if (!result.account?.phone_verified) {
           await api('/verification/sms/request/', {method:'POST'});
           await showOnboarding('SMS Code wurde gesendet.');
@@ -244,7 +287,7 @@
       const code = new FormData(event.currentTarget).get('code');
       try {
         const result = await api('/verification/email/confirm/', {method:'POST',json:{code}});
-        if (result.account?.profile_complete) return location.reload();
+        if (result.account?.profile_complete) return finishVerification();
         await showOnboarding('E-Mail wurde bestätigt.');
       } catch (error) {
         await showOnboarding(errorText(error));
@@ -256,7 +299,7 @@
       const code = new FormData(event.currentTarget).get('code');
       try {
         const result = await api('/verification/sms/confirm/', {method:'POST',json:{code}});
-        if (result.account?.profile_complete) return location.reload();
+        if (result.account?.profile_complete) return finishVerification();
         await showOnboarding('Telefonnummer wurde bestätigt.');
       } catch (error) {
         await showOnboarding(errorText(error));
@@ -276,7 +319,7 @@
       if (!profileForm.reportValidity()) return;
       try {
         const result = await saveProfile();
-        if (result.account?.profile_complete) return location.reload();
+        if (result.account?.profile_complete) return finishVerification();
         await api('/verification/sms/request/', {method:'POST'});
         await showOnboarding('Eine neue SMS wurde versendet.');
       } catch (error) {
@@ -535,7 +578,7 @@
       json:{provider, credential, user}
     });
     localStorage.setItem('aplus_token', result.token);
-    if (result.account?.profile_complete) return location.reload();
+    if (result.account?.profile_complete) return finishVerification();
     await showOnboarding();
   }
 
