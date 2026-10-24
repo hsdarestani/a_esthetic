@@ -51,6 +51,7 @@ jobs:
           node --check www/core-app.js
           node scripts/test-platform-icons-v39.js
           node --check www/account-onboarding.js
+          node scripts/test-ios-onboarding-recovery.js
           node --check www/booking-direct-api.js
           node --check www/admin-mode.js
           node --check www/booking-consent-bridge.js
