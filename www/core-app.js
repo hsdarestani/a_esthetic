@@ -182,7 +182,67 @@
     root.innerHTML=`<div class="login-shell login-shell-auth"><section class="login-card"><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div><h1>Willkommen zurück</h1><p>${esc(message)}</p><div class="spinner"></div><button class="secondary wide" type="button" data-reconnect>Erneut verbinden</button></section></div>`;
     root.querySelector('[data-reconnect]')?.addEventListener('click',boot);
   }
-  async function boot(){if(!state.token)return showLogin();try{state.me=await request('/me/');if(state.me?.account?.locked){window.APlusOnboarding?.start?.();return;}go(new URLSearchParams(window.location.search).get('bereich')==='termine'?'appointments':'dashboard',{resetHistory:true});}catch(err){if(err?.code==='profile_completion_required'){window.APlusOnboarding?.start?.();return;}if(state.token)showReconnect('Die Verbindung ist gerade nicht verfügbar. Ihre Anmeldung bleibt gespeichert.');}}
+  let bootGeneration = 0;
+  async function readAuthProfile(){
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      return await request('/me/', {signal:controller.signal});
+    } catch(error) {
+      if(error?.name === 'AbortError'){
+        const timeoutError = new Error('Die Verbindung hat zu lange gedauert.');
+        timeoutError.code = 'request_timeout';
+        throw timeoutError;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  async function boot(){
+    const generation = ++bootGeneration;
+    state.token = localStorage.getItem('aplus_token') || '';
+    if(!state.token) return showLogin();
+    // Always render a recoverable screen before awaiting the network. On iOS
+    // a paused WebView fetch must never leave #app completely blank.
+    showReconnect('Anmeldung wird überprüft …');
+    try {
+      const profile = await readAuthProfile();
+      if(generation !== bootGeneration) return;
+      state.me = profile;
+      if(profile?.account?.locked){
+        if(window.APlusOnboarding?.start) await window.APlusOnboarding.start();
+        else showReconnect('Die Registrierung wird geladen …');
+        return;
+      }
+      await go(new URLSearchParams(window.location.search).get('bereich')==='termine'?'appointments':'dashboard',{resetHistory:true});
+    } catch(err) {
+      if(generation !== bootGeneration) return;
+      if(err?.code === 'profile_completion_required'){
+        if(window.APlusOnboarding?.start) await window.APlusOnboarding.start();
+        else showReconnect('Die Registrierung wird geladen …');
+        return;
+      }
+      if(state.token) showReconnect('Die Verbindung ist gerade nicht verfügbar. Ihre Anmeldung bleibt gespeichert.');
+      else showLogin('Bitte melden Sie sich erneut an.');
+    }
+  }
+  // The SMS verification flow can refresh the verified session in-place,
+  // without a fragile native WebView location.reload().
+  window.APlusRefreshAuth = boot;
+  function recoverBlankNativeView(){
+    if(!state.token || document.visibilityState === 'hidden') return;
+    const noScreen = !root?.firstElementChild;
+    const reconnect = Boolean(root?.querySelector?.('[data-reconnect]'));
+    if(noScreen || reconnect) boot();
+  }
+  document.addEventListener('visibilitychange', recoverBlankNativeView);
+  window.addEventListener('pageshow', recoverBlankNativeView);
+  try {
+    window.Capacitor?.Plugins?.App?.addListener?.('appStateChange', event => {
+      if(event?.isActive) recoverBlankNativeView();
+    });
+  } catch(_) { /* Web fallback remains available. */ }
   async function go(route, options={}){
     const displayRoute=route==='reviews'?'points':route;
     const nextRoute=routes.some(item=>item[0]===displayRoute)?displayRoute:'dashboard';
