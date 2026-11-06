@@ -21,6 +21,7 @@ fi
 npx cap sync ios
 # Keep this explicit even if the Capacitor after-sync hook is bypassed.
 python3 scripts/configure_native_camera_permissions.py
+python3 scripts/configure_ios_push.py
 # Browser based Google OAuth must be handled by the installed iOS app.
 python3 - "$ROOT/ios/App/App/Info.plist" <<'PY'
 import plistlib
@@ -37,9 +38,9 @@ PY
 
 # Sign in with Apple must use the native AuthenticationServices entitlement.
 # Keep it scoped to the generated App target. Push is added to the same
-# entitlement file only when the publisher requires production push.
+# entitlement file for every signed App Store build.
 APP_ENTITLEMENTS="$ROOT/ios/App/App/App.entitlements"
-python3 - "$APP_ENTITLEMENTS" "${REQUIRE_NATIVE_PUSH:-0}" <<'PY'
+python3 - "$APP_ENTITLEMENTS" <<'PY'
 from pathlib import Path
 import plistlib
 import sys
@@ -48,9 +49,8 @@ path = Path(sys.argv[1])
 path.parent.mkdir(parents=True, exist_ok=True)
 payload = {
     "com.apple.developer.applesignin": ["Default"],
+    "aps-environment": "production",
 }
-if sys.argv[2] == "1":
-    payload["aps-environment"] = "production"
 with path.open("wb") as fh:
     plistlib.dump(payload, fh, sort_keys=True)
 PY
@@ -314,6 +314,36 @@ schemes = [scheme for entry in info.get("CFBundleURLTypes", [])
 if "de.aplusesthetic.app" not in schemes:
     raise SystemExit("FATAL: distributable IPA is missing Google OAuth return scheme")
 print("PASS: signed IPA contains the de.aplusesthetic.app URL scheme.")
+PY
+
+# Never distribute an iOS build without the actual signed APNs entitlement.
+# The source plist alone is insufficient: the provisioning profile can remove it.
+python3 - "$ROOT/artifacts/a-esthetic.ipa" <<'PY'
+import plistlib
+import subprocess
+import sys
+import tempfile
+import zipfile
+from pathlib import Path
+
+with tempfile.TemporaryDirectory() as temp:
+    with zipfile.ZipFile(sys.argv[1]) as archive:
+        app_paths = sorted({
+            name.split(".app/")[0] + ".app"
+            for name in archive.namelist() if name.startswith("Payload/") and ".app/" in name
+        })
+        if len(app_paths) != 1:
+            raise SystemExit("FATAL: cannot locate signed iOS app in IPA")
+        archive.extractall(temp)
+    app = Path(temp) / app_paths[0]
+    result = subprocess.run(
+        ["codesign", "-d", "--entitlements", ":-", str(app)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+    )
+    entitlements = plistlib.loads(result.stdout)
+    if entitlements.get("aps-environment") != "production":
+        raise SystemExit("FATAL: signed IPA lacks production APNs entitlement")
+print("PASS: signed iOS IPA has production APNs entitlement")
 PY
 
 echo "iOS artifact: $ROOT/artifacts/a-esthetic.ipa"

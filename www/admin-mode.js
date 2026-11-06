@@ -78,7 +78,7 @@
       if (typeof register === 'function') {
         await Promise.race([
           register(),
-          new Promise(resolve => window.setTimeout(resolve, 1800)),
+          new Promise(resolve => window.setTimeout(resolve, window.Capacitor?.getPlatform?.() === 'ios' ? 7000 : 1800)),
         ]);
       }
     } catch (_) {
