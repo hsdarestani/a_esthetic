@@ -42,6 +42,7 @@ jobs:
           npx cap sync ios
           python3 scripts/configure_native_camera_permissions.py
           python3 scripts/configure_ios_push.py
+          node scripts/test_ios_push_registration.js
           python3 scripts/test_ios_social_deeplink.py
           python3 - <<'PY'
           import plistlib
