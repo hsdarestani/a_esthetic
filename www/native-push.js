@@ -7,6 +7,7 @@
   const PUSH_TOKEN_KEY = 'aplus_push_token';
   let listenersBound = false;
   let registering = false;
+  let lastRegistrationAttempt = 0;
   let lastAuthToken = localStorage.getItem(TOKEN_KEY) || '';
   let iosRegistrationResolver = null;
 
@@ -100,6 +101,9 @@
     const authToken = localStorage.getItem(TOKEN_KEY) || '';
     const native = plugin();
     if (!authToken || !native || !platform() || registering) return;
+    // MutationObserver, focus and SSO may all trigger within the same second.
+    if (Date.now() - lastRegistrationAttempt < 30000) return;
+    lastRegistrationAttempt = Date.now();
     lastAuthToken = authToken;
     registering = true;
     try {
@@ -110,7 +114,7 @@
             .then(() => finishIosRegistration(true))
             .catch(() => finishIosRegistration(false));
         });
-        native.addListener('registrationError', () => { finishIosRegistration(false); });
+        native.addListener('registrationError', () => { lastRegistrationAttempt = 0; finishIosRegistration(false); });
         native.addListener('pushNotificationActionPerformed', openNotification);
       }
       const permission = await native.checkPermissions();
@@ -121,6 +125,7 @@
       if (receive === 'granted') await native.register();
       else finishIosRegistration(false);
     } catch (_) {
+      lastRegistrationAttempt = 0;
       finishIosRegistration(false);
       // Push must never block the patient app UI.
     } finally {
