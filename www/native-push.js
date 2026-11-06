@@ -8,6 +8,13 @@
   let listenersBound = false;
   let registering = false;
   let lastAuthToken = localStorage.getItem(TOKEN_KEY) || '';
+  let iosRegistrationResolver = null;
+
+  function finishIosRegistration(ok) {
+    const resolve = iosRegistrationResolver;
+    iosRegistrationResolver = null;
+    if (resolve) resolve(Boolean(ok));
+  }
 
   function platform() {
     const value = window.Capacitor?.getPlatform?.() || '';
@@ -33,7 +40,7 @@
         app_version: '1.0',
       }),
     });
-    if (!response.ok && response.status !== 401) {
+    if (!response.ok) {
       throw new Error(`push_device_http_${response.status}`);
     }
   }
@@ -99,9 +106,11 @@
       if (!listenersBound) {
         listenersBound = true;
         native.addListener('registration', event => {
-          saveDevice(event?.value || '').catch(() => {});
+          saveDevice(event?.value || '')
+            .then(() => finishIosRegistration(true))
+            .catch(() => finishIosRegistration(false));
         });
-        native.addListener('registrationError', () => {});
+        native.addListener('registrationError', () => { finishIosRegistration(false); });
         native.addListener('pushNotificationActionPerformed', openNotification);
       }
       const permission = await native.checkPermissions();
@@ -110,11 +119,47 @@
         receive = (await native.requestPermissions())?.receive;
       }
       if (receive === 'granted') await native.register();
+      else finishIosRegistration(false);
     } catch (_) {
+      finishIosRegistration(false);
       // Push must never block the patient app UI.
     } finally {
       registering = false;
     }
+  }
+
+  async function registerForAdmin() {
+    // Android already works; only iOS must wait for APNs and server delivery
+    // before cross-origin navigation destroys the Capacitor callback context.
+    if (platform() !== 'ios') return reconcileAuth();
+    const authToken = localStorage.getItem(TOKEN_KEY) || '';
+    if (!authToken || !plugin()) return false;
+
+    const cached = localStorage.getItem(PUSH_TOKEN_KEY) || '';
+    if (cached) {
+      try {
+        await deviceRequest('POST', cached, authToken);
+        bindAndRegister().catch(() => {});
+        return true;
+      } catch (_) {
+        // A failed replay is not proof of an APNs registration; try a fresh one.
+      }
+    }
+
+    return new Promise(resolve => {
+      let completed = false;
+      let timer;
+      const settle = ok => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(timer);
+        if (iosRegistrationResolver === settle) iosRegistrationResolver = null;
+        resolve(Boolean(ok));
+      };
+      iosRegistrationResolver = settle;
+      timer = setTimeout(() => settle(false), 6500);
+      bindAndRegister().catch(() => settle(false));
+    });
   }
 
   async function reconcileAuth() {
@@ -144,6 +189,6 @@
   setTimeout(() => { reconcileAuth().catch(() => {}); }, 0);
 
   window.APlusNativePush = {
-    register: () => reconcileAuth(),
+    register: () => registerForAdmin(),
   };
 })();
