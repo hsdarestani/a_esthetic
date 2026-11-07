@@ -12,7 +12,7 @@ concurrency:
   group: bedifferent-esthetic-temp-securitypatched
   cancel-in-progress: false
 env:
-  BD_SOURCE_SHA: 287e4f9dbfeba8d28a14faf607fb2f42231c082f
+  BD_SOURCE_SHA: f27dd604837170a3c313ef4675700e8e67adf3b4
 jobs:
   build:
     runs-on: ubuntu-latest
