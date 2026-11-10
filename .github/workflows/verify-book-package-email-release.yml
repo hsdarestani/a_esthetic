@@ -1,0 +1,27 @@
+name: Verify secured Book package release
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - p0_app/package_bridge_views.py
+      - p0_app/test_internal_book_package_release.py
+      - p0_app/urls.py
+      - .github/workflows/verify-book-package-email-release.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DJANGO_DEBUG: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m compileall -q p0_app/package_bridge_views.py
+      - run: python manage.py test p0_app.test_internal_book_package_release --verbosity 2
