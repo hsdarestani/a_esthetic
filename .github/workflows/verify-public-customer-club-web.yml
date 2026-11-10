@@ -81,7 +81,7 @@ jobs:
                   raise SystemExit(f'Approved treatment visual mapping missing: {marker}')
 
           _, core_app = fetch(f'https://{domain}/core-app.js?release={release}')
-          if './assets/site/hero.svg' not in core_app or './assets/site/clinic.jpg' not in core_app:
+          if 'hero_image_url' not in core_app or './assets/site/clinic.jpg' not in core_app:
               raise SystemExit('Approved hero/clinic visuals are missing from the customer app.')
 
           _, focused_upgrade = fetch(f'https://{domain}/focused-upgrade.js?release={release}')
