@@ -58,3 +58,8 @@
   .book-appointment-summary strong{font-size:15px}
   .book-appointment-details dl>div{grid-template-columns:100px minmax(0,1fr);gap:8px}
 }
+
+/* Actionable booking validation: visible on small iPhone screens, no blocking native alert. */
+.book-confirm-error{border:1px solid #e9cfc7;background:#fff5f1;color:#733b31;border-radius:13px;padding:14px 16px;font-size:14px;line-height:1.55;overflow-wrap:anywhere}
+.book-confirm-error[hidden]{display:none!important}
+.book-error-change-time{display:block;margin-top:12px;width:100%;min-height:44px;border:1px solid #b98c7c;background:#fff;color:#733b31;border-radius:11px;font:inherit;font-weight:700;cursor:pointer}

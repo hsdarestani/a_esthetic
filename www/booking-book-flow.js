@@ -19,6 +19,7 @@
     if (!response.ok || body.ok === false) {
       const error = new Error(body.error || 'request_failed');
       error.body = body;
+      error.status = response.status;
       throw error;
     }
     return body;
@@ -80,6 +81,7 @@
     dayIndex: 0,
     requestId: 0,
     expandedAppointment: null,
+    bookingAttempt: null,
   });
 
   function formatDay(key) {
@@ -333,6 +335,7 @@
               <label class="book-privacy-check"><input name="terms" type="checkbox" required><span>Ich akzeptiere die <a href="${APP_ORIGIN}/nutzungsbedingungen/">Nutzungsbedingungen</a> für die Terminorganisation.</span></label>
               <label class="book-privacy-check"><input name="privacy" type="checkbox" required><span>Ich stimme der Verarbeitung meiner Angaben zur Terminorganisation zu und habe die <a href="${APP_ORIGIN}/datenschutz/">Datenschutzhinweise</a> gelesen.</span></label>
             </div>
+            <div class="book-confirm-error" data-booking-error role="alert" hidden></div>
             <button class="book-primary" type="submit">Jetzt Termin buchen</button>
           </form>
         </section>
@@ -526,40 +529,110 @@
 
     host.querySelectorAll('[data-back]').forEach(button => button.addEventListener('click', () => showStep(host, Number(button.dataset.back))));
 
-    host.querySelector('[data-confirm-form]')?.addEventListener('submit', async event => {
+    const bookingForm = host.querySelector('[data-confirm-form]');
+    const bookingError = host.querySelector('[data-booking-error]');
+    const showBookingError = (message, chooseNewTime = false) => {
+      if (!bookingError) return;
+      bookingError.textContent = message;
+      bookingError.hidden = false;
+      if (chooseNewTime) {
+        const pickAgain = document.createElement('button');
+        pickAgain.type = 'button';
+        pickAgain.className = 'book-error-change-time';
+        pickAgain.textContent = 'Andere Uhrzeit wählen';
+        pickAgain.addEventListener('click', async () => {
+          bookingError.hidden = true;
+          showStep(host, 3);
+          await loadAvailability(state, host.querySelector('[data-slots]'));
+        });
+        bookingError.append(pickAgain);
+      }
+    };
+    const showBookingSuccess = async (fresh = null) => {
+      const success = host.querySelector('[data-success-summary]');
+      success.innerHTML = host.querySelector('[data-book-summary]').innerHTML;
+      showStep(host, 5);
+      state.bookingAttempt = null;
+      if (fresh?.appointments) state.data.appointments = fresh.appointments;
+      else {
+        const refreshed = await api('/booking/').catch(() => null);
+        if (refreshed?.appointments) state.data.appointments = refreshed.appointments;
+      }
+      paintAppointments();
+      await reloadCancellations().catch(() => {});
+    };
+    bookingForm?.addEventListener('submit', async event => {
       event.preventDefault();
       if (!state.service || !state.staff || !state.startsAt) return;
       const button = event.currentTarget.querySelector('button[type="submit"]');
       const formData = new FormData(event.currentTarget);
+      bookingError.hidden = true;
+      bookingError.textContent = '';
       button.disabled = true;
       button.textContent = 'Wird gebucht…';
+      let bookingSubmitted = false;
       try {
         const nextPhone = String(formData.get('phone') || '').trim();
         const oldPhone = String(state.profile?.profile?.phone || '').trim();
         if (nextPhone && nextPhone !== oldPhone) {
           await api('/profile/', { method: 'POST', body: JSON.stringify({ phone: nextPhone, marketing_consent: formData.get('marketing') === 'on' }) });
+          if (state.profile?.profile) state.profile.profile.phone = nextPhone;
         }
+
+        const identity = `${state.service.id}:${state.staff.id}:${state.startsAt}`;
+        if (!state.bookingAttempt || state.bookingAttempt.identity !== identity) {
+          const unique = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          state.bookingAttempt = { identity, key: `app-${unique}` };
+        }
+        bookingSubmitted = true;
         await api('/booking/', {
           method: 'POST',
-          headers: { 'Idempotency-Key': `app-${state.service.id}-${state.staff.id}-${state.startsAt}` },
-          body: JSON.stringify({ service_id: Number(state.service.id), staff_id: Number(state.staff.id), starts_at: state.startsAt, consent_acknowledged: true }),
+          headers: { 'Idempotency-Key': state.bookingAttempt.key },
+          body: JSON.stringify({
+            service_id: Number(state.service.id),
+            staff_id: Number(state.staff.id),
+            starts_at: state.startsAt,
+            consent_acknowledged: true,
+          }),
         });
-        const success = host.querySelector('[data-success-summary]');
-        success.innerHTML = host.querySelector('[data-book-summary]').innerHTML;
-        showStep(host, 5);
-        const refreshed = await api('/booking/').catch(() => null);
-        if (refreshed?.appointments) state.data.appointments = refreshed.appointments;
-        await reloadCancellations();
+        await showBookingSuccess();
       } catch (error) {
-        const messages = { time_not_available:'Diese Zeit ist inzwischen nicht mehr verfügbar. Bitte wähle eine andere Uhrzeit.', staff_not_found:'Dieser Behandler ist aktuell nicht verfügbar.', service_not_found:'Diese Behandlung ist aktuell nicht verfügbar.' };
-        alert(messages[error.message] || 'Die Buchung konnte nicht gespeichert werden. Bitte versuche es erneut.');
+        // A mobile connection can lose the HTTP response after Book committed
+        // the appointment. Never tell the patient it failed without reconciling
+        // their authenticated canonical booking history first.
+        if (bookingSubmitted) {
+          const fresh = await api('/booking/').catch(() => null);
+          const exactBooking = (fresh?.appointments || []).find(item => (
+            Number(item.service_id) === Number(state.service.id)
+            && Number(item.staff_id) === Number(state.staff.id)
+            && new Date(item.starts_at).getTime() === new Date(state.startsAt).getTime()
+            && ['new', 'confirmed'].includes(String(item.status_code || '').toLowerCase())
+          ));
+          if (exactBooking) {
+            await showBookingSuccess(fresh);
+            return;
+          }
+        }
+        const messages = {
+          time_not_available: 'Diese Uhrzeit ist inzwischen vergeben. Bitte wähle eine andere.',
+          identity_conflict: 'Deine Angaben stimmen nicht mit der vorhandenen Patientenakte überein. Bitte kontaktiere die Praxis, damit wir das sicher klären können.',
+          authentication_required: 'Deine Anmeldung ist abgelaufen. Bitte melde dich erneut an.',
+          identity_service_unavailable: 'Die Anmeldung konnte gerade nicht geprüft werden. Bitte versuche es gleich erneut.',
+          booking_attempt_closed: 'Dieser Buchungsversuch ist abgeschlossen. Bitte wähle den Termin erneut.',
+          staff_not_found: 'Dieser Behandler ist aktuell nicht verfügbar.',
+          service_not_found: 'Diese Behandlung ist aktuell nicht verfügbar.',
+          start_time_too_soon: 'Bitte wähle eine spätere Uhrzeit.',
+        };
+        const errorMessage = messages[error.message] || error.body?.message
+          || 'Die Buchung konnte nicht bestätigt werden. Bitte versuche es erneut oder kontaktiere die Praxis.';
+        showBookingError(errorMessage, error.message === 'time_not_available' || error.message === 'booking_attempt_closed');
         button.disabled = false;
         button.textContent = 'Jetzt Termin buchen';
       }
     });
 
     host.querySelector('[data-new-booking]')?.addEventListener('click', () => {
-      state.service = null; state.staff = null; state.startsAt = ''; state.availability = [];
+      state.service = null; state.staff = null; state.startsAt = ''; state.availability = []; state.bookingAttempt = null;
       showStep(host, 1);
     });
   }
