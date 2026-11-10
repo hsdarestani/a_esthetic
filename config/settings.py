@@ -155,7 +155,7 @@ ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*", "first_name", "la
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 ACCOUNT_LOGIN_BY_CODE_ENABLED = True
 ACCOUNT_LOGIN_BY_CODE_SUPPORTS_RESEND = True
-ACCOUNT_PASSWORD_RESET_BY_CODE_ENABLED = True
+ACCOUNT_PASSWORD_RESET_BY_CODE_ENABLED = False
 ACCOUNT_CHANGE_EMAIL = True
 ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_SESSION_REMEMBER = True
@@ -214,16 +214,18 @@ FILE_UPLOAD_PERMISSIONS = 0o600
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", os.environ.get("EMAIL_SMTP_PASSWORD", ""))
+# Never silently log password-reset emails instead of delivering them in production.
+# Development keeps the console backend unless EMAIL_BACKEND is explicitly set.
 EMAIL_BACKEND = os.environ.get(
     "EMAIL_BACKEND",
-    "django.core.mail.backends.smtp.EmailBackend"
-    if EMAIL_HOST_PASSWORD
-    else "django.core.mail.backends.console.EmailBackend",
+    "django.core.mail.backends.console.EmailBackend"
+    if DEBUG
+    else "django.core.mail.backends.smtp.EmailBackend",
 )
-EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.strato.de" if EMAIL_HOST_PASSWORD else "")
-EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "465" if EMAIL_HOST_PASSWORD else "587"))
-EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "app@a-esthetic.de" if EMAIL_HOST_PASSWORD else "")
-EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "1" if EMAIL_HOST_PASSWORD else "0") == "1"
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.strato.de")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "465"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "app@a-esthetic.de")
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "1") == "1"
 EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "0") == "1"
 if EMAIL_USE_SSL and EMAIL_USE_TLS:
     raise RuntimeError("EMAIL_USE_SSL and EMAIL_USE_TLS cannot both be enabled.")
