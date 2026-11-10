@@ -1,5 +1,7 @@
 import json
+import logging
 import re
+import uuid
 import unicodedata
 
 from django.db import transaction
@@ -12,6 +14,7 @@ from platform_app import mobile_api as legacy_mobile_api
 from platform_app.models import AuditLog, MemberPackage, WalletTransaction
 
 from .models import PackageBookingRedemption, PackageBookingService
+from .notification_views import _internal_authorized
 
 
 _GENERIC_WORDS = {
@@ -124,36 +127,9 @@ def mobile_package_booking(request):
     if action == "release":
         with transaction.atomic():
             redemption = PackageBookingRedemption.objects.select_for_update().select_related(
-                "member_package", "member_package__definition"
+                "member_package", "member_package__definition",
             ).filter(user=user, booking_public_id=booking_public_id).first()
-            if not redemption:
-                return _payload()
-            if redemption.status == "released":
-                return _payload(redemption=redemption, released=True)
-
-            package = MemberPackage.objects.select_for_update().select_related("definition").get(pk=redemption.member_package_id)
-            package.remaining_sessions += 1
-            package.status = "active" if package.expires_at >= timezone.localdate() else "expired"
-            package.save(update_fields=["remaining_sessions", "status"])
-            redemption.status = "released"
-            redemption.released_at = timezone.now()
-            redemption.save(update_fields=["status", "released_at"])
-            WalletTransaction.objects.get_or_create(
-                user=user,
-                kind="package",
-                direction="in",
-                reference=f"book:{booking_public_id}:release"[:80],
-                defaults={"description": f"Paket-Sitzung freigegeben: {package.definition.name}"[:200]},
-            )
-            AuditLog.objects.create(
-                actor=user,
-                action="Package booking released",
-                entity_type="MemberPackage",
-                entity_id=str(package.pk),
-                metadata={"booking_public_id": booking_public_id, "service_slug": redemption.service_slug},
-                ip_address=request.META.get("REMOTE_ADDR"),
-            )
-            return _payload(redemption=redemption, package=package, released=True)
+            return _release_package_redemption(redemption)
 
     if not service_slug:
         return JsonResponse({"ok": False, "error": "service_slug_required"}, status=400)
@@ -202,3 +178,62 @@ def mobile_package_booking(request):
             ip_address=request.META.get("REMOTE_ADDR"),
         )
         return _payload(redemption=redemption, package=package, used=True)
+
+
+def _release_package_redemption(redemption):
+    """Release exactly one package session, safely idempotent under a row lock."""
+    if not redemption:
+        return _payload()
+    if redemption.status == "released":
+        return _payload(redemption=redemption, released=True)
+    booking_public_id = redemption.booking_public_id
+    package = MemberPackage.objects.select_for_update().select_related("definition").get(
+        pk=redemption.member_package_id,
+    )
+    package.remaining_sessions += 1
+    package.status = "active" if package.expires_at >= timezone.localdate() else "expired"
+    package.save(update_fields=["remaining_sessions", "status"])
+    redemption.status = "released"
+    redemption.released_at = timezone.now()
+    redemption.save(update_fields=["status", "released_at"])
+    WalletTransaction.objects.get_or_create(
+        user=redemption.user,
+        kind="package",
+        direction="in",
+        reference=f"book:{booking_public_id}:release"[:80],
+        defaults={"description": f"Paket-Sitzung freigegeben: {package.definition.name}"[:200]},
+    )
+    AuditLog.objects.create(
+        actor=redemption.user,
+        action="Package booking released",
+        entity_type="MemberPackage",
+        entity_id=str(package.pk),
+        metadata={"booking_public_id": booking_public_id, "service_slug": redemption.service_slug},
+        ip_address=None,
+    )
+    return _payload(redemption=redemption, package=package, released=True)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def internal_book_package_release(request):
+    """Minimal trusted Book-to-App release for an email-confirmed cancellation.
+
+    Never accepts user IDs or package IDs from the caller. It can only release
+    an existing reservation by its immutable public booking UUID, and is
+    protected with the established inter-service sync credential.
+    """
+    if not _internal_authorized(request):
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    data = _json(request)
+    if set(data) != {"booking_public_id"}:
+        return JsonResponse({"ok": False, "error": "invalid_payload"}, status=400)
+    try:
+        booking_id = str(uuid.UUID(str(data["booking_public_id"])))
+    except (ValueError, TypeError, AttributeError):
+        return JsonResponse({"ok": False, "error": "invalid_booking_id"}, status=400)
+    with transaction.atomic():
+        redemption = PackageBookingRedemption.objects.select_for_update().select_related(
+            "user", "member_package", "member_package__definition",
+        ).filter(booking_public_id=booking_id).first()
+        return _release_package_redemption(redemption)

@@ -26,6 +26,7 @@ urlpatterns = [
     path("api/mobile/club/", referral_views.mobile_club, name="p0_mobile_club"),
     path("api/mobile/reviews/", review_views.mobile_reviews, name="p0_mobile_reviews"),
     path("api/mobile/package-booking/", package_bridge_views.mobile_package_booking, name="p0_mobile_package_booking"),
+    path("api/mobile/internal/book-package-release/", package_bridge_views.internal_book_package_release, name="p0_internal_book_package_release"),
     path("api/mobile/wallet/", views.mobile_wallet, name="p0_mobile_wallet"),
     path("api/mobile/wallet/reward/<int:reward_id>/", reward_views.mobile_redeem_reward, name="p0_mobile_redeem_reward"),
     path("api/mobile/reward-redemptions/", reward_views.mobile_reward_redemptions, name="p0_mobile_reward_redemptions"),
