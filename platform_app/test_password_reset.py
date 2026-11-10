@@ -38,7 +38,10 @@ class PasswordResetExperienceTests(TestCase):
             {"email": "missing@example.com"},
         )
         self.assertRedirects(response, reverse("account_reset_password_done"))
-        self.assertEqual(len(mail.outbox), 0)
+        # Allauth intentionally emails a generic unknown-account notice to
+        # avoid silently dropping a user's request; it is not a reset link.
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertNotIn("/accounts/password/reset/key/", mail.outbox[0].body)
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
