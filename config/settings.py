@@ -213,22 +213,21 @@ SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 FILE_UPLOAD_PERMISSIONS = 0o600
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
-EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", os.environ.get("EMAIL_SMTP_PASSWORD", ""))
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD") or os.environ.get("EMAIL_SMTP_PASSWORD", "")
 # Never silently log password-reset emails instead of delivering them in production.
 # Development keeps the console backend unless EMAIL_BACKEND is explicitly set.
-EMAIL_BACKEND = os.environ.get(
-    "EMAIL_BACKEND",
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND") or (
     "django.core.mail.backends.console.EmailBackend"
     if DEBUG
-    else "django.core.mail.backends.smtp.EmailBackend",
+    else "django.core.mail.backends.smtp.EmailBackend"
 )
-EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.strato.de")
-EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "465"))
-EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "app@a-esthetic.de")
-EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "1") == "1"
+EMAIL_HOST = os.environ.get("EMAIL_HOST") or "smtp.strato.de"
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT") or "465")
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER") or "app@a-esthetic.de"
+EMAIL_USE_SSL = (os.environ.get("EMAIL_USE_SSL") or "1") == "1"
 EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "0") == "1"
 if EMAIL_USE_SSL and EMAIL_USE_TLS:
     raise RuntimeError("EMAIL_USE_SSL and EMAIL_USE_TLS cannot both be enabled.")
 EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "20"))
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "A+ Esthetic <app@a-esthetic.de>")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL") or "A+ Esthetic <app@a-esthetic.de>"
 SERVER_EMAIL = os.environ.get("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
