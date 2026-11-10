@@ -40,6 +40,20 @@ class PasswordResetExperienceTests(TestCase):
         self.assertRedirects(response, reverse("account_reset_password_done"))
         self.assertEqual(len(mail.outbox), 0)
 
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+        EMAIL_HOST="smtp.strato.de",
+        EMAIL_HOST_PASSWORD="",
+    )
+    def test_missing_smtp_credential_is_not_reported_as_success(self):
+        response = self.client.post(
+            reverse("account_reset_password"),
+            {"email": self.user.email},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "E-Mail-Versand ist momentan nicht verfügbar")
+        self.assertEqual(len(mail.outbox), 0)
+
     def test_invalid_reset_link_is_branded(self):
         url = reverse(
             "account_reset_password_from_key",
