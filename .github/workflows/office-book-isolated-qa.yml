@@ -6,6 +6,9 @@ on:
       - 'platform_app/**'
       - 'p0_app/**'
       - 'scripts/mobile_staff_preview.py'
+      - 'scripts/check_remote_staging_ready.py'
+      - 'scripts/test_check_remote_staging_ready.py'
+      - '.github/workflows/mobile-staff-preview.yml'
       - 'scripts/test_native_office_preview.py'
       - '.github/workflows/office-book-isolated-qa.yml'
 permissions:
@@ -38,6 +41,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/office-qa"
           app-venv/bin/python app/scripts/test_preview_public_origins.py
+          app-venv/bin/python app/scripts/test_check_remote_staging_ready.py
           app-venv/bin/python app/scripts/mobile_staff_preview.py --book book \
             --app-python app-venv/bin/python --book-python book-venv/bin/python \
             --pg-bin "$(pg_config --bindir)" --state "$RUNNER_TEMP/office-qa" > "$RUNNER_TEMP/office-qa/preview.log" 2>&1 &
