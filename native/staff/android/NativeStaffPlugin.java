@@ -227,7 +227,7 @@ public final class NativeStaffPlugin extends Plugin {
         JSONArray actions=list(s,"actions");
         for(int i=0;i<actions.length();i++){JSONObject item=actions.optJSONObject(i);if(item!=null)add(body,button(item.optString("label"),item.optString("id"),true),10);}
         JSONArray tabs=list(s,"tabs"); LinearLayout nav=row();
-        for(int i=0;i<tabs.length();i++){JSONObject item=tabs.optJSONObject(i);if(item!=null)weight(nav,button(item.optString("label"),item.optString("id"),false));}
+        for(int i=0;i<tabs.length();i++){JSONObject item=tabs.optJSONObject(i);if(item!=null)weight(nav,button(item.optString("label"),item.optString("id"),item.optBoolean("selected")));}
         add(root,nav,0);dialog.setContentView(root);
     }
     @PluginMethod public void present(PluginCall call) {
