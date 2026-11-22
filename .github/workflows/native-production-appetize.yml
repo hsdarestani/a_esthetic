@@ -85,7 +85,7 @@ jobs:
           node - <<'NODE'
           const fs = require('node:fs');
           const src = fs.readFileSync('www/mobile/workspace.mjs', 'utf8');
-          if (/signal:\\s*AbortSignal\\.any\\s*\\(/.test(src)) {
+          if (src.includes('signal: AbortSignal.any(')) {
             throw new Error('iOS 17.2 cannot execute AbortSignal.any in staff fetch');
           }
           console.log('PASS: legacy iOS staff requests use compatible AbortController');
