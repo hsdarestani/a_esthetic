@@ -137,6 +137,13 @@ def office(request, operation, ident=None):
     if not _is_admin(actor):
         return error('admin_required', 403)
     if request.method == 'GET':
+        if operation == 'invoice-settings' and ident is None:
+            config, _ = InvoiceSettings.objects.get_or_create(pk=1)
+            keys = ('company_name','street','postal_code','city','email','phone','tax_number','vat_id',
+                    'bank_name','iban','bic','invoice_prefix','next_sequence')
+            return JsonResponse({'ok':True, 'revision':config.updated_at.isoformat(),
+                'ready_for_issue':config.ready_for_issue,
+                'settings':{key:getattr(config,key) for key in keys}})
         if operation == 'tariff-catalog' and ident is None:
             return JsonResponse({'ok': True, 'items': catalog_payload(), 'treatments': TREATMENTS,
                 'approval_required': True, 'synthetic_reference_available': bool(getattr(settings, 'OFFICE_SYNTHETIC_STAGE', False))})
@@ -189,6 +196,49 @@ def office(request, operation, ident=None):
         data = json.loads(request.body)
         if not isinstance(data, dict):
             raise ValueError
+        if operation == 'invoice-settings' and ident is None:
+            if data.get('confirmed_financial_update') is not True:
+                return error('financial_settings_confirmation_required', 409)
+            required = {'company_name':180, 'street':180, 'postal_code':20, 'city':120, 'email':254, 'phone':40}
+            optional = {'tax_number':80,'vat_id':80,'bank_name':120,'iban':64,'bic':32,'invoice_prefix':20}
+            changes = {}
+            try:
+                if not data.get('revision') or len(str(data['revision']))>80:
+                    return error('invalid_revision')
+                for key, limit in {**required,**optional}.items():
+                    if key not in data or not isinstance(data[key],str) or len(data[key].strip())>limit:
+                        return error('invalid_settings')
+                    val=data[key].strip()
+                    if key in required and not val:
+                        return error('required_settings')
+                    changes[key]=val
+                if '@' not in changes['email'] or ' ' in changes['email']:
+                    return error('invalid_email')
+                if not re.fullmatch(r'[A-Za-z0-9_-]{1,20}',changes['invoice_prefix']):
+                    return error('invalid_prefix')
+                seq=int(data['next_sequence'])
+                if not (1<=seq<=99999999):
+                    return error('invalid_sequence')
+                with transaction.atomic():
+                    config, _ = InvoiceSettings.objects.select_for_update().get_or_create(pk=1)
+                    if config.updated_at.isoformat()!=data['revision']:
+                        return error('settings_conflict',409)
+                    if seq<config.next_sequence:
+                        return error('sequence_cannot_decrease',409)
+                    for key,val in changes.items():
+                        setattr(config,key,val)
+                    config.iban=changes['iban'].replace(' ','')
+                    config.bic=changes['bic'].upper()
+                    config.next_sequence=seq
+                    config.save()
+                    AuditLog.objects.create(actor=actor,action='Native Office invoice settings changed',
+                        entity_type='InvoiceSettings',entity_id=str(config.pk),
+                        metadata={'fields':sorted(changes),'invoice_prefix':config.invoice_prefix,
+                                  'next_sequence':seq})
+                return JsonResponse({'ok':True,'revision':config.updated_at.isoformat(),
+                    'ready_for_issue':config.ready_for_issue})
+            except (ValueError, TypeError, KeyError):
+                return error('invalid_settings')
         if operation == 'issue-simulation' and ident is not None:
             if not getattr(settings, 'OFFICE_SYNTHETIC_STAGE', False):
                 return error('goae_issuance_requires_approval', 409)
