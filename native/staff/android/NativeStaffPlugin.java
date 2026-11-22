@@ -127,7 +127,38 @@ public final class NativeStaffPlugin extends Plugin {
             }
             add(root,strip,12);
         }
-        ScrollView scroll = new ScrollView(getContext()); scroll.setFillViewport(true);
+        ScrollView scroll = new ScrollView(getContext()) {
+            private float downX, downY;
+            private boolean swiping;
+            @Override public boolean onInterceptTouchEvent(android.view.MotionEvent e) {
+                if(week.length()==0)return super.onInterceptTouchEvent(e);
+                if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){
+                    downX=e.getX(); downY=e.getY(); swiping=false;
+                }
+                if(e.getActionMasked()==android.view.MotionEvent.ACTION_MOVE){
+                    float dx=e.getX()-downX, dy=e.getY()-downY;
+                    if(Math.abs(dx)>dp(28)&&Math.abs(dx)>Math.abs(dy)*1.4f){
+                        swiping=true; return true;
+                    }
+                }
+                return super.onInterceptTouchEvent(e);
+            }
+            @Override public boolean onTouchEvent(android.view.MotionEvent e) {
+                if(swiping){
+                    if(e.getActionMasked()==android.view.MotionEvent.ACTION_UP){
+                        float dx=e.getX()-downX, dy=e.getY()-downY;
+                        if(Math.abs(dx)>dp(60)&&Math.abs(dx)>Math.abs(dy)*1.4f)
+                            action(dx<0?"day-next":"day-prev");
+                        swiping=false;
+                    }else if(e.getActionMasked()==android.view.MotionEvent.ACTION_CANCEL){
+                        swiping=false;
+                    }
+                    return true;
+                }
+                return super.onTouchEvent(e);
+            }
+        };
+        scroll.setFillViewport(true);
         LinearLayout body=column(); body.setPadding(0,0,0,dp(12)); scroll.addView(body);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if(s.optBoolean("busy")) { ProgressBar progress=new ProgressBar(getContext()); add(body,progress,8); }
