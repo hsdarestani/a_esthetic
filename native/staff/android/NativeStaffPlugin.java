@@ -147,8 +147,41 @@ public final class NativeStaffPlugin extends Plugin {
                 Spinner picker=new Spinner(getContext()); ArrayAdapter<String> adapter=new ArrayAdapter<>(getContext(),android.R.layout.simple_spinner_dropdown_item,labels);
                 picker.setAdapter(adapter);picker.setSelection(choice); add(container,picker,0);selects.put(key,picker);optionValues.put(key,vals);
             } else {
-                EditText input=new EditText(getContext());input.setText(f.optString("value"));input.setTextColor(INK);input.setTextSize(16);
-                input.setSingleLine(true);input.setMinHeight(dp(48));input.setHint(f.optString("label"));add(container,input,0);edits.put(key,input);
+                EditText input=new EditText(getContext());
+                String kind=f.optString("kind","text");
+                int inputType;
+                switch(kind){
+                    case "multiline":
+                        inputType=android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                            | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES;
+                        break;
+                    case "integer":
+                        inputType=android.text.InputType.TYPE_CLASS_NUMBER;
+                        break;
+                    case "decimal":
+                        inputType=android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL;
+                        break;
+                    case "email":
+                        inputType=android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
+                        break;
+                    case "phone":
+                        inputType=android.text.InputType.TYPE_CLASS_PHONE;
+                        break;
+                    default:
+                        inputType=android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES;
+                }
+                input.setInputType(inputType);
+                if("multiline".equals(kind)){
+                    input.setSingleLine(false);
+                    input.setMinLines(3);
+                    input.setMaxLines(7);
+                    input.setGravity(Gravity.TOP | Gravity.START);
+                } else {
+                    input.setSingleLine(true);
+                    input.setMinHeight(dp(48));
+                }
+                input.setText(f.optString("value"));input.setTextColor(INK);input.setTextSize(16);
+                input.setHint(f.optString("label"));add(container,input,0);edits.put(key,input);
             }
             add(body,container,10);
         }
