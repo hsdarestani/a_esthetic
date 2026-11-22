@@ -168,13 +168,18 @@ jobs:
           app="$RUNNER_TEMP/aesthetic-final/Build/Products/Debug-iphonesimulator/App.app"
           xcrun simctl install "$simid" "$app"
           xcrun simctl launch "$simid" de.aplusesthetic.app
-          sleep 8
+          sleep 12
           xcrun simctl spawn "$simid" log show --style compact --last 3m \
-            --predicate 'eventMessage CONTAINS[c] "APLUS_NATIVE_STAFF_REGISTERED"' > "$RUNNER_TEMP/native-staff-ios.log" || true
-          if grep -q 'APLUS_NATIVE_STAFF_REGISTERED bridge=available' "$RUNNER_TEMP/native-staff-ios.log"; then
-            echo 'PASS: running iOS simulator instantiated custom CAPBridgeViewController and registered NativeStaff'
+            --predicate 'eventMessage CONTAINS[c] "APLUS_NATIVE_STAFF_"' > "$RUNNER_TEMP/native-staff-ios.log" || true
+          if ! grep -q 'APLUS_NATIVE_STAFF_REGISTERED bridge=available' "$RUNNER_TEMP/native-staff-ios.log"; then
+            echo 'FAIL: custom CAPBridgeViewController never registered NativeStaff'
+            exit 1
+          fi
+          if grep -q 'APLUS_NATIVE_STAFF_JS_BRIDGE OK' "$RUNNER_TEMP/native-staff-ios.log"; then
+            echo 'PASS: actual iOS Simulator JS-to-Swift NativeStaff probe returned OK'
           else
-            echo 'FAIL: custom native bridge did not report registration at runtime'
+            echo 'FAIL: native Swift plugin registration did not complete a JavaScript probe'
+            grep 'APLUS_NATIVE_STAFF_JS_BRIDGE' "$RUNNER_TEMP/native-staff-ios.log" || true
             exit 1
           fi
           xcrun simctl terminate "$simid" de.aplusesthetic.app || true
