@@ -1,5 +1,5 @@
 name: A+ Esthetic approved production native blue-green rollout
-# v2: candidate uses venv Pillow, never incompatible legacy /vendor native extensions.
+# v3: safe retry uses uniquely versioned Book candidate directories; no prior release deletion.
 on:
   push:
     branches: [feature/mobile-unified-overhaul]
