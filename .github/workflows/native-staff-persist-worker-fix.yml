@@ -1,0 +1,77 @@
+name: Persist validated staff relay worker fix without production restart
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/native-staff-persist-worker-fix.yml]
+permissions: {contents: read}
+jobs:
+  persist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Persist 3 workers on active A+ service without touching live processes
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            python3 - <<'PY'
+            from pathlib import Path
+            import os, re, shutil, subprocess, sys
+            from datetime import datetime, timezone
+            folder=Path('/etc/systemd/system')
+            candidates=[]
+            for f in folder.glob('*.service'):
+                try: contents=f.read_text()
+                except (OSError,UnicodeError): continue
+                lines=[l for l in contents.splitlines() if l.startswith('ExecStart=')]
+                if any(re.search(r'--bind[ =]127\.0\.0\.1:8772(?:\s|$)',l) for l in lines):
+                    candidates.append((f,contents,lines))
+            if len(candidates)!=1:
+                print('SAFE_ABORT expected one service file on live A+ port; found',len(candidates))
+                sys.exit(1)
+            path,contents,lines=candidates[0]
+            unit=path.name
+            before_pid=subprocess.check_output(['systemctl','show',unit,'--property=MainPID','--value'],text=True).strip()
+            active=subprocess.check_output(['systemctl','is-active',unit],text=True).strip()
+            print('ACTIVE_UNIT',unit,'state',active,'main_pid_present',before_pid!='0')
+            if active!='active' or before_pid in ('0',''):
+                raise SystemExit('SAFE_ABORT target unit is not active')
+            target=[l for l in lines if '--bind 127.0.0.1:8772' in l]
+            if len(target)!=1: raise SystemExit('SAFE_ABORT unexpected ExecStart syntax')
+            old=target[0]
+            if '--workers 3' in old:
+                print('ALREADY_PERSISTED workers=3')
+                sys.exit(0)
+            if old.count('--workers 1')!=1: raise SystemExit('SAFE_ABORT unexpected existing worker setting')
+            new=old.replace('--workers 1','--workers 3')
+            if contents.count(old)!=1: raise SystemExit('SAFE_ABORT expected exactly one matching ExecStart')
+            backup=path.with_name(path.name+'.pre-three-workers-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
+            shutil.copy2(path,backup)
+            temp=path.with_name(path.name+'.new-workers.tmp')
+            temp.write_text(contents.replace(old,new))
+            os.chmod(temp,path.stat().st_mode)
+            temp.replace(path)
+            try:
+                subprocess.run(['systemctl','daemon-reload'],check=True)
+                after_pid=subprocess.check_output(['systemctl','show',unit,'--property=MainPID','--value'],text=True).strip()
+                after_cmd=subprocess.check_output(['systemctl','show',unit,'--property=ExecStart','--value'],text=True)
+                after_state=subprocess.check_output(['systemctl','is-active',unit],text=True).strip()
+                if after_pid!=before_pid or after_state!='active' or '--workers 3' not in after_cmd:
+                    raise RuntimeError('Unit acceptance test failed; restoring configuration')
+                print('PERSISTENT_WORKER_CONFIGURATION=3')
+                print('NO_RESTART_CONFIRMED=YES')
+                print('ROLLBACK_BACKUP_CREATED=YES')
+            except Exception:
+                shutil.copy2(backup,path)
+                subprocess.run(['systemctl','daemon-reload'],check=False)
+                print('CONFIG_ROLLBACK_COMPLETE')
+                raise
+            PY
+            for url in https://book.a-esthetic.de/ https://app.a-esthetic.de/api/mobile/staff/session/; do
+              curl -sS -o /dev/null -w 'POST_CHANGE_HTTP=%{http_code}\n' --max-time 8 "$url"
+            done
