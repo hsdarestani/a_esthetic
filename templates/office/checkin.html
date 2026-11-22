@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0d141a">
   <meta name="robots" content="noindex,nofollow,noarchive">
-  <title>Kundenaufnahme · A+ Esthetic</title>
+  <title>Patientenaufnahme · A+ Esthetic</title>
   <style>
     :root{
       --ink:#11181e;
@@ -145,7 +145,7 @@
       <p>Bitte hinterlegen Sie Ihre Kontaktdaten einmal vollständig. So können wir Ihre Behandlung und Ihre Rechnung schnell und korrekt vorbereiten.</p>
       <div class="trust">
         <div><i>✓</i><span>Schnelle digitale Aufnahme</span></div>
-        <div><i>⌁</i><span>Direkt in Ihrem Kundenprofil</span></div>
+        <div><i>⌁</i><span>Direkt in Ihrem Patientenprofil</span></div>
         <div><i>◈</i><span>Vertrauliche Verarbeitung</span></div>
       </div>
     </div>
@@ -156,7 +156,7 @@
   <main class="main">
     <div class="shell">
       <div class="topline">
-        <div class="kicker">Digitale Kundenaufnahme</div>
+        <div class="kicker">Digitale Patientenaufnahme</div>
         <div class="progress" aria-label="Formular Fortschritt"><span></span><span></span><span></span></div>
       </div>
 
@@ -166,10 +166,10 @@
           <div class="successInner">
             <div class="check">✓</div>
             <h2>Vielen Dank</h2>
-            <p>Ihre Angaben wurden sicher gespeichert und Ihrem Kundenprofil zugeordnet.</p>
-            {% if member_number %}<div class="member">Ihre Kundennummer <strong>{{ member_number }}</strong></div>{% endif %}
+            <p>Ihre Angaben wurden sicher gespeichert und Ihrem Patientenprofil zugeordnet.</p>
+            {% if member_number %}<div class="member">Ihre Patientennummer <strong>{{ member_number }}</strong></div>{% endif %}
             <p>Bitte geben Sie das iPad jetzt wieder an unser Team zurück.</p>
-            {% if public_intake %}<a class="next" href="{% url 'office_intake' %}">Nächsten Kunden erfassen</a>{% endif %}
+            {% if public_intake %}<a class="next" href="{% url 'office_intake' %}">Nächsten Patienten erfassen</a>{% endif %}
           </div>
         </div>
       {% elif expired %}
@@ -177,7 +177,7 @@
           <div class="successInner">
             <div class="check">!</div>
             <h2>Sitzung abgelaufen</h2>
-            <p>Bitte wenden Sie sich kurz an unser Team. Wir öffnen die Kundenaufnahme direkt erneut.</p>
+            <p>Bitte wenden Sie sich kurz an unser Team. Wir öffnen die Patientenaufnahme direkt erneut.</p>
           </div>
         </div>
       {% else %}
@@ -249,7 +249,7 @@
           </div>
 
           <div class="submitbar">
-            <div class="privacy"><i>✓</i><span>Ihre Angaben werden ausschließlich für Kundenverwaltung, Behandlung und Rechnungsstellung verarbeitet.</span></div>
+            <div class="privacy"><i>✓</i><span>Ihre Angaben werden ausschließlich für Patientenverwaltung, Behandlung und Rechnungsstellung verarbeitet.</span></div>
             <button class="submit" type="submit">Daten sicher speichern</button>
           </div>
         </form>
