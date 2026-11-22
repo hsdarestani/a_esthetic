@@ -66,22 +66,37 @@ export function mountWorkspace({root, token, identity, origin, logout}) {
   let toastTimer;
 
   async function request(path, {json, signal, blob = false} = {}) {
-    const response = await fetch(origin + '/api/mobile/' + path, {
-      method:json === undefined ? 'GET' : 'POST',
-      cache:'no-store', credentials:'omit', aplusSilent:true,
-      headers:{Authorization:'Bearer ' + token, ...(json === undefined ? {} : {'Content-Type':'application/json'})},
-      body:json === undefined ? undefined : JSON.stringify(json),
-      signal: AbortSignal.any([requests.signal, signal || requests.signal, AbortSignal.timeout(14000)]),
-    });
-    if (blob && response.ok) return response.blob();
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result.ok === false) {
-      const error = new Error(result.message || 'Der Server konnte die Anfrage nicht abschließen.');
-      error.status = response.status;
-      error.code = result.error || '';
-      throw error;
+    // iOS 17.2/17.3 lacks AbortSignal.any(), causing every staff read to
+    // fail *before fetch*. Use AbortController on all supported WebViews.
+    const controller = new AbortController();
+    const sources = [requests.signal, signal].filter(Boolean);
+    const abort = () => controller.abort();
+    for (const source of sources) {
+      if (source.aborted) controller.abort();
+      else source.addEventListener('abort', abort, {once:true});
     }
-    return result;
+    const timeout = setTimeout(abort, 14000);
+    try {
+      const response = await fetch(origin + '/api/mobile/' + path, {
+        method:json === undefined ? 'GET' : 'POST',
+        cache:'no-store', credentials:'omit', aplusSilent:true,
+        headers:{Authorization:'Bearer ' + token, ...(json === undefined ? {} : {'Content-Type':'application/json'})},
+        body:json === undefined ? undefined : JSON.stringify(json),
+        signal: controller.signal,
+      });
+      if (blob && response.ok) return response.blob();
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) {
+        const error = new Error(result.message || 'Der Server konnte die Anfrage nicht abschließen.');
+        error.status = response.status;
+        error.code = result.error || '';
+        throw error;
+      }
+      return result;
+    } finally {
+      clearTimeout(timeout);
+      for (const source of sources) source.removeEventListener('abort', abort);
+    }
   }
   const api = (path, opts) => request('staff/book/' + path, opts);
 
