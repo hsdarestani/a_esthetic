@@ -2,7 +2,19 @@
 // Android Views. No staff HTML, browser navigation or web forms are mounted.
 import { today, startWeek, shiftDay } from './calendar.mjs';
 
-const value = (id, label, initial = '', options) => ({id,label,value:String(initial ?? ''), ...(options ? {options} : {})});
+// Keep form input semantics identical in SwiftUI and Android native controls.
+const inputKind = id => {
+  if (/^(note|notes|description|goae_description|goae_justification|date_correction_reason|text)$/.test(id)) return 'multiline';
+  if (/^(quantity|duration_minutes|buffer_minutes|goae_points)$/.test(id)) return 'integer';
+  if (/^(goae_factor|goae_base_eur)$/.test(id)) return 'decimal';
+  if (id === 'email') return 'email';
+  if (id === 'phone') return 'phone';
+  return 'text';
+};
+const value = (id, label, initial = '', options) => ({
+  id,label,value:String(initial ?? ''),kind:options?'select':inputKind(id),
+  ...(options ? {options} : {}),
+});
 const row = (id,label,detail='') => ({id,label,detail});
 const option = (value,label) => ({value:String(value),label:String(label)});
 const dateLabel = (date, locale, options) => new Date(date+'T12:00:00Z').toLocaleDateString(locale,{...options,timeZone:'UTC'});
