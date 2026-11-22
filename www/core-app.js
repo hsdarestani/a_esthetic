@@ -186,7 +186,7 @@
     }
   }
 
-  function logout(render=true){bootGeneration++;window.APlusAdminMode?.unmount();document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
+  function logout(render=true){bootGeneration++;lastStaffRole=null;window.APlusAdminMode?.unmount();document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
 
   function showContactPicker(){
     document.querySelectorAll('.contact-overlay').forEach(node=>node.remove());
@@ -217,6 +217,7 @@
     });
   }
 
+  let lastStaffRole = null;
   function showReconnect(message='Verbindung wird wiederhergestellt …', {failed=false, stage='', code=''}={}){
     // Never present a permanent loading spinner as an error. Keep an explicit
     // sign-out path and a safe diagnostic stage for iOS Simulator QA.
@@ -227,10 +228,23 @@
       <div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div>
       <h1>${failed?'Verbindung prüfen':'Willkommen zurück'}</h1>${detail}
       <button class="secondary wide" type="button" data-reconnect>${failed?'Erneut versuchen':'Erneut verbinden'}</button>
+      ${failed && stage==='native-staff-mount' ? '<button class="secondary wide" type="button" data-staff-web-fallback>Vorübergehend Webverwaltung öffnen</button>' : ''}
       <button class="text-btn wide" type="button" data-reconnect-logout>Abmelden und neu anmelden</button>
     </section></div>`;
     root.querySelector('[data-reconnect]')?.addEventListener('click',()=>void boot());
     root.querySelector('[data-reconnect-logout]')?.addEventListener('click',()=>logout());
+    root.querySelector('[data-staff-web-fallback]')?.addEventListener('click', async event=>{
+      const button=event.currentTarget;
+      if(!lastStaffRole || !state.token)return;
+      button.disabled=true;
+      button.textContent='Webverwaltung wird geöffnet …';
+      try {
+        await window.APlusAdminMode.mount(root,state.token,lastStaffRole,()=>logout(),{forceWeb:true});
+      } catch(error) {
+        showReconnect('Auch die Webverwaltung konnte nicht geöffnet werden.',
+          {failed:true,stage:'staff-web-fallback',code:String(error?.name||'ERROR').slice(0,40)});
+      }
+    });
   }
   let bootGeneration = 0;
   let booting = false;
@@ -262,6 +276,7 @@
     try {
       const role = identity || await window.APlusAdminMode.resolve(state.token);
       if (generation !== bootGeneration) return;
+      lastStaffRole = role && (role.role==='admin'||role.role==='doctor') ? role : null;
       if (role.role === 'admin' || role.role === 'doctor') {
         stage = 'native-staff-mount';
         await window.APlusAdminMode.mount(root, state.token, role, () => logout());
