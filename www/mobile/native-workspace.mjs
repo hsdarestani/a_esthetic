@@ -22,7 +22,7 @@ const optionFor = (list) => list.map(x=>option(x.id,x.name));
 const uuid = () => globalThis.crypto.randomUUID();
 
 export async function mountNativeWorkspace({token, identity, origin, logout, initialPatient, initialCalendar}) {
-  const plugin = globalThis.Capacitor?.Plugins?.NativeStaff;
+  const plugin = globalThis.APlusNativeStaff || globalThis.Capacitor?.Plugins?.NativeStaff;
   if (!plugin) throw new Error('Native staff renderer unavailable');
   const admin = identity.role === 'admin';
   let language = (localStorage.getItem('aplus_language') || navigator.language || 'de').startsWith('en') ? 'en' : 'de';
