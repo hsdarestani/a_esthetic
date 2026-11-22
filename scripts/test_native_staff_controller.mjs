@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { mountNativeWorkspace } from '../www/mobile/native-workspace.mjs';
 
 let current, onAction, closed = false;
-globalThis.localStorage={getItem:()=> 'en',setItem:()=>{}};
+const preferences={aplus_language:'en'};
+globalThis.localStorage={getItem:key=>preferences[key]??null,setItem:(key,value)=>{preferences[key]=value;}};
 Object.defineProperty(globalThis,'navigator',{value:{language:'en'}});
 globalThis.Capacitor={Plugins:{NativeStaff:{
   async present({screen}){current=screen;},
@@ -35,6 +36,21 @@ assert.equal(current.week.length,7);
 const previous=lastCalendar;
 await click('week-next');
 assert.notEqual(lastCalendar,previous);
+await click('settings');
+assert.equal(current.title,'Settings');
+await click('language');
+assert.equal(current.title,'Language');
+await click('save-language',{language:'de'});
+assert.equal(preferences.aplus_language,'de');
+assert.equal(current.title,'Einstellungen');
+assert.ok(current.tabs.some(tab=>tab.label==='Kalender'));
+await click('calendar');
+assert.equal(current.title,'Kalender');
+await click('settings');
+await click('language');
+await click('save-language',{language:'en'});
+assert.equal(current.title,'Settings');
+assert.ok(current.tabs.some(tab=>tab.label==='Calendar'));
 await click('patients');
 await click('patient:23');
 assert.equal(current.title,'Demo patient');
@@ -44,4 +60,4 @@ native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'
   origin:'https://example.test',logout:()=>{}});
 assert.ok(!current.tabs.some(t=>t.id==='office'));
 await native.destroy();
-console.log('PASS: native controller dispatch, week navigation, patient details and role tabs');
+console.log('PASS: native controller dispatch, week navigation, immediate bilingual switching, patient details and role tabs');
