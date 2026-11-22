@@ -39,7 +39,7 @@ def ios():
         raise RuntimeError('Invalid iOS Capacitor package class list')
     if 'NativeStaffPlugin' not in classes:
         classes.append('NativeStaffPlugin')
-        config.write_text(json.dumps(data, indent=2) + '\\n')
+        config.write_text(json.dumps(data, indent=2) + '\n')
     if (app / 'Base.lproj' / 'Main.storyboard').exists():
         controller = ET.parse(app / 'Base.lproj' / 'Main.storyboard').getroot()
         assert any(v.get('customClass') == 'StaffBridgeViewController'
