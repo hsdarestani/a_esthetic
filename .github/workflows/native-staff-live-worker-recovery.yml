@@ -37,10 +37,13 @@ jobs:
                 found={}
                 for proc in Path('/proc').glob('[0-9]*'):
                     try:
-                        raw=(proc/'cmdline').read_bytes().replace(b'\0',b' ').decode(errors='ignore')
-                        if 'gunicorn' in raw and '--bind 127.0.0.1:8772' in raw:
-                            found[int(proc.name)]=int((proc/'stat').read_text().split(') ',1)[1].split()[1])
+                        args=[x for x in (proc/'cmdline').read_bytes().split(b'\0') if x]
+                        heads=[os.path.basename(x.decode(errors='ignore')) for x in args[:2]]
+                        if not any('gunicorn' in x for x in heads): continue
+                        if b'127.0.0.1:8772' not in args: continue
+                        found[int(proc.name)]=int((proc/'stat').read_text().split(') ',1)[1].split()[1])
                     except (OSError,ValueError): pass
+                print('MATCHED_A_PLUS_PROCESSES',len(found))
                 return found
             found=matching()
             masters=[pid for pid,ppid in found.items() if ppid not in found]
