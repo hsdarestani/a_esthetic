@@ -209,3 +209,15 @@
   .mw-cal-top {padding-inline: 24px}
   .mw-nav button {flex: 0 1 180px}
 }
+
+/* Keep signup field geometry stable when one field reports an error. */
+.ma-auth .ma-pair { align-items: start; }
+.ma-auth .ma-pair > .ma-field { align-content: start; grid-template-rows: auto minmax(49px,auto) auto; }
+.ma-auth .ma-pair .ma-input { min-height: 49px; }
+.ma-auth .ma-pair .ma-field-error { display:block; min-height:1.25em; line-height:1.25; overflow-wrap:anywhere; }
+.ma-auth .ma-pair .ma-field-error[hidden] { display:block !important; visibility:hidden; }
+.ma-auth .ma-field-error:not([hidden]) { display:block; line-height:1.35; margin-top:2px; overflow-wrap:anywhere; }
+@media(max-width:370px) {
+  .ma-auth .ma-pair { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap:8px; }
+  .ma-auth .ma-panel { padding-inline:18px; }
+}
