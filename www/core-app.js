@@ -217,9 +217,20 @@
     });
   }
 
-  function showReconnect(message='Verbindung wird wiederhergestellt …'){
-    root.innerHTML=`<div class="login-shell login-shell-auth"><section class="login-card"><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div><h1>Willkommen zurück</h1><p>${esc(message)}</p><div class="spinner"></div><button class="secondary wide" type="button" data-reconnect>Erneut verbinden</button></section></div>`;
-    root.querySelector('[data-reconnect]')?.addEventListener('click',boot);
+  function showReconnect(message='Verbindung wird wiederhergestellt …', {failed=false, stage='', code=''}={}){
+    // Never present a permanent loading spinner as an error. Keep an explicit
+    // sign-out path and a safe diagnostic stage for iOS Simulator QA.
+    const detail = failed ? `<p role="alert" class="notice error" data-staff-error>${esc(message)}</p>
+      <small data-staff-stage style="display:block;margin:8px 0;color:#465a51">Diagnose: ${esc(stage||'Unbekannt')}${code?' · '+esc(code):''}</small>`
+      : `<p>${esc(message)}</p><div class="spinner" role="status" aria-label="Verbindung wird geprüft"></div>`;
+    root.innerHTML=`<div class="login-shell login-shell-auth"><section class="login-card">
+      <div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div>
+      <h1>${failed?'Verbindung prüfen':'Willkommen zurück'}</h1>${detail}
+      <button class="secondary wide" type="button" data-reconnect>${failed?'Erneut versuchen':'Erneut verbinden'}</button>
+      <button class="text-btn wide" type="button" data-reconnect-logout>Abmelden und neu anmelden</button>
+    </section></div>`;
+    root.querySelector('[data-reconnect]')?.addEventListener('click',()=>void boot());
+    root.querySelector('[data-reconnect-logout]')?.addEventListener('click',()=>logout());
   }
   let bootGeneration = 0;
   let booting = false;
@@ -245,25 +256,28 @@
     const generation = ++bootGeneration;
     state.token = localStorage.getItem('aplus_token') || '';
     if(!state.token) return showLogin();
-    // Always render a recoverable screen before awaiting the network. On iOS
-    // a paused WebView fetch must never leave #app completely blank.
     booting = true;
+    let stage = 'staff-session';
     showReconnect('Anmeldung wird überprüft …');
     try {
       const role = identity || await window.APlusAdminMode.resolve(state.token);
       if (generation !== bootGeneration) return;
       if (role.role === 'admin' || role.role === 'doctor') {
+        stage = 'native-staff-mount';
         await window.APlusAdminMode.mount(root, state.token, role, () => logout());
         return;
       }
+      stage = 'patient-profile';
       const profile = await readAuthProfile();
       if(generation !== bootGeneration) return;
       state.me = profile;
       if(profile?.account?.locked){
+        stage = 'patient-onboarding';
         if(window.APlusOnboarding?.start) await window.APlusOnboarding.start();
         else showReconnect('Die Registrierung wird geladen …');
         return;
       }
+      stage = 'patient-dashboard';
       await go(new URLSearchParams(window.location.search).get('bereich')==='termine'?'appointments':'dashboard',{resetHistory:true});
     } catch(err) {
       if(generation !== bootGeneration) return;
@@ -273,8 +287,13 @@
         else showReconnect('Die Registrierung wird geladen …');
         return;
       }
-      if(state.token) showReconnect('Die Verbindung ist gerade nicht verfügbar. Ihre Anmeldung bleibt gespeichert.');
-      else showLogin('Bitte melden Sie sich erneut an.');
+      if(state.token){
+        const safeCode = [err?.code,err?.name].filter(x=>typeof x==='string' && /^[\\w.-]{1,45}$/.test(x)).join(' / ');
+        const safeMessage = err?.message && typeof err.message==='string'
+          ? err.message.slice(0,160) : 'Die Anmeldung konnte nicht abgeschlossen werden.';
+        // Diagnostic details stay on device; never print bearer tokens or patient data.
+        showReconnect(safeMessage,{failed:true,stage,code:safeCode});
+      } else showLogin('Bitte melden Sie sich erneut an.');
     } finally {
       booting = false;
     }
