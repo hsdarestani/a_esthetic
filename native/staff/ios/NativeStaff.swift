@@ -279,4 +279,24 @@ class StaffBridgeViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(NativeStaffPlugin())
         NSLog("APLUS_NATIVE_STAFF_REGISTERED bridge=%@", bridge == nil ? "missing" : "available")
     }
+#if DEBUG
+    override open func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Probe the real Capacitor JS-to-Swift bridge in iOS Simulator before
+        // signing in. No tokens, account identifiers or patient data involved.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 7) { [weak self] in
+            self?.webView?.evaluateJavaScript(
+                "window.APlusNativeStaffProbeResult && window.APlusNativeStaffProbeResult.code || 'PROBE_PENDING'"
+            ) { value, error in
+                if let error = error {
+                    NSLog("APLUS_NATIVE_STAFF_JS_BRIDGE ERROR")
+                } else if let code = value as? String {
+                    NSLog("APLUS_NATIVE_STAFF_JS_BRIDGE %@", code)
+                } else {
+                    NSLog("APLUS_NATIVE_STAFF_JS_BRIDGE UNKNOWN")
+                }
+            }
+        }
+    }
+#endif
 }
