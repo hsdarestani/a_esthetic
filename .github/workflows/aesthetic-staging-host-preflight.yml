@@ -1,0 +1,58 @@
+name: A+ Esthetic staging host capacity preflight (read-only)
+# Never deploys, restarts, migrates or modifies production.
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths:
+      - .github/workflows/aesthetic-staging-host-preflight.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Confirm authorized SSH connector is configured
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+        run: |
+          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USER" ] || [ -z "$SERVER_SSH_KEY" ]; then
+            echo "STAGING_BLOCKER: Existing GitHub SERVER_HOST/SERVER_USER/SERVER_SSH_KEY secrets unavailable."
+            exit 1
+          fi
+          echo "Existing authorized server SSH secrets: available"
+      - name: Inspect resource capacity and isolation prerequisites without altering services
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT || '22' }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 4m
+          script: |
+            set -eu
+            echo '=== STAGING READ-ONLY HOST PREFLIGHT ==='
+            uname -s
+            echo 'RAM:'; free -m | grep -E '^(Mem|Swap):' || true
+            echo 'DISK:'; df -Pk /opt /tmp | awk 'NR==1 || NR==2 || NR==3 {print $1,$2,$3,$4,$5,$6}'
+            echo 'DEPENDENCIES:'
+            for executable in python3 pg_config initdb postgres pg_ctl nginx caddy git curl openssl; do
+              if command -v "$executable" >/dev/null 2>&1; then echo "$executable=present"; else echo "$executable=missing"; fi
+            done
+            echo 'SERVICE STATE:'
+            for service in a-esthetic-mobile aesthetic-book nginx caddy postgresql; do
+              printf '%s=' "$service"; systemctl is-active "$service" 2>/dev/null || true
+            done
+            echo 'STAGING DIRECTORY STATE:'
+            if [ -e /opt/a-esthetic-native-staging ]; then echo 'staging_path=already_exists'; else echo 'staging_path=free'; fi
+            echo 'STAGING PORT AVAILABILITY:'
+            for port in 18881 18882; do
+              if ss -ltn "( sport = :$port )" 2>/dev/null | grep -q LISTEN; then echo "$port=in_use"; else echo "$port=free"; fi
+            done
+            echo 'PREFLIGHT COMPLETE — no deployment or production changes made.'
