@@ -25,14 +25,14 @@
   function tabs() {
     const items = [
       ['dashboard','Übersicht'],['calendar','Kalender'],['bookings','Buchungen'],
-      ['customers','Kunden'],['services','Behandlungen'],['settings','Einstellungen']
+      ['customers','Patienten'],['services','Behandlungen'],['settings','Einstellungen']
     ];
     return `<div class="book-admin-tabs">${items.map(([key,label]) => `<button class="book-admin-tab ${state.tab===key?'active':''}" type="button" data-book-tab="${key}">${label}</button>`).join('')}</div>`;
   }
 
   function shell(inner) {
     return `<div class="book-admin">
-      <div class="book-admin-head"><div><div class="book-admin-sub">A+ ESTHETIC · BOOK</div><h1 class="book-admin-title">Verwaltung</h1><p class="book-admin-sub">Kalender, Termine, Kunden und Einstellungen direkt in der App.</p></div><button class="book-admin-btn" type="button" data-book-back>← App Admin</button></div>
+      <div class="book-admin-head"><div><div class="book-admin-sub">A+ ESTHETIC · BOOK</div><h1 class="book-admin-title">Verwaltung</h1><p class="book-admin-sub">Kalender, Termine, Patienten und Einstellungen direkt in der App.</p></div><button class="book-admin-btn" type="button" data-book-back>← App Admin</button></div>
       ${tabs()}<div data-book-view>${inner}</div>
     </div>`;
   }
@@ -63,7 +63,7 @@
       target.innerHTML = `<div class="book-admin-stats">
         <div class="book-admin-stat"><b>${data.stats.today}</b><small>Termine heute</small></div>
         <div class="book-admin-stat"><b>${data.stats.new_today}</b><small>Neu heute</small></div>
-        <div class="book-admin-stat"><b>${data.stats.customers}</b><small>Kunden</small></div>
+        <div class="book-admin-stat"><b>${data.stats.customers}</b><small>Patienten</small></div>
         <div class="book-admin-stat"><b>${data.stats.active_services}</b><small>Behandlungen</small></div>
       </div><section class="book-admin-card"><h3>Nächste Termine</h3><div class="book-admin-list">${data.upcoming.length ? data.upcoming.map(x=>appointmentRow(x)).join('') : '<div class="book-admin-empty">Keine kommenden Termine.</div>'}</div></section>`;
     } catch (error) { target.innerHTML = failure(error); }
@@ -108,7 +108,7 @@
     try {
       const data = await api(`/customers/${id}/`);
       const c = data.customer;
-      target.innerHTML = `<button class="book-admin-btn" type="button" data-book-back-customers>← Kunden</button><section class="book-admin-card" style="margin-top:10px"><h3>${esc(c.name)}</h3><small>${esc(c.email)} · ${esc(c.phone || 'kein Telefon')}</small><div class="book-admin-stats" style="margin-top:10px"><div class="book-admin-stat"><b>${c.appointments}</b><small>Termine</small></div><div class="book-admin-stat"><b>${c.patient_records}</b><small>Akteneinträge</small></div></div></section>
+      target.innerHTML = `<button class="book-admin-btn" type="button" data-book-back-customers>← Patienten</button><section class="book-admin-card" style="margin-top:10px"><h3>${esc(c.name)}</h3><small>${esc(c.email)} · ${esc(c.phone || 'kein Telefon')}</small><div class="book-admin-stats" style="margin-top:10px"><div class="book-admin-stat"><b>${c.appointments}</b><small>Termine</small></div><div class="book-admin-stat"><b>${c.patient_records}</b><small>Akteneinträge</small></div></div></section>
         <section class="book-admin-card"><h3>Patientenakte</h3>${c.records.length ? c.records.map(r=>`<div class="book-admin-record"><b>${esc(r.title)}</b><small>${esc(r.kind)} · ${esc(r.source)} · ${r.shared_with_customer?'geteilt':'intern'}</small>${r.note?`<small>${esc(r.note)}</small>`:''}</div>`).join('') : '<div class="book-admin-empty">Keine Akteneinträge.</div>'}</section>
         <section class="book-admin-card"><h3>Terminverlauf</h3><div class="book-admin-list">${data.appointments.map(x=>appointmentRow(x)).join('')}</div></section>`;
     } catch (error) { target.innerHTML = failure(error); }
@@ -119,7 +119,7 @@
     try {
       const query = q ? `?q=${encodeURIComponent(q)}` : '';
       const data = await api(`/customers/${query}`);
-      target.innerHTML = `<section class="book-admin-card"><form class="book-admin-form" data-book-search-customers><label>Suche<input name="q" value="${esc(q)}" placeholder="Name, E-Mail oder Telefon"></label><button class="book-admin-btn" type="submit">Suchen</button></form></section><div class="book-admin-list">${data.customers.length ? data.customers.map(c=>`<button class="book-admin-row" type="button" data-book-customer="${c.id}" style="text-align:left;width:100%"><b>${esc(c.name)}</b><small>${esc(c.email)} · ${esc(c.phone || 'kein Telefon')}</small><small>${c.appointments} Termine · ${c.patient_records} Akteneinträge</small></button>`).join('') : '<div class="book-admin-empty">Keine Kunden gefunden.</div>'}</div>`;
+      target.innerHTML = `<section class="book-admin-card"><form class="book-admin-form" data-book-search-customers><label>Suche<input name="q" value="${esc(q)}" placeholder="Name, E-Mail oder Telefon"></label><button class="book-admin-btn" type="submit">Suchen</button></form></section><div class="book-admin-list">${data.customers.length ? data.customers.map(c=>`<button class="book-admin-row" type="button" data-book-customer="${c.id}" style="text-align:left;width:100%"><b>${esc(c.name)}</b><small>${esc(c.email)} · ${esc(c.phone || 'kein Telefon')}</small><small>${c.appointments} Termine · ${c.patient_records} Akteneinträge</small></button>`).join('') : '<div class="book-admin-empty">Keine Patienten gefunden.</div>'}</div>`;
     } catch (error) { target.innerHTML = failure(error); }
   }
 
