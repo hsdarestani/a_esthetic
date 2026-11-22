@@ -13,6 +13,15 @@ const itemButton = (action, id, title, secondary = '', end = '') =>
     <span><strong>${esc(title)}</strong><small>${esc(secondary)}</small></span>
     <span class="mw-row-end">${end ? `<small>${esc(end)}</small>` : ''}<span aria-hidden="true">›</span></span></button>`;
 const empty = message => `<p class="mw-empty">${esc(message)}</p>`;
+const connectionMessage = failure => {
+  const status = Number(failure?.status || 0);
+  if (status === 404) return 'Die Buchungs-API ist nicht verfügbar (HTTP 404).';
+  if (status === 502 || status === 503 || status === 504)
+    return `Der Buchungsdienst ist vorübergehend nicht erreichbar (HTTP ${status}).`;
+  if (status === 429) return 'Zu viele Anfragen. Bitte versuchen Sie es erneut (HTTP 429).';
+  if (status) return `Die Anfrage ist fehlgeschlagen (HTTP ${status}).`;
+  return 'Die Verbindung konnte nicht hergestellt werden. Bitte prüfen Sie das Netzwerk.';
+};
 const input = (label, name, attrs) => `<label class="mw-field">${label}<input name="${name}" ${attrs}></label>`;
 const options = (items, value) => items.map(item =>
   `<option value="${esc(item.id)}" ${String(item.id) === String(value) ? 'selected' : ''}>${esc(item.name)}</option>`).join('');
@@ -69,6 +78,7 @@ export function mountWorkspace({root, token, identity, origin, logout}) {
     if (!response.ok || result.ok === false) {
       const error = new Error(result.message || 'Der Server konnte die Anfrage nicht abschließen.');
       error.status = response.status;
+      error.code = result.error || '';
       throw error;
     }
     return result;
@@ -167,7 +177,11 @@ export function mountWorkspace({root, token, identity, origin, logout}) {
               results.append(more);
             }
           } catch (failure) {
-            if (current() && searchId === searchVersion && !showError(failure)) results.innerHTML = empty('Suche fehlgeschlagen. Bitte erneut versuchen.');
+            if (current() && searchId === searchVersion && !showError(failure)) {
+              results.innerHTML = `${empty(connectionMessage(failure))}
+                <button class="mw-secondary" type="button" data-mw-search-retry>Erneut versuchen</button>`;
+              results.querySelector('[data-mw-search-retry]').onclick = () => void search();
+            }
           }
         }
         form.onsubmit = event => { event.preventDefault(); void search(); };
@@ -177,7 +191,8 @@ export function mountWorkspace({root, token, identity, origin, logout}) {
       }
     } catch (failure) {
       if (!current() || showError(failure)) return;
-      main.innerHTML = `<div class="mw-page"><h1>Verbindung unterbrochen</h1><p>Die Ansicht konnte nicht geladen werden.</p>
+      main.innerHTML = `<div class="mw-page"><h1>Verbindung unterbrochen</h1>
+        <p role="alert">${esc(connectionMessage(failure))}</p>
         <button class="mw-primary" type="button" data-mw-action="retry">Erneut versuchen</button></div>`;
     }
   }
@@ -562,7 +577,11 @@ export function mountWorkspace({root, token, identity, origin, logout}) {
     if (button.dataset.mwTab) { void navigate(button.dataset.mwTab); return; }
     const id = Number(button.dataset.id);
     switch (button.dataset.mwAction) {
-      case 'retry': void navigate(view,subsection); break;
+      case 'retry':
+        button.disabled = true;
+        button.textContent = 'Wird erneut verbunden …';
+        void navigate(view,subsection);
+        break;
       case 'logout': logout(); break;
       case 'desktop': {
         const url = 'https://book.a-esthetic.de/verwaltung/login/';
