@@ -47,3 +47,10 @@ For browser regression, install Playwright and Chromium, use a clean preview sta
 New Book mutations have replay receipts and appointment revisions. The app's existing token format and sign-in exchange remain compatible. The Book desktop site and legacy APIs stay in their original entry points. Keep the package ledger and Book cancellation queue in place during any UI rollback.
 
 Before a real release, verify the live ingress allows the new endpoints and origins, stage old/new clients against both backends, and rehearse switching the staff pilot back to the current app. Do not use the production deploy workflows to stage or generate test packages.
+
+
+## Preview artifact gate
+
+The isolated preview workflow deliberately targets the loopback synthetic fixture. Its artifacts are local QA packages only, not Appetize acceptance builds. The Android preview must run the existing native camera/SDK configuration after generating Capacitor, since the barcode dependency requires Android API 26. Do not distribute older standalone artifacts as acceptance previews: the standalone build workflow uses the normal app configuration and does not prove an independent staging backend or absence of production endpoints.
+
+A remotely reachable, isolated two-database staging environment with synthetic users and outbound communication/payment restrictions remains mandatory before any Appetize acceptance build is produced. Do not replace that requirement with a production URL or an unsigned iOS device IPA.

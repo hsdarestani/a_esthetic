@@ -58,6 +58,11 @@ jobs:
           </html>
           HTML
           npx cap add ${{ matrix.platform }}
+      - name: Configure preview Android SDK and native permissions
+        if: matrix.platform == 'android'
+        run: |
+          python3 scripts/configure_native_camera_permissions.py
+          grep -Eq 'minSdkVersion[[:space:]]*=[[:space:]]*26' android/variables.gradle
       - name: Compile Android test APK
         if: matrix.platform == 'android'
         run: |
