@@ -1,5 +1,6 @@
 """Install the two native staff renderers into disposable generated Capacitor targets."""
 from pathlib import Path
+import json
 import re
 import xml.etree.ElementTree as ET
 
@@ -26,6 +27,24 @@ def ios():
     views[0].set('customModule', 'App')
     views[0].set('customModuleProvider', 'target')
     tree.write(storyboard, encoding='utf-8', xml_declaration=True)
+    # Capacitor's iOS plugin discovery list is read by the native bridge on
+    # startup. This app-local plugin must be included as well as registered
+    # from StaffBridgeViewController, or the JS proxy is UNIMPLEMENTED on iOS.
+    config = app / 'capacitor.config.json'
+    if not config.is_file():
+        raise RuntimeError('Cannot register NativeStaff: generated iOS capacitor.config.json is missing')
+    data = json.loads(config.read_text())
+    classes = data.setdefault('packageClassList', [])
+    if not isinstance(classes, list):
+        raise RuntimeError('Invalid iOS Capacitor package class list')
+    if 'NativeStaffPlugin' not in classes:
+        classes.append('NativeStaffPlugin')
+        config.write_text(json.dumps(data, indent=2) + '\\n')
+    if (app / 'Base.lproj' / 'Main.storyboard').exists():
+        controller = ET.parse(app / 'Base.lproj' / 'Main.storyboard').getroot()
+        assert any(v.get('customClass') == 'StaffBridgeViewController'
+                   for v in controller.iter('viewController')), 'Native staff bridge class not wired'
+
 
 
 def android():
