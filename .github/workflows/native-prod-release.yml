@@ -1,5 +1,5 @@
 name: A+ Esthetic approved production native blue-green rollout
-# v3: safe retry uses uniquely versioned Book candidate directories; no prior release deletion.
+# v4: include public Office static logo and stylesheet in candidate static manifest.
 on:
   push:
     branches: [feature/mobile-unified-overhaul]
