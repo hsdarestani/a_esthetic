@@ -16,7 +16,8 @@ def ios():
     source = delegate.read_text()
     source = source.split(MARKER, 1)[0].rstrip()
     native = (ROOT / 'native/staff/ios/NativeStaff.swift').read_text()
-    delegate.write_text(source + '\n\n' + MARKER + '\n' + native)
+    calendar = (ROOT / 'native/staff/ios/NativeCalendarTimeline.swift').read_text()
+    delegate.write_text(source + '\n\n' + MARKER + '\n' + native + '\n\n' + calendar)
     storyboard = app / 'Base.lproj/Main.storyboard'
     tree = ET.parse(storyboard)
     views = [el for el in tree.iter('viewController')
