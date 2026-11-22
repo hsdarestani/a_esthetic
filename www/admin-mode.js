@@ -32,7 +32,13 @@
     resolve,
     async mount(root, token, role, logout) {
       await this.unmount();
-      if (window.Capacitor?.isNativePlatform?.() && window.Capacitor?.Plugins?.NativeStaff) {
+      const native = window.Capacitor?.isNativePlatform?.();
+      const renderer = window.Capacitor?.Plugins?.NativeStaff;
+      // Keep already-installed legacy clients working; staging must never silently downgrade.
+      if(native && !renderer && /(^|\.)(stage|staging|preview)[^.]*\./i.test(new URL(window.APlusRuntime.origin).hostname)) {
+        throw new Error('Diese Vorschau benötigt den nativen Mitarbeiterbereich.');
+      }
+      if (native && renderer) {
         const {mountNativeWorkspace} = await import('./mobile/native-workspace.mjs');
         workspace = await mountNativeWorkspace({token, identity:role, origin:window.APlusRuntime.origin, logout,
           initialPatient:pendingPatient, initialCalendar:pendingCalendar});

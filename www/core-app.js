@@ -111,6 +111,7 @@
         </div>
         <p data-profile-salutation-message aria-live="polite">Damit das passende Startseitenbild angezeigt wird.</p>
       </form>
+      <button type="button" class="settings-link" data-intake>Aufnahmebogen & Rechnungsadresse <span>›</span></button>
       <a class="settings-link" href="${LEGAL.privacy}">Datenschutz <span>›</span></a>
       <a class="settings-link" href="${LEGAL.terms}">Nutzungsbedingungen <span>›</span></a>
       <a class="settings-link" href="${LEGAL.imprint}">Impressum <span>›</span></a>
@@ -120,6 +121,7 @@
     const close=()=>{node.classList.add('is-closing');setTimeout(()=>node.remove(),120);};
     node.addEventListener('click',e=>{if(e.target===node)close();});node.querySelector('[data-close]').onclick=close;
     node.querySelector('[data-logout]').onclick=()=>{node.remove();requestAnimationFrame(()=>logout());};
+    node.querySelector('[data-intake]').onclick=()=>showPatientIntake(node,email);
     node.querySelector('[data-profile-salutation]')?.addEventListener('submit',async event=>{
       event.preventDefault();
       const form=event.currentTarget;
@@ -139,6 +141,49 @@
         button.disabled=false;
       }
     });
+  }
+
+  async function showPatientIntake(node,email){
+    const en=(localStorage.getItem('aplus_language')||navigator.language||'de').startsWith('en');
+    const tr=(de,english)=>en?english:de;
+    const card=node.querySelector('.settings-card');
+    const head=title=>`<div class="settings-head"><h2>${esc(title)}</h2><button type="button" class="core-icon-btn" data-close aria-label="${esc(tr('Zurück','Back'))}">×</button></div>`;
+    const back=()=>showSettings(email);
+    card.innerHTML=head(tr('Aufnahmebogen','Intake form'))+loader();
+    card.querySelector('[data-close]').onclick=back;
+    try {
+      const result=await request('/staff/office/intake/');
+      if(!node.isConnected)return;
+      const p=result.patient, address=p.address||{};
+      const field=(name,label,value,type='text',autocomplete='off',max='')=>`<label class="ma-field"><span>${esc(label)}</span><span class="ma-input"><input type="${type}" name="${name}" value="${esc(value)}" autocomplete="${autocomplete}" ${max?'maxlength="'+max+'"':''} required></span></label>`;
+      card.innerHTML=head(tr('Aufnahmebogen','Intake form'))+
+        `<div class="settings-user"><strong>${esc(p.name)}</strong><span>${esc(p.email)}</span></div>
+        <form data-intake-form class="ma-form">
+          <p class="ma-description">${esc(tr('Deine vorhandenen Angaben werden übernommen. Die Adresse kann für spätere Rechnungen verwendet werden.','Your saved information is prefilled. Your address can be used for later invoices.'))}</p>
+          ${field('date_of_birth',tr('Geburtsdatum','Date of birth'),p.date_of_birth,'date','bday')}
+          ${field('street',tr('Straße und Hausnummer','Street and house number'),address.street,'text','street-address',180)}
+          ${field('postal_code',tr('Postleitzahl','Postal code'),address.postal_code,'text','postal-code',20)}
+          ${field('city',tr('Ort','City'),address.city,'text','address-level2',120)}
+          <p role="status" aria-live="polite" data-intake-message></p>
+          <button type="submit" class="ma-primary">${esc(tr('Speichern','Save'))}</button>
+        </form>`;
+      card.querySelector('[data-close]').onclick=back;
+      card.querySelector('[data-intake-form]').onsubmit=async event=>{
+        event.preventDefault();
+        const form=event.currentTarget, button=form.querySelector('button'), msg=form.querySelector('[data-intake-message]');
+        button.disabled=true;
+        try {
+          await request('/staff/office/intake/',{method:'POST',json:Object.fromEntries(new FormData(form))});
+          msg.textContent=tr('Angaben gespeichert.','Information saved.');
+        } catch(error) {
+          msg.textContent=error.code==='identity_verification_required'?tr('Geburtsdatum muss von der Praxis geprüft werden.','The clinic must verify a change to your date of birth.'):tr('Angaben konnten nicht gespeichert werden.','Unable to save your details.');
+        } finally {button.disabled=false;}
+      };
+    } catch(error) {
+      if(!node.isConnected)return;
+      card.innerHTML=head(tr('Aufnahmebogen','Intake form'))+errorBox(new Error(tr('Aufnahmebogen konnte nicht geladen werden.','Unable to load intake form.')));
+      card.querySelector('[data-close]').onclick=back;
+    }
   }
 
   function logout(render=true){bootGeneration++;window.APlusAdminMode?.unmount();document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
