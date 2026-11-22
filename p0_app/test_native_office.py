@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from platform_app.models import AuditLog, Invoice, OfficePatientLink, OfficeIntakeReview, UserProfile
+from platform_app.models import AuditLog, Invoice, InvoiceSettings, OfficePatientLink, OfficeIntakeReview, UserProfile
 
 
 @override_settings(STORAGES={
@@ -31,6 +31,40 @@ class NativeOfficeTests(TestCase):
              patch('p0_app.native_office._is_admin', return_value=True), \
              patch('p0_app.native_office.read_book', return_value=remote):
             return self.client.post(self.path + operation + '/', payload, content_type='application/json')
+
+
+    def test_native_financial_settings_are_admin_only_revision_safe_and_audited(self):
+        with patch('p0_app.native_office._auth', return_value=(self.patient, None)), \
+             patch('p0_app.native_office._is_admin', return_value=False):
+            self.assertEqual(self.client.get(self.path+'invoice-settings/').status_code,403)
+            self.assertEqual(self.client.post(self.path+'invoice-settings/', {},
+                content_type='application/json').status_code,403)
+        with patch('p0_app.native_office._auth', return_value=(self.admin, None)), \
+             patch('p0_app.native_office._is_admin', return_value=True):
+            r=self.client.get(self.path+'invoice-settings/')
+            self.assertEqual(r.status_code,200,r.content)
+            original=r.json()
+            self.assertNotIn('password',original['settings'])
+            incoming={**original['settings'],'revision':original['revision'],
+                'confirmed_financial_update':True,
+                'company_name':'A+ Esthetic Test Only',
+                'bank_name':'Synthetic Bank'}
+            self.assertEqual(self.client.post(self.path+'invoice-settings/',
+                incoming | {'confirmed_financial_update':False},
+                content_type='application/json').status_code,409)
+            self.assertEqual(self.client.post(self.path+'invoice-settings/',
+                incoming | {'next_sequence':0},content_type='application/json').status_code,400)
+            changed=self.client.post(self.path+'invoice-settings/',incoming,content_type='application/json')
+            self.assertEqual(changed.status_code,200,changed.content)
+            updated=InvoiceSettings.objects.get(pk=1)
+            self.assertEqual(updated.company_name,'A+ Esthetic Test Only')
+            self.assertEqual(updated.bank_name,'Synthetic Bank')
+            self.assertEqual(self.client.post(self.path+'invoice-settings/',
+                incoming | {'company_name':'Stale overwrite'},
+                content_type='application/json').status_code,409)
+            self.assertEqual(InvoiceSettings.objects.get(pk=1).company_name,'A+ Esthetic Test Only')
+            self.assertTrue(AuditLog.objects.filter(actor=self.admin,
+                action='Native Office invoice settings changed').exists())
 
     def test_identity_requires_confirmed_match_and_never_relinks(self):
         values = {'customer_id': self.patient.pk, 'book_customer_id': 54}
