@@ -318,6 +318,9 @@
   window.APlusRefreshAuth = boot;
   function recoverBlankNativeView(){
     if(!state.token || document.visibilityState === 'hidden') return;
+    // Do not auto-retry an already reported native-bootstrap error. On iOS,
+    // repeated appStateChange/pageshow notifications previously hid the cause.
+    if(root?.querySelector?.('[data-staff-error]')) return;
     const noScreen = !root?.firstElementChild;
     const reconnect = Boolean(root?.querySelector?.('[data-reconnect]'));
     if(noScreen || reconnect) boot();
