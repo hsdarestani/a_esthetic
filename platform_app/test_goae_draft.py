@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from .goae_billing import create_goae_draft, goae_draft_pdf_bytes
+from .goae_billing import calculate_goae_lines, create_goae_draft, goae_draft_pdf_bytes
 from .models import Invoice, InvoiceSettings, UserProfile
 
 
@@ -60,3 +60,29 @@ class GoaEDraftTests(TestCase):
         self.assertEqual(response.status_code,302)
         self.assertEqual(Invoice.objects.count(),1)
         self.assertEqual(Invoice.objects.first().billing_method,"goae")
+
+    def test_multiple_lines_net_fee_vat_quantity_and_point_rounding(self):
+        invoice = create_goae_draft(
+            user=self.patient, actor=self.staff, service_date=date(2026, 10, 20),
+            data={"lines": [
+                {"goae_number": "1", "goae_description": "Beratung", "goae_points": "80",
+                 "goae_factor": "2.30", "goae_vat_rate": "19", "quantity": "2"},
+                {"goae_number": "2", "goae_description": "Folgeleistung", "goae_base_eur": "10",
+                 "goae_factor": "1", "goae_vat_rate": "0"},
+            ]},
+        )
+        # 80 × 0.0582873 × 2.3 = 10.7248632 EUR -> 10.72 EUR per service.
+        self.assertEqual(invoice.items.count(), 2)
+        self.assertEqual(invoice.subtotal_cents, 3144)
+        self.assertEqual(invoice.tax_cents, 407)
+        self.assertEqual(invoice.total_cents, 3551)
+
+    def test_rejects_nonfinite_and_out_of_category_factors(self):
+        entry = {"goae_number": "1", "goae_description": "Testleistung",
+                 "goae_base_eur": "10", "goae_factor": "1.9",
+                 "goae_vat_rate": "19", "goae_category": "technical"}
+        for update in ({}, {"goae_factor": "2.51", "goae_justification": "Individuelle Prüfung"},
+                       {"goae_factor": "NaN"}, {"goae_factor": "1.5", "quantity": "1.1"},
+                       {"goae_factor": "1.5", "goae_base_eur": "Infinity"}):
+            with self.assertRaises(ValueError):
+                calculate_goae_lines(entry | update)

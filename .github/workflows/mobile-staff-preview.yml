@@ -1,16 +1,14 @@
 name: A+ Esthetic isolated mobile preview
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   preview:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/mobile-unified-overhaul'
+    if: github.ref_name == 'feature/mobile-unified-overhaul'
     name: Preview package (${{ matrix.platform }})
     strategy:
       fail-fast: false

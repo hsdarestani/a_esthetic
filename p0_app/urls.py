@@ -1,7 +1,7 @@
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from platform_app.password_reset import MobilePasswordResetView
-from . import mobile_staff_views
+from . import mobile_staff_views, native_office
 from django.urls import path
 
 from . import (
@@ -42,6 +42,8 @@ urlpatterns = [
     path("api/mobile/internal/booking-notifications/", notification_views.internal_booking_notification, name="p0_internal_booking_notification"),
     path("api/mobile/internal/referral-booking/", notification_views.internal_referral_booking, name="p0_internal_referral_booking"),
     path("api/mobile/admin/", admin_mobile_views.mobile_admin_overview, name="p0_mobile_admin_overview"),
+    path("api/mobile/staff/office/<slug:operation>/", native_office.office, name="native_office"),
+    path("api/mobile/staff/office/<slug:operation>/<int:ident>/", native_office.office, name="native_office_detail"),
     path("api/mobile/staff/session/", mobile_staff_views.session, name="mobile_staff_session"),
     path("api/mobile/staff/points/<int:customer_id>/", mobile_staff_views.points, name="mobile_staff_points"),
     path("api/mobile/staff/book/<path:operation>/", mobile_staff_views.book, name="mobile_staff_book"),

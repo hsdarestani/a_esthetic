@@ -49,11 +49,11 @@ def book(request, operation):
         return error
     if identity['role'] == 'customer':
         return JsonResponse({'ok': False, 'error': 'staff_required'}, status=403)
-    read = r'(?:overview|calendar|catalog|appointments|patients|patient/[1-9][0-9]*(?:/records/[0-9a-f-]{36})?)'
-    write = r'(?:appointment|block|availability|service|record-note)'
+    read = r'(?:overview|calendar|catalog|appointments|patients|identity-review|patient/[1-9][0-9]*(?:/records/[0-9a-f-]{36})?)'
+    write = r'(?:appointment|block|availability|service|record-note|identity-review)'
     if not re.fullmatch(read if request.method == 'GET' else write, operation):
         return JsonResponse({'ok': False, 'error': 'not_found'}, status=404)
-    if identity['role'] == 'doctor' and operation == 'service':
+    if identity['role'] == 'doctor' and operation in {'service', 'identity-review'}:
         return JsonResponse({'ok': False, 'error': 'admin_required'}, status=403)
     origin = getattr(settings, 'MOBILE_STAFF_BOOK_ORIGIN', 'https://book.a-esthetic.de')
     url = f'{origin}/api/mobile/staff/{operation}/'
