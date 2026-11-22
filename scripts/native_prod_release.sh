@@ -121,7 +121,7 @@ WorkingDirectory=$A
 EnvironmentFile=$A_ROOT/mobile.env
 Environment=DJANGO_SETTINGS_MODULE=production_native_settings
 Environment=PYTHONPATH=$A
-ExecStart=$A_ROOT/venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8771 --workers 1 --timeout 60
+ExecStart=$A_ROOT/venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8771 --workers 3 --timeout 60
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
