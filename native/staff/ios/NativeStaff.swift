@@ -174,8 +174,13 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
         CAPPluginMethod(name: "render", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "dismiss", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "previewPDF", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "pickPDF", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "pickPDF", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "probe", returnType: CAPPluginReturnPromise)
     ]
+    // Non-sensitive native bridge health check. No patient data or credentials.
+    @objc func probe(_ call: CAPPluginCall) {
+        call.resolve(["ok": true, "native": true, "bridge": "NativeStaff"])
+    }
     private var pickCall: CAPPluginCall?
     private var state: StaffScreenState?
     private var host: UIHostingController<StaffNativeScreen>?
@@ -269,7 +274,9 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
 }
 
 class StaffBridgeViewController: CAPBridgeViewController {
-    override public func capacitorDidLoad() {
+    override open func capacitorDidLoad() {
+        super.capacitorDidLoad()
         bridge?.registerPluginInstance(NativeStaffPlugin())
+        NSLog("APLUS_NATIVE_STAFF_REGISTERED bridge=%@", bridge == nil ? "missing" : "available")
     }
 }
