@@ -10,4 +10,18 @@ if (Capacitor.isNativePlatform()) {
   // incorrectly suppressing a compiled Swift plugin.
   window.APlusNativeStaff = staffPlugin;
   window.APlusNativeStaffAvailable = Capacitor.isPluginAvailable('NativeStaff');
+  // Read-only bridge self-test before staff sign-in; never includes credentials.
+  // Enables real device/Simulator QA to distinguish JS registration from
+  // native Swift loading. Failed probes are deliberately handled.
+  window.APlusNativeStaffProbe = staffPlugin.probe()
+    .then(result => {
+      const ok = Boolean(result?.ok && result?.native);
+      console.info(ok ? 'APLUS_NATIVE_STAFF_PROBE_OK' : 'APLUS_NATIVE_STAFF_PROBE_INVALID');
+      return {ok, code:ok ? 'OK' : 'INVALID_RESPONSE'};
+    })
+    .catch(error => {
+      const code = String(error?.code || 'NATIVE_BRIDGE_ERROR').slice(0,48);
+      console.warn('APLUS_NATIVE_STAFF_PROBE_FAILED', code);
+      return {ok:false, code};
+    });
 }
