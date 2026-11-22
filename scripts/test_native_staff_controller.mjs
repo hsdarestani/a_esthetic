@@ -11,7 +11,10 @@ globalThis.Capacitor={Plugins:{NativeStaff:{
   async dismiss(){closed=true;},
   async addListener(name,fn){assert.equal(name,'action');onAction=fn;return{remove(){onAction=null;}};},
 }}};
-let lastCalendar;
+let lastCalendar, lastFinancialUpdate, officeRevision='v1';
+const officeSettings={company_name:'A+ Esthetic Demo',street:'Testweg 1',postal_code:'60313',city:'Frankfurt',
+  email:'office@example.test',phone:'0691',tax_number:'',vat_id:'',bank_name:'',iban:'',bic:'',
+  invoice_prefix:'RE',next_sequence:1};
 globalThis.fetch=async(url,opts)=>{
   assert.match(opts.headers.Authorization,/^Bearer synthetic-test-token$/);
   const path=new URL(url).pathname;
@@ -22,6 +25,10 @@ globalThis.fetch=async(url,opts)=>{
   else if(path.endsWith('/patients/'))result={items:[{id:23,name:'Demo patient',email:'demo@example.test'}]};
   else if(path.endsWith('/patient/23/'))result={patient:{id:23,name:'Demo patient',email:'demo@example.test'},appointments:[],records:[]};
   else if(path.endsWith('/customers/'))result={items:[]};
+  else if(path.endsWith('/invoice-settings/')){
+    if(opts.body){lastFinancialUpdate=JSON.parse(opts.body);officeRevision='v2';result={ok:true,revision:officeRevision};}
+    else result={ok:true,revision:officeRevision,ready_for_issue:false,settings:officeSettings};
+  }
   else throw Error('Unexpected endpoint '+path);
   return {ok:true,json:async()=>result};
 };
@@ -64,6 +71,16 @@ await click('language');
 await click('save-language',{language:'en'});
 assert.equal(current.title,'Settings');
 assert.ok(current.tabs.some(tab=>tab.label==='Calendar'));
+await click('office');
+assert.equal(current.tabs.find(t=>t.selected).id,'office');
+assert.ok(current.rows.some(x=>x.id==='billing-settings'));
+await click('billing-settings');
+assert.equal(current.title,'Invoice settings');
+assert.ok(current.fields.some(x=>x.id==='next_sequence'&&x.kind==='integer'));
+const settingsInput=Object.fromEntries(current.fields.map(field=>[field.id,field.value]));
+await click('save-billing-settings',settingsInput);
+assert.equal(lastFinancialUpdate.revision,'v1','uses form revision instead of silently refreshing');
+assert.equal(lastFinancialUpdate.confirmed_financial_update,true);
 await click('patients');
 await click('patient:23');
 assert.equal(current.title,'Demo patient');
@@ -78,4 +95,4 @@ native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'
   origin:'https://example.test',logout:()=>{}});
 assert.ok(!current.tabs.some(t=>t.id==='office'));
 await native.destroy();
-console.log('PASS: native controller dispatch, week navigation, immediate bilingual switching, patient details and role tabs');
+console.log('PASS: native controller, calendar swipes, bilingual switching, audited Office settings, medical notes and role tabs');
