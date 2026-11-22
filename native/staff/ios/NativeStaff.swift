@@ -115,7 +115,11 @@ struct StaffNativeScreen: View {
                             Image(systemName: text(tab, "icon")).font(.system(size: 20))
                             Text(text(tab, "label")).font(.caption2)
                         }.frame(maxWidth: .infinity).frame(minHeight: 54)
-                    }.foregroundColor(green)
+                    }
+                    .foregroundColor((tab["selected"] as? Bool ?? false) ? .white : green)
+                    .background((tab["selected"] as? Bool ?? false) ? green : card)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .accessibilityAddTraits((tab["selected"] as? Bool ?? false) ? .isSelected : [])
                 }
             }.padding(.horizontal, 8).background(card)
         }.foregroundColor(ink).background(paper.ignoresSafeArea()).preferredColorScheme(.light)
