@@ -32,6 +32,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   const appointmentsById = new Map();
   const rememberAppointments = items => { for(const a of items||[]) appointmentsById.set(a.id,a); };
   let date = today(), search = '', calendarMode='day', providerFilter='all', serviceFilter='all', active = true, busy = false, listener, patient, catalog, appointment;
+  let activeTab = 'home';
   let current = {title:'A+ Esthetic',busy:true,tabs:[]};
   const blockById = new Map();
   const tabs = () => [
@@ -60,9 +61,10 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   }
   const book = (path,data) => request('book/'+path,data);
   const office = (path,data) => request('office/'+path,data);
-  const view = (title, content={}) => ({title, tabs:tabs(), ...content});
+  const view = (title, content={}) => ({title, tabs:tabs().map(tab=>({...tab,selected:tab.id===activeTab})), ...content});
   async function render(screen) { if(!active)return; current=screen; await plugin.render({screen}); }
   async function screen(name, {push=true}={}) {
+    if(['home','calendar','patients','office','settings'].includes(name))activeTab=name;
     if(push && stack.at(-1)!==name)stack.push(name);
     if(name==='home'){
       const r=await book('overview/');
@@ -141,6 +143,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   }
 
   async function showPatient(id) {
+    activeTab='patients';
     patient=await book('patient/'+id+'/');
     rememberAppointments(patient.appointments);
     stack.push('patient:'+id);
@@ -162,6 +165,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     return item;
   }
   async function showAppointment(id) {
+    activeTab='calendar';
     appointment=await getAppointment(id);stack.push('appointment:'+id);
     return render(view(appointment.customer_name,{subtitle:appointment.service_name,rows:[
       row('',appointment.date+' · '+appointment.start+' – '+appointment.end, appointment.staff_name),
