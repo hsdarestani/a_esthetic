@@ -139,7 +139,7 @@ for name,old,new in [
  ('a-esthetic-app.conf','http://127.0.0.1:8770','http://127.0.0.1:8771'),
  ('a-esthetic-office.conf','http://127.0.0.1:8770','http://127.0.0.1:8771'),
  ('aesthetic-book.conf','http://127.0.0.1:8017','http://127.0.0.1:8018')]:
- p=Path('/etc/nginx/sites-enabled')/name
+ p=(Path('/etc/nginx/sites-enabled')/name).resolve(strict=True)
  value=p.read_text()
  assert value.count(old)>0 and new not in value,(name,'unexpected route')
  q=p.with_name(name+'.native-tmp')
