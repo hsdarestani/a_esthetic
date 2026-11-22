@@ -1,0 +1,61 @@
+name: A+ iOS NativeStaff fixed Simulator artifact (build only)
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/ios-native-staff-build-artifact.yml]
+permissions: {contents: read}
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build generated native source
+        run: |
+          set -euo pipefail
+          npm pkg delete scripts.capacitor:sync:after
+          npm install --no-audit --no-fund
+          npx cap add ios
+          python3 scripts/configure_native_camera_permissions.py
+          python3 scripts/install_native_staff.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('ios/App/App/capacitor.config.json')
+          o=json.loads(p.read_text())
+          assert 'NativeStaffPlugin' in o['packageClassList']
+          assert 'probe' in Path('native/staff/ios/NativeStaff.swift').read_text()
+          print('NativeStaff plugin class discovery configured')
+          PY
+          node --check www/admin-mode.js
+          node --check www/core-app.js
+      - name: Xcode compile
+        run: |
+          set -euo pipefail
+          if [[ -d ios/App/App.xcworkspace ]]; then
+            xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug \
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/aplus-native" \
+              CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/build.log" 2>&1 || { tail -100 "$RUNNER_TEMP/build.log"; exit 1; }
+          else
+            xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/aplus-native" \
+              CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/build.log" 2>&1 || { tail -100 "$RUNNER_TEMP/build.log"; exit 1; }
+          fi
+      - name: Package correct Appetize ZIP
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          app="$RUNNER_TEMP/aplus-native/Build/Products/Debug-iphonesimulator/App.app"
+          test -f "$app/Info.plist"
+          test -f "$app/public/mobile/native-staff-bridge.js"
+          grep -q NativeStaffPlugin "$app/capacitor.config.json"
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-iOS-NativeStaff-Fixed.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-Esthetic-Appetize-iOS-NativeStaff-Fixed
+          path: artifacts/APlus-Esthetic-iOS-NativeStaff-Fixed.zip
+          if-no-files-found: error
+          retention-days: 30
