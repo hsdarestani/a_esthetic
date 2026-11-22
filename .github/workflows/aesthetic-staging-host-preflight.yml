@@ -55,4 +55,14 @@ jobs:
             for port in 18881 18882; do
               if ss -ltn "( sport = :$port )" 2>/dev/null | grep -q LISTEN; then echo "$port=in_use"; else echo "$port=free"; fi
             done
+            echo 'ROUTING (read-only):'
+            nginx -T 2>/dev/null | awk '/^# configuration file/{config=$0} /server_name .*a-esthetic/ {print config; print $0} /proxy_pass http:\/\/127\\.0\\.0\\.1:(8017|8770|8771|8018)/{print config; print $0}' | sort -u | head -65 || true
+            echo 'LIVE APPLICATION PATH AND DB TYPE:'
+            if test -f /opt/a-esthetic-mobile/db.sqlite3; then echo 'app_sqlite=exists'; else echo 'app_sqlite=not_found'; fi
+            if test -f /opt/a-esthetic-mobile/mobile.env; then
+              (set -a; . /opt/a-esthetic-mobile/mobile.env; set +a;
+              case "${DATABASE_URL:-}" in postgres*) echo 'app_database_url=postgres';; sqlite*|'') echo 'app_database_url=sqlite_default';; *) echo 'app_database_url=other';; esac)
+            fi
+            echo 'LIVE APP SERVICES:'
+            systemctl show a-esthetic-mobile.service --property=ActiveState --property=FragmentPath --no-pager
             echo 'PREFLIGHT COMPLETE — no deployment or production changes made.'
