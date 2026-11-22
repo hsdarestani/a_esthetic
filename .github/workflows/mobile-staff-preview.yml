@@ -44,6 +44,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Verify reachable isolated HTTPS staging before building
+        env:
+          STAGING_APP_URL: ${{ inputs.staging_app_url }}
+          STAGING_BOOK_URL: ${{ inputs.staging_book_url }}
+        run: |
+          python3 scripts/check_remote_staging_ready.py
       - name: Configure remote staging acceptance identity
         env:
           STAGING_APP_URL: ${{ inputs.staging_app_url }}
