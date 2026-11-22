@@ -59,6 +59,13 @@ tar -xzf /tmp/aesthetic-native-app.tgz -C "$A"
 tar -xzf /tmp/aesthetic-native-book.tgz -C "$B"
 test -f "$A/manage.py"
 test -f "$B/manage.py"
+# Match the existing production deployment static bundle. The Office intake
+# renders assets/logo.svg using ManifestStaticFilesStorage and must never 500.
+test -f "$A/assets/logo.svg"
+mkdir -p "$A/static/assets" "$A/static/office"
+cp -a "$A/assets/." "$A/static/assets/"
+test -f "$A/www/app.css"
+cp -a "$A/www/app.css" "$A/static/office/app.css"
 # Explicit absolute DB location: SQLite WAL/SHM must never split across symlinked directories.
 printf "from config.settings import *\nDATABASES['default']['NAME']='/opt/a-esthetic-mobile/db.sqlite3'\n" > "$A/production_native_settings.py"
 for base in media; do
