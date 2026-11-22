@@ -57,6 +57,10 @@ jobs:
             done
             echo 'ROUTING (read-only):'
             nginx -T 2>/dev/null | awk '/^# configuration file/{config=$0} /server_name .*a-esthetic/ {print config; print $0} /proxy_pass http:\/\/127\\.0\\.0\\.1:(8017|8770|8771|8018)/{print config; print $0}' | sort -u | head -65 || true
+            echo 'ROUTE FILE PROXY DIRECTIVES:'
+            for f in /etc/nginx/sites-enabled/a-esthetic-app.conf /etc/nginx/sites-enabled/aesthetic-book.conf /etc/nginx/sites-enabled/a-esthetic-office.conf; do
+              echo "file=$(basename "$f")"; grep -nE 'server_name|proxy_pass|upstream|listen' "$f" 2>/dev/null | head -35 || true
+            done
             echo 'LIVE APPLICATION PATH AND DB TYPE:'
             if test -f /opt/a-esthetic-mobile/db.sqlite3; then echo 'app_sqlite=exists'; else echo 'app_sqlite=not_found'; fi
             if test -f /opt/a-esthetic-mobile/mobile.env; then
