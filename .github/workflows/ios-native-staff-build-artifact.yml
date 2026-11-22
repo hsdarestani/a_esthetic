@@ -1,4 +1,4 @@
-name: A+ iOS NativeStaff fixed Simulator artifact (build only)
+name: A+ Esthetic SimplyBook-style Native Calendar iOS Simulator
 on:
   push:
     branches: [feature/mobile-unified-overhaul]
@@ -32,6 +32,10 @@ jobs:
           PY
           node --check www/admin-mode.js
           node --check www/core-app.js
+          node --check www/mobile/native-workspace.mjs
+          node scripts/test_native_calendar_layout.mjs
+          node scripts/test_native_staff_controller.mjs
+          grep -q 'struct StaffCalendarTimeline: View' ios/App/App/AppDelegate.swift
       - name: Xcode compile
         run: |
           set -euo pipefail
@@ -52,10 +56,10 @@ jobs:
           test -f "$app/Info.plist"
           test -f "$app/public/mobile/native-staff-bridge.js"
           grep -q NativeStaffPlugin "$app/capacitor.config.json"
-          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-iOS-NativeStaff-Fixed.zip
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-iOS-SimplyBook-Native-Calendar.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: APlus-Esthetic-Appetize-iOS-NativeStaff-Fixed
-          path: artifacts/APlus-Esthetic-iOS-NativeStaff-Fixed.zip
+          name: APlus-Esthetic-Appetize-iOS-SimplyBook-Calendar
+          path: artifacts/APlus-Esthetic-iOS-SimplyBook-Native-Calendar.zip
           if-no-files-found: error
           retention-days: 30
