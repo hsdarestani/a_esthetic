@@ -47,7 +47,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       method:data ? 'POST':'GET', headers:{Authorization:'Bearer '+token,Accept:'application/json','Content-Type':'application/json'},
       cache:'no-store', ...(data?{body:JSON.stringify(data)}:{}),
     });
-    if(!response.ok){const err=new Error(tr('Vorgang konnte nicht abgeschlossen werden.','Unable to complete request.'));err.status=response.status;throw err;}
+    if(!response.ok){const err=new Error(tr('Vorgang konnte nicht abgeschlossen werden.','Unable to complete request.')+' (HTTP '+response.status+')');err.status=response.status;throw err;}
     return response.json();
   }
   const pendingCommands = new Map();
@@ -350,6 +350,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     busy=true;
     try {
       if(id==='logout'){await destroy();logout();return;}
+      if(id==='retry-initial')return await screen('home',{push:false});
       if(id==='back'){
         stack.pop();const back=stack.pop()||'home';
         if(back.startsWith('patient:'))return await showPatient(Number(back.split(':')[1]));
@@ -550,11 +551,32 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     } finally {busy=false;}
   }
   async function destroy(){if(!active)return;active=false;pendingUpload=null;appointmentsById.clear();pendingCommands.clear();blockById.clear();await listener?.remove();await plugin.dismiss();}
-  listener=await plugin.addListener('action',event=>void handle(event));
+  let presented = false;
   try {
+    listener = await plugin.addListener('action',event=>void handle(event));
     await plugin.present({screen:current});
-    if(initialPatient)await showPatient(initialPatient);
-    else await screen(initialCalendar?'calendar':'home');
-  } catch(error){await destroy();throw error;}
+    presented = true;
+    // Failure of the first data API must never tear down a successfully
+    // presented native interface and trap the user in the WebView login boot.
+    try {
+      if(initialPatient)await showPatient(initialPatient);
+      else await screen(initialCalendar?'calendar':'home');
+    } catch(error) {
+      if(error.status===401){
+        await destroy();
+        logout();
+        return {destroy:async()=>{},openPatient:()=>{},openCalendar:()=>{},back:()=>false};
+      }
+      await render(view(tr('Verbindung unterbrochen','Connection interrupted'),{
+        message:tr('Die Praxisdaten sind vorübergehend nicht erreichbar.','Practice data is temporarily unavailable.')+
+          (error.status?' (HTTP '+error.status+')':''),
+        actions:[row('retry-initial',tr('Erneut versuchen','Try again')),row('logout',tr('Abmelden','Sign out'))],
+      }));
+    }
+  } catch(error) {
+    try { if(presented)await destroy(); else { active=false;await listener?.remove(); } }
+    catch (_) { /* Preserve the original initialization failure. */ }
+    throw error;
+  }
   return {destroy,openPatient:id=>void showPatient(id),openCalendar:()=>void screen('calendar'),back:()=>{void handle({id:'back'});return true;}};
 }
