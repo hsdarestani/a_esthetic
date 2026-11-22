@@ -69,16 +69,21 @@ chown -R aestheticbook:aestheticbook "$B"
 chmod 0750 "$B"
 (
   cd "$A"; set -a; source "$A_ROOT/mobile.env"; set +a
-  export DJANGO_SETTINGS_MODULE=production_native_settings PYTHONPATH="$A:$A_ROOT/vendor"
+  export DJANGO_SETTINGS_MODULE=production_native_settings PYTHONPATH="$A"
   "$A_ROOT/venv/bin/python" manage.py check
   "$A_ROOT/venv/bin/python" manage.py makemigrations --check --dry-run
 )
 runuser -u aestheticbook -- bash -c "set -a; source /etc/aesthetic-book.env; set +a; cd '$B'; '$B_ROOT/venv/bin/python' manage.py check && '$B_ROOT/venv/bin/python' manage.py makemigrations --check --dry-run"
+echo 'PREFLIGHT native Pillow binary import without legacy PYTHONPATH vendor overlay'
+if ! PYTHONPATH="$A" "$A_ROOT/venv/bin/python" -c 'from PIL import Image; import PIL._imaging; print("Pillow native extension available")'; then
+  echo 'STOP: production app venv also needs Pillow repair. Do not touch live services.'
+  exit 1
+fi
 echo 'Applying additive Book and A+ migrations; current workers stay active'
 runuser -u aestheticbook -- bash -c "set -a; source /etc/aesthetic-book.env; set +a; cd '$B'; '$B_ROOT/venv/bin/python' manage.py migrate --noinput && '$B_ROOT/venv/bin/python' manage.py collectstatic --noinput"
 (
   cd "$A"; set -a; source "$A_ROOT/mobile.env"; set +a
-  export DJANGO_SETTINGS_MODULE=production_native_settings PYTHONPATH="$A:$A_ROOT/vendor"
+  export DJANGO_SETTINGS_MODULE=production_native_settings PYTHONPATH="$A"
   "$A_ROOT/venv/bin/python" manage.py migrate --noinput
   "$A_ROOT/venv/bin/python" manage.py collectstatic --noinput
 )
@@ -107,7 +112,7 @@ After=network.target
 WorkingDirectory=$A
 EnvironmentFile=$A_ROOT/mobile.env
 Environment=DJANGO_SETTINGS_MODULE=production_native_settings
-Environment=PYTHONPATH=$A:$A_ROOT/vendor
+Environment=PYTHONPATH=$A
 ExecStart=$A_ROOT/venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8771 --workers 1 --timeout 60
 Restart=on-failure
 RestartSec=3
