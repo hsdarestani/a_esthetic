@@ -32,7 +32,7 @@ jobs:
           import re
           p=Path('android/variables.gradle')
           s=p.read_text()
-          updated,n=re.subn(r'minSdkVersion\\s*=\\s*24\\b','minSdkVersion = 26',s)
+          updated,n=re.subn(r'minSdkVersion\s*=\s*24\b','minSdkVersion = 26',s)
           if n != 1: raise SystemExit('minSdkVersion expected 24, found: '+s[:1200])
           p.write_text(updated)
           print('Set minSdkVersion=26 for barcode SDK compatibility')
