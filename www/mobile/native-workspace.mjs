@@ -13,16 +13,16 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   const plugin = globalThis.Capacitor?.Plugins?.NativeStaff;
   if (!plugin) throw new Error('Native staff renderer unavailable');
   const admin = identity.role === 'admin';
-  const language = (localStorage.getItem('aplus_language') || navigator.language || 'de').startsWith('en') ? 'en' : 'de';
+  let language = (localStorage.getItem('aplus_language') || navigator.language || 'de').startsWith('en') ? 'en' : 'de';
   const tr = (de,en) => language === 'en' ? en : de;
-  const locale = language === 'en' ? 'en-GB' : 'de-DE';
+  let locale = language === 'en' ? 'en-GB' : 'de-DE';
   const stack = [];
   const appointmentsById = new Map();
   const rememberAppointments = items => { for(const a of items||[]) appointmentsById.set(a.id,a); };
   let date = today(), search = '', calendarMode='day', providerFilter='all', serviceFilter='all', active = true, busy = false, listener, patient, catalog, appointment;
   let current = {title:'A+ Esthetic',busy:true,tabs:[]};
   const blockById = new Map();
-  const tabs = [
+  const tabs = () => [
     {...row('home',tr('Übersicht','Home')), icon:'square.grid.2x2'},
     {...row('calendar',tr('Kalender','Calendar')),icon:'calendar'},
     {...row('patients',tr('Patienten','Patients')),icon:'person.2'},
@@ -48,7 +48,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   }
   const book = (path,data) => request('book/'+path,data);
   const office = (path,data) => request('office/'+path,data);
-  const view = (title, content={}) => ({title, tabs, ...content});
+  const view = (title, content={}) => ({title, tabs:tabs(), ...content});
   async function render(screen) { if(!active)return; current=screen; await plugin.render({screen}); }
   async function screen(name, {push=true}={}) {
     if(push && stack.at(-1)!==name)stack.push(name);
@@ -365,7 +365,14 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         catalog=null;return await screen('services');
       }
       if(id==='language')return await render(view(tr('Sprache','Language'),{message:tr('Sprachwechsel wird beim nächsten Öffnen angewendet.','Language applies when reopening.'),fields:[value('language',tr('Sprache','Language'),language,[option('de','Deutsch'),option('en','English')])],actions:[row('save-language',tr('Speichern','Save'))]}));
-      if(id==='save-language'){localStorage.setItem('aplus_language',fields.language);return await screen('settings');}
+      if(id==='save-language'){
+        if(!['de','en'].includes(fields.language))throw new Error(tr('Ungültige Sprache.','Invalid language.'));
+        language=fields.language;
+        locale=language==='en'?'en-GB':'de-DE';
+        localStorage.setItem('aplus_language',language);
+        // Keep navigation and screen labels in sync without an app restart.
+        return await screen('settings',{push:false});
+      }
       if(id==='new-appointment'){search='';return await appendForm(false);}
       if(id==='new-patient-appointment')return await appendForm(false,patient.patient);
       if(id.startsWith('record:'))return await showPDF('book/patient/'+patient.patient.id+'/records/'+id.slice(7)+'/',tr('Patientendokument','Patient document'));
