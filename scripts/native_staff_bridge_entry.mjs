@@ -17,11 +17,15 @@ if (Capacitor.isNativePlatform()) {
     .then(result => {
       const ok = Boolean(result?.ok && result?.native);
       console.info(ok ? 'APLUS_NATIVE_STAFF_PROBE_OK' : 'APLUS_NATIVE_STAFF_PROBE_INVALID');
-      return {ok, code:ok ? 'OK' : 'INVALID_RESPONSE'};
+      const outcome = {ok, code:ok ? 'OK' : 'INVALID_RESPONSE'};
+      window.APlusNativeStaffProbeResult = outcome;
+      return outcome;
     })
     .catch(error => {
       const code = String(error?.code || 'NATIVE_BRIDGE_ERROR').slice(0,48);
       console.warn('APLUS_NATIVE_STAFF_PROBE_FAILED', code);
-      return {ok:false, code};
+      const outcome = {ok:false, code};
+      window.APlusNativeStaffProbeResult = outcome;
+      return outcome;
     });
 }
