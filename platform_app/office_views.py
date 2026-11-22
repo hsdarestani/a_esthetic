@@ -307,7 +307,7 @@ def _submit_unverified_intake(data, session=None):
         queue_review(data, session=session)
         AuditLog.objects.create(
             actor=session.created_by if session else None,
-            action='iPad Kundenaufnahme abgeschlossen', entity_type='User',
+            action='iPad Patientenaufnahme abgeschlossen', entity_type='User',
             entity_id=str(user.pk), metadata={'created': True, 'source': 'office_intake'},
         )
     # A newly created local account remains unlinked until staff verifies the
@@ -388,7 +388,7 @@ def office_dashboard(request):
             customer = User.objects.filter(pk=request.POST.get("customer_id"), is_active=True).first()
             service_date = _parse_service_date(request.POST.get("service_date"))
             if not customer or not service_date:
-                error = "Kunde und Leistungsdatum sind erforderlich."
+                error = "Patient und Leistungsdatum sind erforderlich."
             else:
                 try:
                     invoice = create_goae_draft(
@@ -405,7 +405,7 @@ def office_dashboard(request):
             service = Service.objects.filter(pk=request.POST.get("service_id"), active=True).first()
             service_date = _parse_service_date(request.POST.get("service_date"))
             if not customer or not service or not service_date:
-                error = "Kunde, Behandlung und Leistungsdatum sind erforderlich."
+                error = "Patient, Behandlung und Leistungsdatum sind erforderlich."
             elif service.price_cents is None or service.vat_rate is None:
                 error = "Für diese Behandlung fehlen noch Preis oder MwSt."
             else:
@@ -667,7 +667,7 @@ def office_invoice_finalize(request, invoice_id):
         if not settings.ready_for_issue:
             return HttpResponse("Steuernummer oder USt-IdNr. fehlt in den Rechnungseinstellungen.", status=409)
         if not all([invoice.customer_street, invoice.customer_postal_code, invoice.customer_city]):
-            return HttpResponse("Kundenadresse fehlt.", status=409)
+            return HttpResponse("Patientenadresse fehlt.", status=409)
         if not invoice.items.exists():
             return HttpResponse("Rechnung hat keine Position.", status=409)
 
