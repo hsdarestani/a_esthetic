@@ -4,7 +4,7 @@
   "private": true,
   "description": "Native Android/iOS shell for the A+ Esthetic customer app.",
   "scripts": {
-    "capacitor:sync:after": "node scripts/install-google-services.js && python3 scripts/configure_native_camera_permissions.py",
+    "capacitor:sync:after": "node scripts/install-google-services.js && python3 scripts/configure_native_camera_permissions.py && python3 scripts/install_native_staff.py",
     "cap:sync": "npx cap sync",
     "build:android": "bash scripts/build-android.sh",
     "build:ios": "bash scripts/build-ios.sh"

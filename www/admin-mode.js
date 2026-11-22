@@ -31,8 +31,16 @@
   window.APlusAdminMode = {
     resolve,
     async mount(root, token, role, logout) {
+      await this.unmount();
+      if (window.Capacitor?.isNativePlatform?.() && window.Capacitor?.Plugins?.NativeStaff) {
+        const {mountNativeWorkspace} = await import('./mobile/native-workspace.mjs');
+        workspace = await mountNativeWorkspace({token, identity:role, origin:window.APlusRuntime.origin, logout,
+          initialPatient:pendingPatient, initialCalendar:pendingCalendar});
+        pendingPatient = null;
+        pendingCalendar = false;
+        return;
+      }
       const {mountWorkspace} = await import('./mobile/workspace.mjs');
-      this.unmount();
       workspace = mountWorkspace({root, token, identity: role, origin: window.APlusRuntime.origin, logout});
       if (pendingPatient) {
         workspace.openPatient(pendingPatient);
@@ -56,8 +64,9 @@
       return workspace?.back() || false;
     },
     unmount() {
-      workspace?.destroy();
+      const former = workspace;
       workspace = null;
+      return former?.destroy();
     },
   };
 })();
