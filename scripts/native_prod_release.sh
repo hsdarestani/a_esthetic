@@ -5,10 +5,10 @@ umask 077
 [[ $# -eq 2 && "$1" =~ ^[0-9a-f]{40}$ && "$2" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid release SHAs'; exit 1; }
 [[ $(id -u) -eq 0 ]] || { echo 'Root deployment permissions required'; exit 1; }
 A_SHA="$1"; B_SHA="$2"; A_ROOT=/opt/a-esthetic-mobile; B_ROOT=/opt/aesthetic-book
-A="$A_ROOT/releases/$A_SHA"; B="$B_ROOT/releases/$B_SHA"
+A="$A_ROOT/releases/$A_SHA"; B="$B_ROOT/releases/$B_SHA-$A_SHA"
 BACK="$A_ROOT/native-release-backups/$(date -u +%Y%m%dT%H%M%SZ)"
 A_UNIT="aesthetic-native-app-$(echo "$A_SHA" | cut -c1-10).service"
-B_UNIT="aesthetic-native-book-$(echo "$B_SHA" | cut -c1-10).service"
+B_UNIT="aesthetic-native-book-$(echo "$A_SHA" | cut -c1-10).service"
 A_CONF=/etc/nginx/sites-enabled/a-esthetic-app.conf
 O_CONF=/etc/nginx/sites-enabled/a-esthetic-office.conf
 B_CONF=/etc/nginx/sites-enabled/aesthetic-book.conf
