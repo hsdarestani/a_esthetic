@@ -9,6 +9,7 @@ import argparse
 import mimetypes
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 import secrets
 import subprocess
 import sys
@@ -17,13 +18,22 @@ import tempfile
 APP = Path(__file__).resolve().parent.parent
 APP_URL = 'http://127.0.0.1:5181'
 BOOK_URL = 'http://127.0.0.1:5182'
-DEMO_PASSWORD = 'Preview-only-2026!'
+DEMO_PASSWORD = os.environ.get('PREVIEW_DEMO_PASSWORD', 'Preview-only-2026!')
+PUBLIC_APP_URL = os.environ.get('PREVIEW_PUBLIC_APP_URL', APP_URL)
+PUBLIC_BOOK_URL = os.environ.get('PREVIEW_PUBLIC_BOOK_URL', BOOK_URL)
 SETTINGS = """
 from config.settings import *
 import os
 from pathlib import Path
 
 state = Path(os.environ['PREVIEW_STATE'])
+# These settings are imported only by the separate synthetic preview processes.
+if os.environ.get('PREVIEW_REMOTE') == '1':
+    DEBUG = False
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    STORAGES = {**STORAGES, 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}}
 MIDDLEWARE = ['mobile_staff_preview.PreviewFiles', *MIDDLEWARE]
 EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
 EMAIL_FILE_PATH = state / 'mail'
@@ -55,12 +65,14 @@ class PreviewFiles:
             return self.get_response(request)
         data = target.read_bytes()
         if target.suffix in {'.js', '.mjs'}:
-            data = data.replace(b'https://book.a-esthetic.de', BOOK_URL.encode())
-            data = data.replace(b'https://app.a-esthetic.de', APP_URL.encode())
+            data = data.replace(b'https://book.a-esthetic.de', PUBLIC_BOOK_URL.encode())
+            data = data.replace(b'https://app.a-esthetic.de', PUBLIC_APP_URL.encode())
+            data = data.replace(b'https://esthetic.smarbiz.sbs', PUBLIC_APP_URL.encode())
+            data = data.replace(b'https://office.a-esthetic.de', PUBLIC_APP_URL.encode())
         response = HttpResponse(data, content_type=mimetypes.guess_type(target)[0] or 'application/octet-stream')
         response['Content-Security-Policy'] = (
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-            f"connect-src 'self' {BOOK_URL}; img-src 'self' data: blob:; "
+            f"connect-src 'self' {PUBLIC_BOOK_URL}; img-src 'self' data: blob:; "
             "frame-src 'none'; form-action 'self'; object-src 'none'; base-uri 'none'"
         )
         response['Cache-Control'] = 'no-store'
@@ -94,10 +106,11 @@ def app_seed():
             'email': handle + '@example.test', 'first_name': first, 'last_name': last,
             'is_staff': role != 'customer', 'is_superuser': handle == 'admin',
         })
-        if created:
+        if created or os.environ.get('PREVIEW_REMOTE') == '1':
             user.set_password(DEMO_PASSWORD)
             user.save(update_fields=['password'])
-            UserProfile.objects.update_or_create(user=user, defaults={'role': role, 'salutation': 'divers'})
+            if created:
+                UserProfile.objects.update_or_create(user=user, defaults={'role': role, 'salutation': 'divers'})
         if handle == 'doctor':
             user.groups.add(Group.objects.get_or_create(name='aesthetic_qamar_doctor')[0])
         if handle == 'customer' and created:
@@ -116,6 +129,11 @@ def book_seed():
     from booking.models import Appointment, BlockedPeriod, Customer, PatientRecord, Service, StaffMember, WorkingHour
 
     if StaffMember.objects.filter(display_name='Mara Winter').exists():
+        if os.environ.get('PREVIEW_REMOTE') == '1':
+            existing = User.objects.filter(username='preview', is_superuser=True).first()
+            if existing:
+                existing.set_password(DEMO_PASSWORD)
+                existing.save(update_fields=['password'])
         return
     User.objects.create_superuser(username='preview', email='desktop@example.test', password=DEMO_PASSWORD)
     doctor = StaffMember.objects.get_or_create(display_name='Qamar Hameed', defaults={'role':'doctor'})[0]
@@ -169,6 +187,29 @@ def child(argv):
         execute_from_command_line(['preview', *argv])
 
 
+def validate_public_origins(app_url, book_url):
+    """Require a pair of explicit, distinct HTTPS staging-only origins."""
+    if not app_url and not book_url:
+        return APP_URL, BOOK_URL, False
+    hosts = []
+    for origin in (app_url, book_url):
+        if not origin:
+            raise ValueError('Both staging origins are required.')
+        parsed = urlsplit(origin)
+        host = parsed.hostname or ''
+        if (parsed.scheme != 'https' or not host or parsed.port is not None or
+            parsed.username or parsed.password or parsed.path not in ('', '/') or
+            parsed.query or parsed.fragment or
+            not any(label.startswith(('stage', 'preview', 'staging')) for label in host.split('.'))):
+            raise ValueError('Use explicit staging/preview HTTPS hostnames, never production.')
+        if host in {'a-esthetic.de','app.a-esthetic.de','book.a-esthetic.de','office.a-esthetic.de','esthetic.smarbiz.sbs'}:
+            raise ValueError('Production origins are prohibited.')
+        hosts.append(host)
+    if hosts[0] == hosts[1]:
+        raise ValueError('Use distinct app and Book staging origins.')
+    return app_url.rstrip('/'), book_url.rstrip('/'), True
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--book', type=Path, required=True)
@@ -176,17 +217,44 @@ def main():
     parser.add_argument('--book-python', type=Path, required=True)
     parser.add_argument('--pg-bin', type=Path, required=True)
     parser.add_argument('--state', type=Path)
+    parser.add_argument('--public-app-url')
+    parser.add_argument('--public-book-url')
     args = parser.parse_args()
+    public_app, public_book, remote = validate_public_origins(args.public_app_url, args.public_book_url)
+    if remote:
+        if not args.state:
+            parser.error('A dedicated --state directory is required for remote staging.')
+        demo_password = os.environ.get('APLUS_STAGE_DEMO_PASSWORD', '')
+        if len(demo_password) < 16 or demo_password == 'Preview-only-2026!':
+            parser.error('Set a unique staging-only APLUS_STAGE_DEMO_PASSWORD of at least 16 characters.')
+    else:
+        demo_password = 'Preview-only-2026!'
     state = (args.state or Path(tempfile.mkdtemp(prefix='aesthetic-preview-'))).resolve()
     state.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if remote and state.stat().st_mode & 0o077:
+        parser.error('Remote staging state directory must not be accessible to other users.')
+    if remote:
+        marker = state / 'staging-origins.txt'
+        expected = public_app+'\n'+public_book+'\n'
+        if marker.exists() and marker.read_text() != expected:
+            parser.error('This state directory belongs to another staging origin.')
+        if not marker.exists():
+            if any((state / (role+'-db') / 'PG_VERSION').exists() for role in ('app','book')):
+                parser.error('Never reuse an existing unmarked database for remote staging.')
+            marker.write_text(expected)
     (state / 'preview_settings.py').write_text(SETTINGS)
     token = secrets.token_urlsafe(32)
     children = []
     clusters = []
+    hosts = ['127.0.0.1','localhost'] + ([urlsplit(public_app).hostname,urlsplit(public_book).hostname] if remote else [])
     env_base = {'PATH':os.environ['PATH'], 'PYTHONUNBUFFERED':'1', 'DJANGO_DEBUG':'1',
-                'DJANGO_ALLOWED_HOSTS':'127.0.0.1,localhost', 'PATIENT_SYNC_TOKEN':token,
+                'DJANGO_ALLOWED_HOSTS':','.join(hosts),
+                'PREVIEW_PUBLIC_APP_URL':public_app, 'PREVIEW_PUBLIC_BOOK_URL':public_book,
+                'PREVIEW_REMOTE':'1' if remote else '0', 'PREVIEW_DEMO_PASSWORD':demo_password,
+                'CSRF_TRUSTED_ORIGINS':public_app+','+public_book,
+                'DJANGO_CSRF_TRUSTED_ORIGINS':public_app+','+public_book, 'PATIENT_SYNC_TOKEN':token,
                 'DJANGO_SECRET_KEY':secrets.token_urlsafe(48), 'PREVIEW_STATE':str(state),
-                'BOOKING_CORS_ORIGINS':APP_URL, 'AESTHETIC_MEMBER_API_URL':APP_URL+'/api/mobile/me/'}
+                'BOOKING_CORS_ORIGINS':public_app, 'AESTHETIC_MEMBER_API_URL':APP_URL+'/api/mobile/me/'}
     try:
         for role, repo, python, port in (('book', args.book.resolve(), args.book_python, 5182),
                                          ('app', APP, args.app_python, 5181)):
@@ -208,7 +276,7 @@ def main():
             subprocess.run([*command,'migrate','--noinput'],env=env,check=True,cwd=repo,stdout=subprocess.DEVNULL)
             subprocess.run([*command,'seed'],env=env,check=True,cwd=repo)
             log = (state/(role+'.log')).open('a')
-            children.append(subprocess.Popen([*command,'runserver',f'127.0.0.1:{port}','--noreload'],
+            children.append(subprocess.Popen([*command,'runserver',f'127.0.0.1:{port}','--noreload', *(['--insecure'] if remote else [])],
                                              env=env,cwd=repo,stdout=log,stderr=subprocess.STDOUT))
             if role == 'book':
                 reconcile = (state/'reconcile.sh')
@@ -218,7 +286,7 @@ def main():
                 fd = os.open(reconcile, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o700)
                 with os.fdopen(fd,'w') as out:
                     out.write('#!/bin/sh\n'+shlex.join(line)+' && '+shlex.join(cmd)+'\n')
-        print(f'Preview {APP_URL}  ·  Book {BOOK_URL}  ·  Local state {state}', flush=True)
+        print(f'Preview {public_app}  ·  Book {public_book}  ·  Isolated state {state}', flush=True)
         for process in children:
             process.wait()
     except KeyboardInterrupt:

@@ -3,12 +3,16 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from platform_app.models import AuditLog, Invoice, OfficePatientLink, OfficeIntakeReview, UserProfile
 
 
+@override_settings(STORAGES={
+    'default': {'BACKEND':'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND':'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
 class NativeOfficeTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_user(username='office-native-admin', is_staff=True, is_superuser=True)
@@ -108,3 +112,11 @@ class NativeOfficeTests(TestCase):
         row.refresh_from_db()
         self.assertEqual(row.status, 'approved')
         self.assertEqual(row.reviewed_by, self.admin)
+
+    def test_quote_uses_same_calculator_without_creating_invoice(self):
+        payload = {'lines':[{'goae_number':'1','goae_description':'Beratung',
+                  'goae_base_eur':'10','goae_factor':'2.30','quantity':'2','goae_vat_rate':'19'}]}
+        response = self.admin_call('quote', payload, None)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['total_cents'], 5474)
+        self.assertEqual(Invoice.objects.count(), 0)

@@ -1,14 +1,28 @@
-name: A+ Esthetic isolated mobile preview
+name: A+ Esthetic final remote staging acceptance packages
 
 on:
   workflow_dispatch:
+    inputs:
+      staging_app_url:
+        description: 'Dedicated HTTPS staging app origin'
+        required: true
+        type: string
+      staging_book_url:
+        description: 'Dedicated HTTPS staging Book origin'
+        required: true
+        type: string
+      all_qa_complete:
+        description: 'All acceptance requirements and internal QA complete'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   preview:
-    if: github.ref_name == 'feature/mobile-unified-overhaul'
+    if: github.ref_name == 'feature/mobile-unified-overhaul' && inputs.all_qa_complete
     name: Preview package (${{ matrix.platform }})
     strategy:
       fail-fast: false
@@ -30,32 +44,38 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Configure preview identity and loopback server
+      - name: Configure remote staging acceptance identity
+        env:
+          STAGING_APP_URL: ${{ inputs.staging_app_url }}
+          STAGING_BOOK_URL: ${{ inputs.staging_book_url }}
         run: |
           python3 - <<'PY'
-          import json
+          import json, os, sys
           from pathlib import Path
-
+          from urllib.parse import urlsplit
+          sys.path.insert(0, 'scripts')
+          from mobile_staff_preview import validate_public_origins
+          app, book, remote = validate_public_origins(os.environ['STAGING_APP_URL'], os.environ['STAGING_BOOK_URL'])
+          assert remote
           path = Path('capacitor.config.json')
           config = json.loads(path.read_text())
           config.update(appId='de.aplusesthetic.preview', appName='A+ Esthetic Vorschau')
-          config['server'] = {'url': 'http://127.0.0.1:5181', 'cleartext': True, 'allowNavigation': ['127.0.0.1']}
+          config['server'] = {'url': app, 'cleartext': False, 'allowNavigation': [urlsplit(app).hostname, urlsplit(book).hostname]}
           path.write_text(json.dumps(config, indent=2))
+          for path in Path('www').rglob('*'):
+              if path.is_file() and path.suffix in {'.js','.mjs','.html','.css','.json'}:
+                  data = path.read_bytes()
+                  for original, target in [
+                    ('https://app.a-esthetic.de',app),('https://esthetic.smarbiz.sbs',app),
+                    ('https://office.a-esthetic.de',app),('https://book.a-esthetic.de',book),
+                  ]:
+                      data = data.replace(original.encode(),target.encode())
+                  path.write_bytes(data)
           PY
           npm pkg delete scripts.capacitor:sync:after
           npm install --no-audit --no-fund
-          rm -f www/index.html
-          cat > www/index.html <<'HTML'
-          <!doctype html>
-          <html lang="de">
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width">
-          <title>A+ Esthetic Vorschau</title>
-          <h1>Lokale Vorschau verbinden</h1>
-          <p>Starten Sie die isolierte Testumgebung am Port 5181 und öffnen Sie die Vorschau erneut.</p>
-          </html>
-          HTML
           npx cap add ${{ matrix.platform }}
+          python3 scripts/install_native_staff.py
       - name: Configure preview Android SDK and native permissions
         if: matrix.platform == 'android'
         run: |

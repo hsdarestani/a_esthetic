@@ -201,7 +201,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       value('end_2',tr('Zweites Ende (optional)','Second end (optional)'),ranges[1]?.end||''),
     ],actions:[row('load-availability',tr('Behandler / Datum laden','Load provider / date')),row('save-availability',tr('Speichern','Save'))]}));
   }
-  let billingUser, billingVisits, reviewPair, intakeRecord;
+  let billingUser, billingVisits, reviewPair, intakeRecord, invoiceLines=[], invoiceMeta={};
   async function showBilling(id) {
     const r=await office('customers/?q='+encodeURIComponent(search));
     billingUser=r.items.find(u=>u.id===id);
@@ -212,21 +212,59 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       rows:list.items.map(i=>row(i.status==='draft'?'invoice-pdf:'+i.id:'',i.service_date+' · '+(i.total_cents/100).toFixed(2)+' EUR',i.status)),
       actions:[row(billingUser.book_customer_id?'invoice-form':'link-search',billingUser.book_customer_id?tr('GOÄ Entwurf','GOÄ draft'):tr('Book Identität verifizieren','Verify Book identity'))]}));
   }
-  async function invoiceForm(){
-    const r=await book('patient/'+billingUser.book_customer_id+'/');
-    billingVisits=r.appointments.filter(a=>a.status==='completed');
-    if(!billingVisits.length)throw new Error(tr('Kein abgeschlossener Besuch.','No completed visit.'));
-    const addr=billingUser.address;
+  async function invoiceForm(initial=true){
+    if(initial){
+      const r=await book('patient/'+billingUser.book_customer_id+'/');
+      billingVisits=r.appointments.filter(a=>a.status==='completed');
+      if(!billingVisits.length)throw new Error(tr('Kein abgeschlossener Besuch.','No completed visit.'));
+      const addr=billingUser.address;
+      invoiceLines=[];
+      invoiceMeta={visit_id:billingVisits[0].public_id,street:addr.street,postal_code:addr.postal_code,city:addr.city,
+        service_date:'',date_correction_reason:''};
+    }
+    const fields=[
+      value('visit_id',tr('Besuch','Visit'),invoiceMeta.visit_id,billingVisits.map(a=>option(a.public_id,a.date+' · '+a.service_name))),
+      value('service_date',tr('Abweichendes Leistungsdatum (optional)','Corrected visit date (optional)'),invoiceMeta.service_date),
+      value('date_correction_reason',tr('Begründung der Datumskorrektur','Reason for date correction'),invoiceMeta.date_correction_reason),
+      value('street',tr('Straße','Street'),invoiceMeta.street),value('postal_code',tr('PLZ','Postal code'),invoiceMeta.postal_code),value('city',tr('Ort','City'),invoiceMeta.city),
+    ];
     return render(view(tr('GOÄ Entwurf erstellen','Create GOÄ draft'),{
       message:tr('Gebührennummer, Einfachsatz und Steuerstatus ärztlich prüfen.','Clinician must verify tariff code, base fee and tax classification.'),
-      fields:[value('visit_id',tr('Besuch','Visit'),billingVisits[0].public_id,billingVisits.map(a=>option(a.public_id,a.date+' · '+a.service_name))),
-        value('street',tr('Straße','Street'),addr.street),value('postal_code',tr('PLZ','Postal code'),addr.postal_code),value('city',tr('Ort','City'),addr.city),
-        value('goae_number','GOÄ Nr.'),value('goae_description',tr('Leistung','Service')),
-        value('goae_base_eur',tr('Einfachsatz EUR','Base fee EUR')),value('goae_factor',tr('Faktor','Factor'),'1.00'),
-        value('quantity',tr('Anzahl','Quantity'),'1'),value('goae_vat_rate',tr('Umsatzsteuer','VAT'),'',[
-          option('',tr('Bitte auswählen','Select')),option('0','0%'),option('7','7%'),option('19','19%')]),
-        value('goae_justification',tr('Begründung','Justification'))],
-      actions:[row('save-invoice',tr('Entwurf speichern','Save draft'))]}));
+      fields, rows:invoiceLines.map((line,i)=>row('invoice-line:'+i,(line.kind==='material'?tr('Auslage','Expense'):line.goae_number)+' · '+line.goae_description,
+        tr('Anzahl','Quantity')+' '+line.quantity+(line.kind==='material'?'':' · '+line.goae_factor+'×'))),
+      actions:[row('add-invoice-line',tr('GOÄ Leistung hinzufügen','Add GOÄ service')),row('add-material-line',tr('Auslage hinzufügen','Add expense')),
+        ...(invoiceLines.length?[row('invoice-quote',tr('Beträge prüfen','Review totals'))]:[])],
+    }));
+  }
+  async function lineForm(index,material=false){
+    const line=invoiceLines[index]||{};
+    if(material||line.kind==='material')return render(view(tr('Auslage erfassen','Record expense'),{message:tr('Nur tatsächlich entstandene, nach § 10 berechnungsfähige Auslagen erfassen.','Only actual eligible expenses under § 10.'),fields:[
+      value('goae_description',tr('Art der Auslage','Expense description'),line.goae_description),value('goae_base_eur',tr('Tatsächlicher Einzelpreis EUR','Actual unit cost EUR'),line.goae_base_eur),
+      value('quantity',tr('Anzahl','Quantity'),line.quantity||'1'),value('goae_vat_rate',tr('Umsatzsteuer','VAT'),line.goae_vat_rate||'',[option('',tr('Bitte auswählen','Select')),option('0','0%'),option('7','7%'),option('19','19%')]),
+      value('material_receipt_reference',tr('Belegreferenz','Receipt reference'),line.material_receipt_reference),value('material_eligible',tr('Berechnungsfähigkeit geprüft?','Eligibility verified?'),line.material_eligible?'yes':'no',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))]),
+    ],actions:[row('save-material:'+index,tr('Auslage speichern','Save expense')),...(invoiceLines[index]?[row('delete-line:'+index,tr('Position entfernen','Remove line'))]:[])]}));
+    return render(view(tr('GOÄ Position','GOÄ line'),{fields:[
+      value('goae_number','GOÄ Nr.',line.goae_number),value('goae_description',tr('Leistung','Service'),line.goae_description),
+      value('goae_base_eur',tr('Einfachsatz EUR','Base fee EUR'),line.goae_base_eur),
+      value('goae_points',tr('Punkte (alternativ)','Points (alternative)'),line.goae_points),
+      value('goae_category',tr('Gebührenkategorie','Fee category'),line.goae_category||'general',[
+        option('general',tr('Allgemein','General')),option('technical',tr('Technisch','Technical')),option('laboratory',tr('Labor','Laboratory'))]),
+      value('goae_factor',tr('Faktor','Factor'),line.goae_factor||'1.00'),
+      value('quantity',tr('Anzahl','Quantity'),line.quantity||'1'),
+      value('goae_vat_rate',tr('Umsatzsteuer','VAT'),line.goae_vat_rate||'',[option('',tr('Bitte auswählen','Select')),option('0','0%'),option('7','7%'),option('19','19%')]),
+      value('goae_justification',tr('Begründung','Justification'),line.goae_justification),
+    ],actions:[row('save-line:'+index,tr('Position speichern','Save line')),...(invoiceLines[index]?[row('delete-line:'+index,tr('Position entfernen','Remove line'))]:[])]}));
+  }
+  async function quote(){
+    const r=await office('quote/',{lines:invoiceLines});
+    const money=cents=>(cents/100).toFixed(2)+' EUR';
+    return render(view(tr('Entwurf prüfen','Review draft'),{rows:[
+      ...r.items.map(i=>row('',(i.goae_number||tr('Auslage','Expense'))+' · '+i.description,money(i.gross_cents))),
+      row('',tr('Netto','Net'),money(r.subtotal_cents)),
+      row('',tr('Steuer','Tax'),money(r.tax_cents)),
+      row('',tr('Gesamt','Total'),money(r.total_cents)),
+    ],message:tr('Entwurf – nicht zur Zahlung verwenden.','Draft – not for payment.'),
+      actions:[row('save-invoice',tr('Entwurf speichern','Save draft')),row('invoice-return',tr('Weiter bearbeiten','Continue editing'))]}));
   }
 
   async function showPDF(path,title){
@@ -359,9 +397,21 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         return await showBilling(billingUser.id);
       }
       if(admin&&id==='invoice-form')return await invoiceForm();
+      if(admin&&id==='add-invoice-line'){invoiceMeta={...fields};return await lineForm(invoiceLines.length);}
+      if(admin&&id==='add-material-line'){invoiceMeta={...fields};return await lineForm(invoiceLines.length,true);}
+      if(admin&&id.startsWith('invoice-line:')){invoiceMeta={...fields};return await lineForm(Number(id.split(':')[1]));}
+      if(admin&&id.startsWith('save-material:')){const idx=Number(id.split(':')[1]);const material={...fields,kind:'material',material_eligible:fields.material_eligible==='yes'};await office('quote/',{lines:[material]});invoiceLines[idx]=material;return await invoiceForm(false);}
+      if(admin&&id.startsWith('save-line:')){
+        const idx=Number(id.split(':')[1]);
+        await office('quote/',{lines:[fields]});
+        invoiceLines[idx]=fields;return await invoiceForm(false);
+      }
+      if(admin&&id.startsWith('delete-line:')){invoiceLines.splice(Number(id.split(':')[1]),1);return await invoiceForm(false);}
+      if(admin&&id==='invoice-quote'){invoiceMeta={...fields};return await quote();}
+      if(admin&&id==='invoice-return')return await invoiceForm(false);
       if(admin&&id==='save-invoice'){
-        const {street,postal_code,city,visit_id,...line}=fields;
-        await command('office/draft/',{customer_id:billingUser.id,visit_id,address:{street,postal_code,city},save_missing_address:true,lines:[line]},'request_id');
+        const {street,postal_code,city,visit_id,service_date,date_correction_reason}=invoiceMeta;
+        await command('office/draft/',{customer_id:billingUser.id,visit_id,address:{street,postal_code,city},service_date,date_correction_reason,save_missing_address:true,lines:invoiceLines},'request_id');
         return await showBilling(billingUser.id);
       }
     } catch(err) {

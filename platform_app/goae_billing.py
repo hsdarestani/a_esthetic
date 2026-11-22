@@ -53,6 +53,31 @@ def calculate_goae_lines(data):
     for row in rows:
         if not isinstance(row, dict):
             raise ValueError("Ungültige Rechnungsposition.")
+        if row.get("kind") == "material":
+            desc = str(row.get("goae_description") or "").strip()
+            evidence = str(row.get("material_receipt_reference") or "").strip()
+            confirmation = row.get("material_eligible") is True
+            if not confirmation or not 4 <= len(desc) <= 220 or not 1 <= len(evidence) <= 250:
+                raise ValueError("Auslage nur mit bestätigter Berechnungsfähigkeit und Beleg erfassen.")
+            # §10: exact eligible expenditure, no markup or flat-rate material fee.
+            cost = to_decimal(row.get("goae_base_eur"))
+            if not Decimal("0") < cost <= Decimal("100000") or cost != cost.quantize(Decimal(".01")):
+                raise ValueError("Tatsächlichen Einzelpreis in Euro angeben.")
+            quantity = to_decimal(row.get("quantity", "1"))
+            if not 1 <= quantity <= 100 or quantity != quantity.to_integral_value():
+                raise ValueError("Ungültige Anzahl.")
+            if row.get("goae_vat_rate") is None or not str(row.get("goae_vat_rate")).strip():
+                raise ValueError("Umsatzsteuerstatus muss ausdrücklich ausgewählt werden.")
+            vat = to_decimal(row.get("goae_vat_rate"))
+            if vat not in {Decimal("0"), Decimal("7"), Decimal("19")}:
+                raise ValueError("Umsatzsteuerstatus bitte prüfen.")
+            net = cents(cost) * int(quantity)
+            tax = int((Decimal(net) * vat / 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+            result.append(dict(description=desc, goae_number="", goae_factor=None,
+                goae_base_cents=None, goae_justification="Auslage (§ 10), Beleg: "+evidence,
+                quantity=quantity, unit_gross_cents=cents(cost * (1 + vat/100)),
+                vat_rate=vat, net_cents=net, tax_cents=tax, gross_cents=net+tax))
+            continue
         code = str(row.get("goae_number") or "").strip()
         desc = str(row.get("goae_description") or "").strip()
         reason = str(row.get("goae_justification") or "").strip()
@@ -149,7 +174,7 @@ def goae_draft_pdf_bytes(invoice, settings):
         desc = para(item.description)
         if item.goae_justification:
             desc = [desc, para("Begründung: " + item.goae_justification)]
-        rows.append([para(item.goae_number), desc, para(item.quantity),
+        rows.append([para(item.goae_number or "Auslage"), desc, para(item.quantity),
                      para(item.goae_factor or "-"),
                      [para(money(item.net_cents)), para(f"USt {item.vat_rate}%: {money(item.tax_cents)}")]])
     table = Table(rows, colWidths=[62, 180, 46, 44, 171], repeatRows=1)

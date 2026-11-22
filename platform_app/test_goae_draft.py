@@ -86,3 +86,16 @@ class GoaEDraftTests(TestCase):
                        {"goae_factor": "1.5", "goae_base_eur": "Infinity"}):
             with self.assertRaises(ValueError):
                 calculate_goae_lines(entry | update)
+
+    def test_material_expense_requires_eligibility_and_receipt_and_no_markup(self):
+        item = {"kind":"material", "goae_description":"Synthetisches Material",
+                "goae_base_eur":"12.50", "goae_vat_rate":"19", "quantity":"2",
+                "material_receipt_reference":"TEST-RECEIPT", "material_eligible": True,
+                "goae_factor":"3.5"}
+        results = calculate_goae_lines({"lines":[item]})
+        self.assertEqual(results[0]['net_cents'], 2500)
+        self.assertEqual(results[0]['gross_cents'], 2975)
+        self.assertIsNone(results[0]['goae_factor'])
+        for update in ({"material_eligible":False}, {"material_receipt_reference":""}):
+            with self.assertRaises(ValueError):
+                calculate_goae_lines({"lines":[item | update]})

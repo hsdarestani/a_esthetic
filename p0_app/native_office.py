@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from platform_app.admin_aware_login import _is_admin
 from platform_app.mobile_api import _auth
-from platform_app.goae_billing import create_goae_draft, goae_draft_pdf_bytes
+from platform_app.goae_billing import calculate_goae_lines, create_goae_draft, goae_draft_pdf_bytes
 from platform_app.models import AuditLog, CheckInSession, Invoice, InvoiceSettings, OfficePatientLink, OfficeIntakeReview, UserProfile
 from platform_app.intake_identity import score, user_data, birth_date
 from .mobile_staff_views import NoRedirect
@@ -170,6 +170,18 @@ def office(request, operation, ident=None):
         data = json.loads(request.body)
         if not isinstance(data, dict):
             raise ValueError
+        if operation == 'quote' and ident is None:
+            lines = calculate_goae_lines(data)
+            return JsonResponse({'ok': True,
+                'subtotal_cents': sum(item['net_cents'] for item in lines),
+                'tax_cents': sum(item['tax_cents'] for item in lines),
+                'total_cents': sum(item['gross_cents'] for item in lines),
+                'items': [{
+                    'goae_number': item['goae_number'], 'description': item['description'],
+                    'quantity': str(item['quantity']), 'factor': str(item['goae_factor']),
+                    'net_cents': item['net_cents'], 'tax_cents': item['tax_cents'],
+                    'gross_cents': item['gross_cents'],
+                } for item in lines]})
         if operation == 'intake-review' and ident is not None:
             decision = data.get('decision')
             if decision not in {'approve', 'reject'}:
