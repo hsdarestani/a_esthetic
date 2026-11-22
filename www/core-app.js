@@ -288,7 +288,7 @@
         return;
       }
       if(state.token){
-        const safeCode = [err?.code,err?.name].filter(x=>typeof x==='string' && /^[\\w.-]{1,45}$/.test(x)).join(' / ');
+        const safeCode = [err?.code,err?.name].filter(x=>typeof x==='string' && /^[\w.-]{1,45}$/.test(x)).join(' / ');
         const safeMessage = err?.message && typeof err.message==='string'
           ? err.message.slice(0,160) : 'Die Anmeldung konnte nicht abgeschlossen werden.';
         // Diagnostic details stay on device; never print bearer tokens or patient data.
