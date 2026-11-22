@@ -115,8 +115,19 @@ struct StaffNativeScreen: View {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in privacyCover = false }
     }
 
+    private func keyboardType(_ kind: String) -> UIKeyboardType {
+        switch kind {
+        case "integer": return .numberPad
+        case "decimal": return .decimalPad
+        case "email": return .emailAddress
+        case "phone": return .phonePad
+        default: return .default
+        }
+    }
+
     @ViewBuilder private func fieldView(_ field: [String: Any]) -> some View {
         let key = text(field, "id")
+        let kind = text(field, "kind")
         let binding = Binding(get: { state.values[key] ?? "" }, set: { state.values[key] = $0 })
         VStack(alignment: .leading, spacing: 7) {
             Text(text(field, "label")).font(.subheadline.weight(.semibold))
@@ -126,9 +137,15 @@ struct StaffNativeScreen: View {
                         Text(text(option, "label")).tag(text(option, "value"))
                     }
                 }.pickerStyle(.menu).frame(maxWidth: .infinity, alignment: .leading)
+            } else if kind == "multiline" {
+                TextEditor(text: binding)
+                    .font(.body).frame(minHeight: 100)
+                    .accessibilityLabel(text(field, "label"))
             } else {
                 TextField(text(field, "label"), text: binding)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .keyboardType(keyboardType(kind))
+                    .textInputAutocapitalization(kind == "email" ? .never : .sentences)
+                    .autocorrectionDisabled(["integer", "decimal", "email", "phone"].contains(kind))
             }
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
             .background(card).clipShape(RoundedRectangle(cornerRadius: 12))
