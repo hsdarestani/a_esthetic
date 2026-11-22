@@ -5,7 +5,7 @@ import { today, startWeek, shiftDay } from './calendar.mjs';
 // Keep form input semantics identical in SwiftUI and Android native controls.
 const inputKind = id => {
   if (/^(note|notes|description|goae_description|goae_justification|date_correction_reason|text)$/.test(id)) return 'multiline';
-  if (/^(quantity|duration_minutes|buffer_minutes|goae_points)$/.test(id)) return 'integer';
+  if (/^(quantity|duration_minutes|buffer_minutes|goae_points|next_sequence)$/.test(id)) return 'integer';
   if (/^(goae_factor|goae_base_eur)$/.test(id)) return 'decimal';
   if (id === 'email') return 'email';
   if (id === 'phone') return 'phone';
@@ -123,6 +123,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         row('intakes',tr('Aufnahmebogen prüfen','Review intake')),
         row('identity-review',tr('Patientenidentität prüfen','Review identity')),
         row('billing-search',tr('GOÄ Rechnung erstellen','Create GOÄ draft')),
+        row('billing-settings',tr('Rechnungsdaten & Nummerierung','Invoice settings & numbering')),
       ]}));
     }
     if(name==='intakes'&&admin){
@@ -139,6 +140,23 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       const r=search.length>=2?await office('customers/?q='+encodeURIComponent(search)):{items:[]};
       return render(view(tr('GOÄ Rechnung','GOÄ invoice'),{fields:[value('query',tr('Patient suchen','Find patient'),search)],
         actions:[row('billing-query',tr('Suchen','Search'))], rows:r.items.map(x=>row('billing:'+x.id,x.name,x.email))}));
+    }
+    if(name==='billing-settings'&&admin){
+      const response=await office('invoice-settings/');
+      const data=response.settings, fields=[
+        value('company_name',tr('Rechnungsaussteller','Invoice issuer'),data.company_name),
+        value('street',tr('Straße','Street'),data.street),value('postal_code',tr('PLZ','Postal code'),data.postal_code),
+        value('city',tr('Ort','City'),data.city),value('email','E-Mail',data.email),value('phone',tr('Telefon','Phone'),data.phone),
+        value('tax_number',tr('Steuernummer','Tax number'),data.tax_number),value('vat_id','USt-IdNr.',data.vat_id),
+        value('bank_name',tr('Bank','Bank'),data.bank_name),value('iban','IBAN',data.iban),value('bic','BIC',data.bic),
+        value('invoice_prefix',tr('Rechnungspräfix','Invoice prefix'),data.invoice_prefix),
+        value('next_sequence',tr('Nächste Rechnungsnummer','Next invoice sequence'),data.next_sequence),
+      ];
+      return render(view(tr('Rechnungseinstellungen','Invoice settings'),{
+        message:tr('Änderungen an Rechnungsdaten werden protokolliert. GOÄ-Rechnungen dürfen erst nach medizinischer und steuerlicher Freigabe ausgestellt werden.',
+          'Invoice changes are audited. GOÄ issuance requires medical and accounting approval.'),
+        fields, actions:[row('save-billing-settings',tr('Rechnungsdaten sicher speichern','Save invoice settings securely'))],
+      }));
     }
   }
 
@@ -336,9 +354,9 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         if(back.startsWith('patient:'))return await showPatient(Number(back.split(':')[1]));
         if(back.startsWith('billing:'))return await showBilling(Number(back.split(':')[1]));
         if(back.startsWith('appointment:'))return await showAppointment(Number(back.split(':')[1]));
-        return await screen(['home','calendar','patients','office','intakes','identity-review','billing-search','settings','services'].includes(back)?back:'home');
+        return await screen(['home','calendar','patients','office','intakes','identity-review','billing-search','billing-settings','settings','services'].includes(back)?back:'home');
       }
-      if(['home','calendar','patients','office','intakes','identity-review','billing-search','settings','services'].includes(id)){
+      if(['home','calendar','patients','office','intakes','identity-review','billing-search','billing-settings','settings','services'].includes(id)){
         if(id==='patients'||id==='billing-search')search='';
         return await screen(id);
       }
@@ -351,6 +369,13 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       }
       if(id.startsWith('date:')){date=id.slice(5);return await screen('calendar',{push:false});}
       if(id==='search'||id==='billing-query'){search=fields.query||'';return await screen(id==='search'?'patients':'billing-search',{push:false});}
+      if(admin&&id==='save-billing-settings'){
+        // Optimistic revision protects concurrent edits made in the original Office admin.
+        const {revision}=await office('invoice-settings/');
+        await office('invoice-settings/',{...fields,next_sequence:Number(fields.next_sequence),
+          revision,confirmed_financial_update:true});
+        return await screen('billing-settings',{push:false});
+      }
       if(id.startsWith('patient:'))return await showPatient(Number(id.split(':')[1]));
       if(id.startsWith('appointment:'))return await showAppointment(Number(id.split(':')[1]));
       if(id==='apply-calendar-filter'){
