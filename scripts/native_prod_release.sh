@@ -34,6 +34,8 @@ for port in 8018 8771; do
 done
 [[ ! -e "$A" && ! -e "$B" ]] || { echo 'Candidate release directory already exists'; exit 1; }
 mkdir -p "$BACK/nginx" "$A" "$B"
+# The non-root Book worker must traverse the release parent without seeing other files.
+chmod 0751 "$B_ROOT/releases"
 chmod 0700 "$BACK"
 cp -p "$A_CONF" "$BACK/nginx/app"
 cp -p "$O_CONF" "$BACK/nginx/office"
@@ -64,6 +66,7 @@ for base in media; do
   if [[ -d "$B_ROOT/app/$base" && ! -e "$B/$base" ]]; then ln -s "$B_ROOT/app/$base" "$B/$base"; fi
 done
 chown -R aestheticbook:aestheticbook "$B"
+chmod 0750 "$B"
 (
   cd "$A"; set -a; source "$A_ROOT/mobile.env"; set +a
   export DJANGO_SETTINGS_MODULE=production_native_settings PYTHONPATH="$A:$A_ROOT/vendor"
