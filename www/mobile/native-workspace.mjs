@@ -108,6 +108,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       const timeline=buildNativeCalendarTimeline({date,mode:calendarMode,
         providers:catalog.providers,services:catalog.services,provider:providerFilter,
         service:serviceFilter,calendar:data});
+      timeline.language=language;
       // Nonblocking adjacent-week prefetch; never hold the SwiftUI timeline for it.
       prefetchCalendar(shiftDay(weekStart,-7));
       prefetchCalendar(shiftDay(weekStart,7));
@@ -437,11 +438,12 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         } else {
           await command('book/block/',{...fields,staff_id:Number(fields.staff_id),operation:id==='save-block-new'?'create':'update',...(id==='save-block-edit'?{id:currentBlock.id}:{})});
         }
+        calendarCache.clear();
         return await screen('calendar');
       }
       if(id==='availability')return await availabilityForm();
       if(id==='load-availability'){date=fields.date||date;return await availabilityForm(fields.staff_id);}
-      if(id==='save-availability'){await command('book/availability/',{...fields,staff_id:Number(fields.staff_id),closed:fields.closed==='yes'});date=fields.date;return await screen('calendar');}
+      if(id==='save-availability'){await command('book/availability/',{...fields,staff_id:Number(fields.staff_id),closed:fields.closed==='yes'});calendarCache.clear();date=fields.date;return await screen('calendar');}
       if(admin&&id.startsWith('service:')){
         currentService=catalog.services.find(s=>s.id===Number(id.split(':')[1]));
         const boolOptions=[option('yes',tr('Ja','Yes')),option('no',tr('Nein','No'))];
@@ -476,7 +478,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         const payload={operation:id==='save-new'?'create':'update',...fields};
         for(const k of ['customer_id','staff_id','service_id'])payload[k]=Number(payload[k]);
         if(id==='save-edit'){payload.id=appointment.id;payload.revision=appointment.revision;payload.status=appointment.status;}
-        await command('book/appointment/',payload);appointmentsById.clear();return await screen('calendar');
+        await command('book/appointment/',payload);appointmentsById.clear();calendarCache.clear();return await screen('calendar');
       }
       if(id==='cancel-appointment')return await render(view(tr('Absage bestätigen','Confirm cancellation'),{
         subtitle:appointment.customer_name,actions:[row('confirm-cancel',tr('Termin absagen','Cancel appointment'))]}));
