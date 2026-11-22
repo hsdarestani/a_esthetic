@@ -102,7 +102,7 @@
     const native = plugin();
     if (!authToken || !native || !platform() || registering) return;
     // MutationObserver, focus and SSO may all trigger within the same second.
-    if (platform() === 'ios' && Date.now() - lastRegistrationAttempt < 30000) return;
+    if (Date.now() - lastRegistrationAttempt < 30000) return;
     lastRegistrationAttempt = Date.now();
     lastAuthToken = authToken;
     registering = true;
@@ -179,6 +179,7 @@
       return;
     }
     if (current) {
+      if (current !== lastAuthToken) lastRegistrationAttempt = 0;
       lastAuthToken = current;
       await bindAndRegister();
     }

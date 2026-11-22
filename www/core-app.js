@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_ORIGIN = 'https://app.a-esthetic.de';
+  const APP_ORIGIN = window.APlusRuntime.origin;
   const API = `${APP_ORIGIN}/api/mobile`;
   const LEGAL = {
     privacy: `${APP_ORIGIN}/datenschutz/`,
@@ -141,7 +141,7 @@
     });
   }
 
-  function logout(render=true){document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
+  function logout(render=true){bootGeneration++;window.APlusAdminMode?.unmount();document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
 
   function showContactPicker(){
     document.querySelectorAll('.contact-overlay').forEach(node=>node.remove());
@@ -158,24 +158,18 @@
     node.querySelector('[data-contact-close]')?.addEventListener('click',close);
   }
 
-  function showLogin(message=''){
-    // A production login must never prefill a stored test account.
+  function showLogin(message = '') {
     localStorage.removeItem('aplus_login_email');
-    root.innerHTML=`<div class="login-shell login-shell-auth"><form class="login-card" data-login><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div><div class="login-kicker">A+ ESTHETIC</div><h1>Anmelden</h1><p>Termine, Patientenakte und A+ Punkte an einem Ort.</p>${message?`<div class="notice error">${esc(message)}</div>`:''}<label class="field"><span>E-Mail</span><input name="email" type="email" autocomplete="off" autocapitalize="none" spellcheck="false" required></label><label class="field"><span>Passwort</span><input name="password" type="password" autocomplete="current-password" required></label><a class="login-password-reset" data-forgot-password href="${APP_ORIGIN}/accounts/password/reset/">Passwort vergessen?</a><button class="primary wide" type="submit">Anmelden</button></form></div>`;
-    root.querySelector('[data-forgot-password]')?.addEventListener('click',async event=>{
-      const browser=window.Capacitor?.Plugins?.Browser;
-      if (!browser?.open) return;
-      event.preventDefault();
-      try { await browser.open({url:event.currentTarget.href}); }
-      catch (_) { window.location.assign(event.currentTarget.href); }
+    window.APlusAuth.login({
+      message,
+      authenticate: async (email, password) => {
+        const data = await request('/login/', {method: 'POST', json: {email, password}, aplusSilent: true});
+        if (!data.token) throw new Error('invalid_response');
+        localStorage.setItem('aplus_token', data.token);
+        await boot(data.account_type ? {role: data.account_type, ...data.admin_profile} : null);
+      },
+      signup: back => window.APlusOnboarding.signup(back),
     });
-    root.querySelector('[data-login]').addEventListener('submit',async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button');btn.disabled=true;btn.textContent='Anmeldung …';try{const fd=new FormData(e.currentTarget);const data=await request('/login/',{method:'POST',json:{email:fd.get('email'),password:fd.get('password')}});state.token=data.token;localStorage.setItem('aplus_token',state.token);await boot();}catch(err){
-      const invalid=err?.code==='invalid_credentials'||err?.code==='authentication_required';
-      const hint=invalid
-        ? 'Die E-Mail-Adresse oder das Passwort ist falsch. Bitte überprüfe deine Eingaben und versuche es erneut.'
-        : 'Die Anmeldung ist gerade nicht möglich. Bitte prüfe deine Verbindung und versuche es erneut.';
-      showLogin(hint);
-    }});
   }
 
   function showReconnect(message='Verbindung wird wiederhergestellt …'){
@@ -183,6 +177,7 @@
     root.querySelector('[data-reconnect]')?.addEventListener('click',boot);
   }
   let bootGeneration = 0;
+  let booting = false;
   async function readAuthProfile(){
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
@@ -199,14 +194,23 @@
       clearTimeout(timeout);
     }
   }
-  async function boot(){
+  async function boot(identity = null){
+    if (booting) return;
+    identity = identity?.role ? identity : null;
     const generation = ++bootGeneration;
     state.token = localStorage.getItem('aplus_token') || '';
     if(!state.token) return showLogin();
     // Always render a recoverable screen before awaiting the network. On iOS
     // a paused WebView fetch must never leave #app completely blank.
+    booting = true;
     showReconnect('Anmeldung wird überprüft …');
     try {
+      const role = identity || await window.APlusAdminMode.resolve(state.token);
+      if (generation !== bootGeneration) return;
+      if (role.role === 'admin' || role.role === 'doctor') {
+        await window.APlusAdminMode.mount(root, state.token, role, () => logout());
+        return;
+      }
       const profile = await readAuthProfile();
       if(generation !== bootGeneration) return;
       state.me = profile;
@@ -218,6 +222,7 @@
       await go(new URLSearchParams(window.location.search).get('bereich')==='termine'?'appointments':'dashboard',{resetHistory:true});
     } catch(err) {
       if(generation !== bootGeneration) return;
+      if(err?.code === 'staff_session_expired'){ logout(); return; }
       if(err?.code === 'profile_completion_required'){
         if(window.APlusOnboarding?.start) await window.APlusOnboarding.start();
         else showReconnect('Die Registrierung wird geladen …');
@@ -225,6 +230,8 @@
       }
       if(state.token) showReconnect('Die Verbindung ist gerade nicht verfügbar. Ihre Anmeldung bleibt gespeichert.');
       else showLogin('Bitte melden Sie sich erneut an.');
+    } finally {
+      booting = false;
     }
   }
   // The SMS verification flow can refresh the verified session in-place,
@@ -264,6 +271,9 @@
   }
 
   function handleNativeBack(){
+    if (window.APlusAdminMode?.back()) return;
+    const authBack = document.querySelector('[data-ma-back]');
+    if (authBack) { authBack.click(); return; }
     const settings=document.querySelector('.settings-overlay');
     if(settings){const close=settings.querySelector('[data-close]');if(close)close.click();else settings.remove();return;}
     const contact=document.querySelector('.contact-overlay');

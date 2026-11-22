@@ -44,6 +44,9 @@ function harness(file, fetchMock, initialToken = 'test-token') {
   const location = {search: '', pathname: '/', reload() { reloadCount++; }};
   const window = {
     AEstheticIconSet: {},
+    APlusRuntime: {origin: 'https://app.a-esthetic.de'},
+    APlusAuth: {},
+    APlusAdminMode: {resolve: async () => ({role: 'customer'})},
     addEventListener() {},
     Capacitor: null,
   };
@@ -75,6 +78,7 @@ async function run() {
     });
   }));
   assert.match(waiting.root.innerHTML, /Willkommen zurück/);
+  await settle();
   const authTimer = waiting.timers.find(item => item.ms === 12000);
   assert.ok(authTimer, 'Missing bounded auth request');
   authTimer.fn();
