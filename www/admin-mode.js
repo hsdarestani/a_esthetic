@@ -32,11 +32,21 @@
     resolve,
     async mount(root, token, role, logout) {
       await this.unmount();
-      const native = window.Capacitor?.isNativePlatform?.();
-      const renderer = window.Capacitor?.Plugins?.NativeStaff;
-      // Keep already-installed legacy clients working; staging must never silently downgrade.
-      if(native && !renderer && /(^|\.)(stage|staging|preview)[^.]*\./i.test(new URL(window.APlusRuntime.origin).hostname)) {
-        throw new Error('Diese Vorschau benötigt den nativen Mitarbeiterbereich.');
+      const native = Boolean(window.Capacitor?.isNativePlatform?.());
+      let bridgeReady = false;
+      if (native) {
+        // Capacitor custom Swift/Java plugins require explicit JS registration.
+        // Older installed builds without this bundle retain the legacy UI.
+        try {
+          await import('./mobile/native-staff-bridge.js');
+          bridgeReady = true;
+        } catch (failure) {
+          console.warn('Native staff bridge bootstrap unavailable', failure?.name);
+        }
+      }
+      const renderer = window.APlusNativeStaff || window.Capacitor?.Plugins?.NativeStaff;
+      if (native && bridgeReady && !renderer) {
+        throw new Error('Der native Mitarbeiterbereich konnte nicht initialisiert werden. Bitte App-Version prüfen.');
       }
       if (native && renderer) {
         const {mountNativeWorkspace} = await import('./mobile/native-workspace.mjs');
