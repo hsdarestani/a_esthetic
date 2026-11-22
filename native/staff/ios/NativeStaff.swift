@@ -1,5 +1,6 @@
 // Native staff surface. Compiled into the generated Capacitor iOS target.
 import SwiftUI
+import PDFKit
 import Capacitor
 import UIKit
 
@@ -18,6 +19,7 @@ final class StaffScreenState: ObservableObject {
 
 struct StaffNativeScreen: View {
     @ObservedObject var state: StaffScreenState
+    @State private var privacyCover = false
     private let paper = Color(red: 248/255, green: 246/255, blue: 241/255)
     private let card = Color(red: 255/255, green: 253/255, blue: 250/255)
     private let ink = Color(red: 23/255, green: 41/255, blue: 35/255)
@@ -107,6 +109,9 @@ struct StaffNativeScreen: View {
                 }
             }.padding(.horizontal, 8).background(card)
         }.foregroundColor(ink).background(paper.ignoresSafeArea()).preferredColorScheme(.light)
+            .overlay { if privacyCover { paper.ignoresSafeArea() } }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in privacyCover = true }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in privacyCover = false }
     }
 
     @ViewBuilder private func fieldView(_ field: [String: Any]) -> some View {
@@ -133,10 +138,11 @@ struct StaffNativeScreen: View {
 public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "NativeStaffPlugin"
     public let jsName = "NativeStaff"
-    public let pluginMethods = [
+    public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "present", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "render", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "dismiss", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "dismiss", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "previewPDF", returnType: CAPPluginReturnPromise)
     ]
     private var state: StaffScreenState?
     private var host: UIHostingController<StaffNativeScreen>?
@@ -164,6 +170,26 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("Native screen not active"); return
             }
             state.replace(screen); call.resolve()
+        }
+    }
+    @objc func previewPDF(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let encoded = call.getString("base64"), encoded.count <= 11000000,
+                  let data = Data(base64Encoded: encoded), let document = PDFDocument(data: data),
+                  let presenter = self.host else {
+                call.reject("PDF unavailable"); return
+            }
+            let pdf = PDFView()
+            pdf.document = document
+            pdf.autoScales = true
+            let content = UIViewController()
+            content.view = pdf
+            content.navigationItem.title = call.getString("title") ?? "PDF"
+            content.navigationItem.leftBarButtonItem = UIBarButtonItem(
+                systemItem: .done, primaryAction: UIAction { [weak content] _ in content?.dismiss(animated: true) })
+            let nav = UINavigationController(rootViewController: content)
+            nav.modalPresentationStyle = .fullScreen
+            presenter.present(nav, animated: true) { call.resolve() }
         }
     }
     @objc func dismiss(_ call: CAPPluginCall) {

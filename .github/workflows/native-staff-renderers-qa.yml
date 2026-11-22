@@ -35,6 +35,7 @@ jobs:
         run: |
           node --check www/mobile/native-workspace.mjs
           node --check www/admin-mode.js
+          node scripts/test_native_staff_controller.mjs
           npm install --no-audit --no-fund
           npm pkg delete scripts.capacitor:sync:after
           npx cap add ${{ matrix.platform }}

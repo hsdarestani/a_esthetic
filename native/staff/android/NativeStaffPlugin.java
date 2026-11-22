@@ -3,6 +3,12 @@ package NATIVE_STAFF_PACKAGE;
 import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.pdf.PdfRenderer;
+import android.os.ParcelFileDescriptor;
+import android.util.Base64;
+import java.io.File;
+import java.io.FileOutputStream;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
@@ -165,6 +171,44 @@ public final class NativeStaffPlugin extends Plugin {
     }
     @PluginMethod public void render(PluginCall call) {
         getActivity().runOnUiThread(()->{JSObject s=call.getObject("screen");if(dialog==null||s==null){call.reject("Native screen unavailable");return;}draw(s);call.resolve();});
+    }
+    @PluginMethod public void previewPDF(PluginCall call) {
+        getActivity().runOnUiThread(()->{
+            String base64=call.getString("base64");
+            if(dialog==null||base64==null||base64.length()>11000000){call.reject("PDF unavailable");return;}
+            File temp=null;
+            try {
+                temp=File.createTempFile("staff-pdf-", ".pdf", getContext().getCacheDir());
+                try(FileOutputStream out=new FileOutputStream(temp)){out.write(Base64.decode(base64, Base64.DEFAULT));}
+                final File privateFile=temp;
+                final PdfRenderer pdf=new PdfRenderer(ParcelFileDescriptor.open(temp,ParcelFileDescriptor.MODE_READ_ONLY));
+                final Dialog preview=new Dialog(getActivity(),android.R.style.Theme_Material_Light_NoActionBar);
+                if(preview.getWindow()!=null)preview.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+                LinearLayout root=column();root.setBackgroundColor(PAPER);root.setPadding(dp(12),dp(12),dp(12),dp(12));
+                add(root,text(call.getString("title","PDF"),20,GREEN,true),10);
+                ScrollView scroll=new ScrollView(getContext()); ImageView image=new ImageView(getContext());image.setAdjustViewBounds(true);
+                scroll.addView(image,new ScrollView.LayoutParams(-1,-2));root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+                final int[] index={0};
+                final Bitmap[] bitmap={null};
+                Runnable drawPage=()->{
+                    try(PdfRenderer.Page page=pdf.openPage(index[0])){
+                        int width=Math.min(1400, Math.max(600,page.getWidth()*2));
+                        int height=Math.max(1,(int)((long)page.getHeight()*width/page.getWidth()));
+                        height=Math.min(height,2600);
+                        Bitmap next=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
+                        next.eraseColor(Color.WHITE);page.render(next,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                        image.setImageBitmap(next);if(bitmap[0]!=null)bitmap[0].recycle();bitmap[0]=next;
+                    }
+                };
+                LinearLayout buttons=row();
+                Button prev=button("‹","",false);prev.setOnClickListener(v->{if(index[0]>0){index[0]--;drawPage.run();}});
+                Button next=button("›","",false);next.setOnClickListener(v->{if(index[0]+1<pdf.getPageCount()){index[0]++;drawPage.run();}});
+                Button close=button("OK","",true);close.setOnClickListener(v->preview.dismiss());
+                weight(buttons,prev);weight(buttons,next);weight(buttons,close);add(root,buttons,0);
+                preview.setOnDismissListener(d->{image.setImageDrawable(null);if(bitmap[0]!=null)bitmap[0].recycle();pdf.close();privateFile.delete();});
+                preview.setContentView(root);drawPage.run();preview.show();if(preview.getWindow()!=null)preview.getWindow().setLayout(-1,-1);call.resolve();
+            } catch(Exception e){if(temp!=null)temp.delete();call.reject("PDF unavailable");}
+        });
     }
     @PluginMethod public void dismiss(PluginCall call) {
         getActivity().runOnUiThread(()->{edits.clear();selects.clear();optionValues.clear();if(dialog!=null){dialog.dismiss();dialog=null;}call.resolve();});
