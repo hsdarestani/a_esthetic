@@ -21,7 +21,8 @@ from django.utils import timezone
 from platform_app.admin_aware_login import _is_admin
 from platform_app.mobile_api import _auth
 from platform_app.goae_billing import create_goae_draft, goae_draft_pdf_bytes
-from platform_app.models import AuditLog, Invoice, InvoiceSettings, OfficePatientLink, UserProfile
+from platform_app.models import AuditLog, CheckInSession, Invoice, InvoiceSettings, OfficePatientLink, OfficeIntakeReview, UserProfile
+from platform_app.intake_identity import score, user_data, birth_date
 from .mobile_staff_views import NoRedirect
 
 
@@ -134,6 +135,11 @@ def office(request, operation, ident=None):
     if not _is_admin(actor):
         return error('admin_required', 403)
     if request.method == 'GET':
+        if operation == 'intake-reviews' and ident is None:
+            rows = OfficeIntakeReview.objects.filter(status='pending').order_by('created_at')[:100]
+            return JsonResponse({'ok': True, 'items': [{
+                'id': row.pk, 'submission': row.payload, 'created_at': row.created_at.isoformat(),
+            } for row in rows]})
         if operation == 'customers' and ident is None:
             query = request.GET.get('q', '').strip()[:100]
             if len(query) < 2:
@@ -164,6 +170,49 @@ def office(request, operation, ident=None):
         data = json.loads(request.body)
         if not isinstance(data, dict):
             raise ValueError
+        if operation == 'intake-review' and ident is not None:
+            decision = data.get('decision')
+            if decision not in {'approve', 'reject'}:
+                return error('invalid_request')
+            with transaction.atomic():
+                row = OfficeIntakeReview.objects.select_for_update().filter(pk=ident).first()
+                if not row:
+                    return error('not_found', 404)
+                if row.status != 'pending':
+                    return error('review_already_resolved', 409)
+                if decision == 'approve':
+                    target = customer(int(data['customer_id']))
+                    if not target or data.get('confirmed_same_patient') is not True:
+                        return error('identity_verification_required', 409)
+                    profile = UserProfile.objects.select_for_update().get(user=target)
+                    if score(row.payload, user_data(target)) < 3:
+                        return error('identity_verification_required', 409)
+                    if row.session_id:
+                        session = CheckInSession.objects.select_for_update().get(pk=row.session_id)
+                        if session.completed_at and session.customer_id != target.pk:
+                            return error('identity_link_conflict', 409)
+                        session.customer = target
+                        session.completed_at = timezone.now()
+                        session.save(update_fields=['customer','completed_at'])
+                    changed = []
+                    for key in ('street','postal_code','city'):
+                        if not getattr(profile, key) and row.payload.get(key):
+                            setattr(profile, key, row.payload[key])
+                            changed.append(key)
+                    if not profile.date_of_birth and row.payload.get('date_of_birth'):
+                        profile.date_of_birth = birth_date(row.payload['date_of_birth'])
+                        changed.append('date_of_birth')
+                    if changed:
+                        profile.save(update_fields=changed)
+                    row.matched_user = target
+                row.status = 'approved' if decision == 'approve' else 'rejected'
+                row.reviewed_by = actor
+                row.reviewed_at = timezone.now()
+                row.save(update_fields=['matched_user','status','reviewed_by','reviewed_at'])
+                AuditLog.objects.create(actor=actor, action='Office intake reviewed',
+                    entity_type='OfficeIntakeReview', entity_id=str(row.pk),
+                    metadata={'decision': decision, 'customer_id': row.matched_user_id})
+            return JsonResponse({'ok': True, 'status': row.status})
         uid = int(data['customer_id'])
         user = customer(uid)
         if not user:

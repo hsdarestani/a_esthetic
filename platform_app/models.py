@@ -173,6 +173,24 @@ class CheckInSession(models.Model):
     class Meta: ordering=['-created_at']
     def __str__(self): return str(self.token)
 
+class OfficeIntakeLock(models.Model):
+    """Singleton serialization point to prevent concurrent duplicate intake creation."""
+    pass
+
+
+class OfficeIntakeReview(models.Model):
+    """Unverified clinic intake; never updates an account or links clinical records."""
+    STATUS = [('pending', 'Offen'), ('approved', 'Bestätigt'), ('rejected', 'Abgelehnt')]
+    payload = models.JSONField(default=dict)
+    digest = models.CharField(max_length=64, unique=True)
+    session = models.ForeignKey(CheckInSession, null=True, blank=True, on_delete=models.PROTECT)
+    status = models.CharField(max_length=10, choices=STATUS, default='pending', db_index=True)
+    matched_user = models.ForeignKey(User, null=True, blank=True, on_delete=models.PROTECT, related_name='office_intake_reviews')
+    reviewed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.PROTECT, related_name='reviewed_office_intakes')
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+
 class Invoice(models.Model):
     book_appointment_public_id = models.UUIDField(null=True, blank=True, db_index=True)
     book_original_service_date = models.DateField(null=True, blank=True)

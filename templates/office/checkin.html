@@ -213,6 +213,9 @@
               <label>Nachname
                 <input name="last_name" value="{{ request.POST.last_name|default:'' }}" autocomplete="family-name" placeholder="Nachname" required>
               </label>
+              <label>Geburtsdatum
+                <input type="date" name="date_of_birth" value="{{ request.POST.date_of_birth|default:'' }}" autocomplete="bday">
+              </label>
             </div>
           </div>
 

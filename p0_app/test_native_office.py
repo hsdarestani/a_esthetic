@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 
-from platform_app.models import AuditLog, Invoice, OfficePatientLink, UserProfile
+from platform_app.models import AuditLog, Invoice, OfficePatientLink, OfficeIntakeReview, UserProfile
 
 
 class NativeOfficeTests(TestCase):
@@ -79,3 +79,32 @@ class NativeOfficeTests(TestCase):
         self.assertEqual(self.patient.profile.date_of_birth, date(1990, 5, 19))
         self.assertIsNone(self.other.profile.date_of_birth)
         self.assertTrue(AuditLog.objects.filter(actor=self.patient).exists())
+
+    def test_public_intake_candidate_does_not_change_existing_account_and_can_be_reviewed(self):
+        self.patient.profile.date_of_birth = date(1990, 5, 19)
+        self.patient.profile.street = 'Originalweg 7'
+        self.patient.profile.save()
+        submission = {'first_name':'Anna', 'last_name':'Muster', 'email':'changed@example.test',
+                      'phone':'+49 171 9999999', 'date_of_birth':'1990-05-19',
+                      'street':'Changedweg 8', 'postal_code':'60313', 'city':'Frankfurt'}
+        response = self.client.post('/office/', submission)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(OfficeIntakeReview.objects.count(), 1)
+        self.assertFalse(User.objects.filter(email='changed@example.test').exists())
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.email, 'anna@example.test')
+        row = OfficeIntakeReview.objects.get()
+        with patch('p0_app.native_office._auth', return_value=(self.admin, None)), \
+             patch('p0_app.native_office._is_admin', return_value=True):
+            endpoint = self.path + f'intake-review/{row.pk}/'
+            self.assertEqual(self.client.post(endpoint, {'decision':'approve','customer_id':self.patient.pk},
+                content_type='application/json').status_code, 409)
+            accepted = self.client.post(endpoint, {'decision':'approve','customer_id':self.patient.pk,
+                'confirmed_same_patient':True}, content_type='application/json')
+            self.assertEqual(accepted.status_code, 200, accepted.content)
+        self.patient.profile.refresh_from_db()
+        self.assertEqual(self.patient.profile.street, 'Originalweg 7')
+        self.assertEqual(self.patient.profile.city, 'Frankfurt')
+        row.refresh_from_db()
+        self.assertEqual(row.status, 'approved')
+        self.assertEqual(row.reviewed_by, self.admin)
