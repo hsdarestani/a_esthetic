@@ -201,7 +201,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       value('end_2',tr('Zweites Ende (optional)','Second end (optional)'),ranges[1]?.end||''),
     ],actions:[row('load-availability',tr('Behandler / Datum laden','Load provider / date')),row('save-availability',tr('Speichern','Save'))]}));
   }
-  let billingUser, billingVisits, reviewPair, intakeRecord, invoiceLines=[], invoiceMeta={};
+  let billingUser, billingVisits, reviewPair, intakeRecord, invoiceLines=[], invoiceMeta={}, editingInvoice=null, selectedInvoice=null;
   async function showBilling(id) {
     const r=await office('customers/?q='+encodeURIComponent(search));
     billingUser=r.items.find(u=>u.id===id);
@@ -209,11 +209,12 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     stack.push('billing:'+id);
     const list=await office('invoices/'+id+'/');
     return render(view(billingUser.name,{subtitle:billingUser.email,
-      rows:list.items.map(i=>row(i.status==='draft'?'invoice-pdf:'+i.id:'',i.service_date+' · '+(i.total_cents/100).toFixed(2)+' EUR',i.status)),
+      rows:list.items.map(i=>row('invoice-detail:'+i.id,(i.number?i.number+' · ':'')+i.service_date+' · '+(i.total_cents/100).toFixed(2)+' EUR',i.status)),
       actions:[row(billingUser.book_customer_id?'invoice-form':'link-search',billingUser.book_customer_id?tr('GOÄ Entwurf','GOÄ draft'):tr('Book Identität verifizieren','Verify Book identity'))]}));
   }
   async function invoiceForm(initial=true){
     if(initial){
+      editingInvoice=null;
       const r=await book('patient/'+billingUser.book_customer_id+'/');
       billingVisits=r.appointments.filter(a=>a.status==='completed');
       if(!billingVisits.length)throw new Error(tr('Kein abgeschlossener Besuch.','No completed visit.'));
@@ -235,6 +236,14 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       actions:[row('add-invoice-line',tr('GOÄ Leistung hinzufügen','Add GOÄ service')),row('add-material-line',tr('Auslage hinzufügen','Add expense')),
         ...(invoiceLines.length?[row('invoice-quote',tr('Beträge prüfen','Review totals'))]:[])],
     }));
+  }
+  async function invoiceDetail(id){
+    selectedInvoice=await office('detail/'+id+'/');
+    const i=selectedInvoice.invoice;
+    return render(view(i.number||tr('GOÄ Entwurf','GOÄ draft'),{subtitle:i.service_date,
+      rows:[row('',tr('Status','Status'),i.status),row('',tr('Gesamt','Total'),(i.total_cents/100).toFixed(2)+' EUR')],
+      actions:[row('invoice-pdf:'+id,tr('PDF anzeigen','View PDF')),...(i.status==='draft'?[row('invoice-edit',tr('Entwurf bearbeiten','Edit draft'))]:[]),
+        ...(i.status==='draft'&&selectedInvoice.can_simulate?[row('invoice-simulate',tr('Testrechnung nummerieren','Number test invoice'))]:[])]}));
   }
   async function lineForm(index,material=false){
     const line=invoiceLines[index]||{};
@@ -397,6 +406,20 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         return await showBilling(billingUser.id);
       }
       if(admin&&id==='invoice-form')return await invoiceForm();
+      if(admin&&id.startsWith('invoice-detail:'))return await invoiceDetail(Number(id.split(':')[1]));
+      if(admin&&id==='invoice-edit'){
+        editingInvoice=selectedInvoice.invoice;const draft=selectedInvoice.draft;
+        const result=await book('patient/'+billingUser.book_customer_id+'/');
+        billingVisits=result.appointments.filter(a=>a.public_id===editingInvoice.book_appointment_public_id);
+        if(!billingVisits.length)throw new Error(tr('Besuch nicht verfügbar','Visit unavailable'));
+        invoiceLines=draft.lines;invoiceMeta={visit_id:draft.visit_id,service_date:draft.service_date===selectedInvoice.original_date?'':draft.service_date,date_correction_reason:draft.date_correction_reason,...draft.address};
+        return await invoiceForm(false);
+      }
+      if(admin&&id==='invoice-simulate')return await render(view(tr('Testrechnung bestätigen','Confirm test invoice'),{message:tr('Nur synthetische QA-Rechnung, nicht zur Zahlung.','Synthetic QA invoice only, not for payment.'),actions:[row('confirm-simulation',tr('Testrechnung nummerieren','Number test invoice'))]}));
+      if(admin&&id==='confirm-simulation'){
+        await office('issue-simulation/'+selectedInvoice.invoice.id+'/',{revision:selectedInvoice.invoice.revision,confirmed_synthetic:true});
+        return await invoiceDetail(selectedInvoice.invoice.id);
+      }
       if(admin&&id==='add-invoice-line'){invoiceMeta={...fields};return await lineForm(invoiceLines.length);}
       if(admin&&id==='add-material-line'){invoiceMeta={...fields};return await lineForm(invoiceLines.length,true);}
       if(admin&&id.startsWith('invoice-line:')){invoiceMeta={...fields};return await lineForm(Number(id.split(':')[1]));}
@@ -411,7 +434,9 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(admin&&id==='invoice-return')return await invoiceForm(false);
       if(admin&&id==='save-invoice'){
         const {street,postal_code,city,visit_id,service_date,date_correction_reason}=invoiceMeta;
-        await command('office/draft/',{customer_id:billingUser.id,visit_id,address:{street,postal_code,city},service_date,date_correction_reason,save_missing_address:true,lines:invoiceLines},'request_id');
+        const body={customer_id:billingUser.id,visit_id,address:{street,postal_code,city},service_date,date_correction_reason,save_missing_address:true,lines:invoiceLines};
+        if(editingInvoice){await office('edit-draft/'+editingInvoice.id+'/',{...body,revision:editingInvoice.revision});editingInvoice=null;}
+        else await command('office/draft/',body,'request_id');
         return await showBilling(billingUser.id);
       }
     } catch(err) {

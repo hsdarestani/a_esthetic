@@ -197,6 +197,8 @@ class Invoice(models.Model):
     service_date_correction = models.CharField(max_length=500, blank=True, default='')
     native_request_id = models.UUIDField(null=True, blank=True, unique=True)
     native_request_fingerprint = models.CharField(max_length=64, blank=True, default='')
+    native_draft_data = models.JSONField(default=dict, blank=True)
+    native_revision = models.PositiveIntegerField(default=1)
     STATUS=[('draft','Entwurf'),('issued','Ausgestellt'),('cancelled','Storniert')]
     billing_method=models.CharField(max_length=12,choices=[('standard','Standard'),('goae','GOÄ')],default='standard')
     user=models.ForeignKey(User,on_delete=models.PROTECT,related_name='invoices')

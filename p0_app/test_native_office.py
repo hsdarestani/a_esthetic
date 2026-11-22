@@ -120,3 +120,36 @@ class NativeOfficeTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()['total_cents'], 5474)
         self.assertEqual(Invoice.objects.count(), 0)
+
+    def test_draft_edit_revision_and_synthetic_numbering_gate(self):
+        OfficePatientLink.objects.create(user=self.patient, book_customer_id=54, verified_by=self.admin)
+        day = timezone.localdate().isoformat()
+        payload = {'customer_id': self.patient.pk, 'request_id': str(uuid4()), 'visit_id': str(self.visit),
+            'address': {'street': 'Testweg 1', 'postal_code': '60313', 'city': 'Frankfurt'},
+            'lines': [{'goae_number':'1','goae_description':'Beratung','goae_base_eur':'10',
+                       'goae_factor':'1','goae_vat_rate':'0'}]}
+        complete = {'ok':True, 'visit':{'date':day,'status':'completed','customer_id':54,'public_id':str(self.visit)}}
+        created = self.admin_call('draft', payload, complete)
+        self.assertEqual(created.status_code, 201, created.content)
+        invoice = Invoice.objects.get()
+        changed = payload | {'revision':1,'lines':[payload['lines'][0] | {'quantity':'2'}]}
+        with patch('p0_app.native_office._auth', return_value=(self.admin,None)), \
+             patch('p0_app.native_office._is_admin', return_value=True), \
+             patch('p0_app.native_office.read_book', return_value=complete):
+            edit = self.path + f'edit-draft/{invoice.pk}/'
+            self.assertEqual(self.client.post(edit, changed, content_type='application/json').status_code, 200)
+            self.assertEqual(self.client.post(edit, changed, content_type='application/json').status_code, 409)
+            issue = self.path + f'issue-simulation/{invoice.pk}/'
+            with override_settings(OFFICE_SYNTHETIC_STAGE=False):
+                self.assertEqual(self.client.post(issue, {'revision':2,'confirmed_synthetic':True},
+                    content_type='application/json').status_code, 409)
+            with override_settings(OFFICE_SYNTHETIC_STAGE=True):
+                issued = self.client.post(issue, {'revision':2,'confirmed_synthetic':True}, content_type='application/json')
+                self.assertEqual(issued.status_code, 200, issued.content)
+                self.assertTrue(issued.json()['invoice']['number'].startswith('TEST-GOAE-'))
+                pdf = self.client.get(self.path + f'pdf/{invoice.pk}/')
+                self.assertTrue(pdf.content.startswith(b'%PDF'))
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.total_cents, 2000)
+        self.assertEqual(invoice.status, 'issued')
+        self.assertEqual(invoice.native_revision, 3)

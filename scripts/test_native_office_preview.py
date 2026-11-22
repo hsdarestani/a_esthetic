@@ -77,10 +77,17 @@ def main():
     assert request(office+f'invoices/{user_id}/', token=admin)['items'][0]['id'] == invoice['id']
     pdf = request(office+f"pdf/{invoice['id']}/", token=admin)
     assert pdf.startswith(b'%PDF')
+    edit = payload | {'revision': invoice['revision'], 'lines': [payload['lines'][0] | {'quantity':'2'}]}
+    invoice = request(office+f"edit-draft/{invoice['id']}/", token=admin, payload=edit)['invoice']
+    assert invoice['total_cents'] == 5474
+    issued = request(office+f"issue-simulation/{invoice['id']}/", token=admin,
+                     payload={'revision':invoice['revision'],'confirmed_synthetic':True})['invoice']
+    assert issued['number'].startswith('TEST-GOAE-')
+    assert request(office+f"pdf/{invoice['id']}/", token=admin).startswith(b'%PDF')
     for token in (customer, doctor):
         request(office+f'invoices/{user_id}/', token=token, expected=403)
         request(office+'intake-reviews/', token=token, expected=403)
-    print('PASS: synthetic account intake, verified cross-database link, completed Book visit, GOAE draft, replay, PDF, role isolation')
+    print('PASS: synthetic account intake, verified cross-database link, completed Book visit, GOAE draft, replay, edit, synthetic numbering, PDF, role isolation')
 
 
 if __name__ == '__main__':

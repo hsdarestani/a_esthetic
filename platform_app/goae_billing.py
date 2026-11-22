@@ -147,7 +147,7 @@ def create_goae_draft(*, user, actor, service_date, data):
     return invoice
 
 
-def goae_draft_pdf_bytes(invoice, settings):
+def goae_draft_pdf_bytes(invoice, settings, *, simulation=False):
     """Paginated non-final draft; clinical tariff and issuer review still required."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=44, rightMargin=44,
@@ -160,7 +160,8 @@ def goae_draft_pdf_bytes(invoice, settings):
         para("Privatpraxis Ariane Regaei", "Title"),
         para("Stiftstrasse 14 · 60313 Frankfurt am Main"),
         Spacer(1, 18),
-        para("Rechnung nach GOÄ – ENTWURF", "Heading2"),
+        para("TESTRECHNUNG – NICHT ZAHLBAR" if simulation else "Rechnung nach GOÄ – ENTWURF", "Heading2"),
+        para(invoice.number if simulation else ""),
         para(invoice.customer_name),
         para(invoice.customer_street),
         para(f"{invoice.customer_postal_code} {invoice.customer_city}".strip()),

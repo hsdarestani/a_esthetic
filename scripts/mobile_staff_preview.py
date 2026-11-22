@@ -27,6 +27,7 @@ import os
 from pathlib import Path
 
 state = Path(os.environ['PREVIEW_STATE'])
+OFFICE_SYNTHETIC_STAGE = True
 # These settings are imported only by the separate synthetic preview processes.
 if os.environ.get('PREVIEW_REMOTE') == '1':
     DEBUG = False

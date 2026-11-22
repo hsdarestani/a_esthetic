@@ -21,7 +21,7 @@ from django.utils import timezone
 from platform_app.admin_aware_login import _is_admin
 from platform_app.mobile_api import _auth
 from platform_app.goae_billing import calculate_goae_lines, create_goae_draft, goae_draft_pdf_bytes
-from platform_app.models import AuditLog, CheckInSession, Invoice, InvoiceSettings, OfficePatientLink, OfficeIntakeReview, UserProfile
+from platform_app.models import AuditLog, CheckInSession, Invoice, InvoiceItem, InvoiceSettings, OfficePatientLink, OfficeIntakeReview, UserProfile
 from platform_app.intake_identity import score, user_data, birth_date
 from .mobile_staff_views import NoRedirect
 
@@ -87,6 +87,7 @@ def person(user):
 
 def serialize(invoice):
     return {'id': invoice.pk, 'number': invoice.number, 'status': invoice.status, 'customer_id': invoice.user_id,
+            'revision': invoice.native_revision,
             'service_date': invoice.service_date.isoformat(),
             'book_appointment_public_id': str(invoice.book_appointment_public_id) if invoice.book_appointment_public_id else None,
             'subtotal_cents': invoice.subtotal_cents, 'tax_cents': invoice.tax_cents, 'total_cents': invoice.total_cents}
@@ -154,11 +155,21 @@ def office(request, operation, ident=None):
                 return error('not_found', 404)
             return JsonResponse({'ok': True, 'items': [serialize(row) for row in
                 Invoice.objects.filter(user_id=ident, billing_method='goae').order_by('-pk')[:100]]})
-        if operation == 'pdf' and ident is not None:
-            invoice = Invoice.objects.filter(pk=ident, billing_method='goae', status='draft').first()
+        if operation == 'detail' and ident is not None:
+            invoice = Invoice.objects.filter(pk=ident, billing_method='goae', native_request_id__isnull=False).first()
             if not invoice:
                 return error('not_found', 404)
-            response = HttpResponse(goae_draft_pdf_bytes(invoice, InvoiceSettings()), content_type='application/pdf')
+            return JsonResponse({'ok': True, 'invoice': serialize(invoice), 'draft': invoice.native_draft_data if invoice.status == 'draft' else {},
+                'original_date': invoice.book_original_service_date.isoformat() if invoice.book_original_service_date else None,
+                'can_simulate': bool(getattr(settings, 'OFFICE_SYNTHETIC_STAGE', False) and invoice.user.email.endswith('@example.test'))})
+        if operation == 'pdf' and ident is not None:
+            invoice = Invoice.objects.filter(pk=ident, billing_method='goae').first()
+            if not invoice:
+                return error('not_found', 404)
+            synthetic = bool(getattr(settings, 'OFFICE_SYNTHETIC_STAGE', False) and invoice.status == 'issued' and (invoice.number or '').startswith('TEST-GOAE-'))
+            if invoice.status != 'draft' and not synthetic:
+                return error('not_found', 404)
+            response = HttpResponse(goae_draft_pdf_bytes(invoice, InvoiceSettings(), simulation=synthetic), content_type='application/pdf')
             response['Content-Disposition'] = 'attachment; filename="goae-draft.pdf"'
             response['X-Content-Type-Options'] = 'nosniff'
             return response
@@ -170,6 +181,32 @@ def office(request, operation, ident=None):
         data = json.loads(request.body)
         if not isinstance(data, dict):
             raise ValueError
+        if operation == 'issue-simulation' and ident is not None:
+            if not getattr(settings, 'OFFICE_SYNTHETIC_STAGE', False):
+                return error('goae_issuance_requires_approval', 409)
+            if data.get('confirmed_synthetic') is not True:
+                return error('synthetic_confirmation_required', 409)
+            with transaction.atomic():
+                invoice = Invoice.objects.select_for_update().filter(pk=ident, billing_method='goae',
+                    native_request_id__isnull=False, user__email__endswith='@example.test').first()
+                if not invoice:
+                    return error('not_found', 404)
+                if invoice.status == 'issued' and (invoice.number or '').startswith('TEST-GOAE-'):
+                    return JsonResponse({'ok': True, 'invoice': serialize(invoice), 'replayed': True})
+                if invoice.status != 'draft' or int(data['revision']) != invoice.native_revision:
+                    return error('draft_conflict', 409)
+                counter, _ = InvoiceSettings.objects.select_for_update().get_or_create(pk=1)
+                invoice.number = f'TEST-GOAE-{timezone.localdate().year}-{counter.next_sequence:05d}'
+                counter.next_sequence += 1
+                counter.save(update_fields=['next_sequence','updated_at'])
+                invoice.status = 'issued'
+                invoice.issued_on = timezone.localdate()
+                invoice.issued_at = timezone.now()
+                invoice.native_revision += 1
+                invoice.save(update_fields=['number','status','issued_on','issued_at','native_revision'])
+                AuditLog.objects.create(actor=actor, action='Synthetic GOAE invoice numbered',
+                    entity_type='Invoice', entity_id=str(invoice.pk), metadata={'simulation': True,'number': invoice.number})
+            return JsonResponse({'ok': True, 'invoice': serialize(invoice)})
         if operation == 'quote' and ident is None:
             lines = calculate_goae_lines(data)
             return JsonResponse({'ok': True,
@@ -250,13 +287,16 @@ def office(request, operation, ident=None):
                     entity_type='User', entity_id=str(uid), metadata={'book_customer_id': book_id})
             return JsonResponse({'ok': True, 'book_customer_id': book_id})
 
-        if operation != 'draft':
+        if operation not in {'draft', 'edit-draft'}:
             return error('not_found', 404)
-        request_id = UUID(str(data['request_id']))
+        editing = operation == 'edit-draft'
+        if editing and ident is None:
+            return error('not_found', 404)
+        request_id = UUID(str(data['request_id'])) if not editing else None
         visit_id = UUID(str(data['visit_id']))
         fingerprint = hashlib.sha256(json.dumps(data, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         # A replay must not create a second invoice.
-        previous = Invoice.objects.filter(native_request_id=request_id).first()
+        previous = Invoice.objects.filter(native_request_id=request_id).first() if request_id else None
         if previous:
             if previous.user_id == uid and previous.book_appointment_public_id == visit_id and previous.native_request_fingerprint == fingerprint:
                 return JsonResponse({'ok': True, 'invoice': serialize(previous), 'replayed': True})
@@ -286,17 +326,39 @@ def office(request, operation, ident=None):
             limits = {'street':180, 'postal_code':20, 'city':120}
             if not all(addr[key] and len(addr[key]) <= limits[key] for key in addr):
                 return error('billing_address_required')
-            invoice = create_goae_draft(user=user, actor=actor, service_date=service_date, data=data)
+            if editing:
+                invoice = Invoice.objects.select_for_update().filter(
+                    pk=ident, user=user, billing_method='goae', native_request_id__isnull=False,
+                    book_appointment_public_id=visit_id, status='draft').first()
+                if not invoice or int(data['revision']) != invoice.native_revision:
+                    return error('draft_conflict', 409)
+                items = calculate_goae_lines(data)
+                invoice.items.all().delete()
+                InvoiceItem.objects.bulk_create([InvoiceItem(invoice=invoice, **item) for item in items])
+                invoice.subtotal_cents = sum(item['net_cents'] for item in items)
+                invoice.tax_cents = sum(item['tax_cents'] for item in items)
+                invoice.total_cents = sum(item['gross_cents'] for item in items)
+                invoice.service_date = service_date
+                invoice.native_revision += 1
+            else:
+                invoice = create_goae_draft(user=user, actor=actor, service_date=service_date, data=data)
+                invoice.native_request_id = request_id
+                invoice.native_request_fingerprint = fingerprint
             invoice.book_appointment_public_id = visit_id
             invoice.book_original_service_date = original_date
             invoice.service_date_correction = correction
-            invoice.native_request_id = request_id
-            invoice.native_request_fingerprint = fingerprint
             invoice.customer_street = addr['street']
             invoice.customer_postal_code = addr['postal_code']
             invoice.customer_city = addr['city']
-            invoice.save(update_fields=['book_appointment_public_id','book_original_service_date','service_date_correction',
-                'native_request_id','native_request_fingerprint','customer_street','customer_postal_code','customer_city'])
+            invoice.native_draft_data = {
+                'visit_id': str(visit_id), 'service_date': service_date.isoformat(),
+                'date_correction_reason': correction, 'address': addr, 'lines': [
+                    {key: row[key] for key in ('kind','goae_number','goae_description','goae_points','goae_base_eur',
+                        'goae_category','goae_factor','goae_vat_rate','quantity','goae_justification',
+                        'material_receipt_reference','material_eligible') if key in row}
+                    for row in (data.get('lines') or [data])],
+            }
+            invoice.save()
             # Persist only genuinely missing profile fields after explicit consent.
             if data.get('save_missing_address') is True:
                 changed = []
@@ -306,12 +368,13 @@ def office(request, operation, ident=None):
                         changed.append(key)
                 if changed:
                     profile.save(update_fields=changed)
-            AuditLog.objects.create(actor=actor, action='Office GOAE draft created',
+            AuditLog.objects.create(actor=actor, action='Office GOAE draft edited' if editing else 'Office GOAE draft created',
                 entity_type='Invoice', entity_id=str(invoice.pk), metadata={
                     'book_visit_id': str(visit_id), 'original_service_date': original_date.isoformat(),
                     'service_date': service_date.isoformat(), 'address_saved': data.get('save_missing_address') is True,
+                    'revision': invoice.native_revision, 'total_cents': invoice.total_cents,
                 })
-        return JsonResponse({'ok': True, 'invoice': serialize(invoice)}, status=201)
+        return JsonResponse({'ok': True, 'invoice': serialize(invoice)}, status=200 if editing else 201)
     except IntegrityError:
         return error('request_conflict', 409)
     except (ValueError, TypeError, KeyError, OverflowError):
