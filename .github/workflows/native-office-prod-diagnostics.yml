@@ -1,0 +1,31 @@
+name: Diagnose isolated native Office candidate error (read-only)
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/native-office-prod-diagnostics.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect only non-live native candidate journal and production route
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -eu
+            echo 'Current production nginx upstreams (no changes)'
+            grep -E 'proxy_pass' /etc/nginx/sites-enabled/a-esthetic-office.conf | head -3
+            echo 'Candidate service status'
+            systemctl is-active aesthetic-native-app-43ff902d1d.service || true
+            echo 'Office 500 error diagnosis from previously failed isolated candidate'
+            journalctl -u aesthetic-native-app-43ff902d1d.service \
+              --since '2026-11-22 21:00:00 UTC' --until '2026-11-22 21:03:00 UTC' \
+              --no-pager -o cat | tail -180 | grep -E 'Traceback|^  File |Error:|Exception:|Office|Template|Attribute|Programming|Operational|NoReverse|Disallowed|KeyError|TypeError|Invalid|NameError|RuntimeError|^During' | tail -85 || true
+            echo 'Read-only candidate diagnostic complete'
