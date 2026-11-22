@@ -50,7 +50,7 @@ def book(request, operation):
     if identity['role'] == 'customer':
         return JsonResponse({'ok': False, 'error': 'staff_required'}, status=403)
     read = r'(?:overview|calendar|catalog|appointments|patients|identity-review|patient/[1-9][0-9]*(?:/records/[0-9a-f-]{36})?)'
-    write = r'(?:appointment|block|availability|service|record-note|identity-review)'
+    write = r'(?:appointment|block|availability|service|record-note|record-upload|identity-review)'
     if not re.fullmatch(read if request.method == 'GET' else write, operation):
         return JsonResponse({'ok': False, 'error': 'not_found'}, status=404)
     if identity['role'] == 'doctor' and operation in {'service', 'identity-review'}:

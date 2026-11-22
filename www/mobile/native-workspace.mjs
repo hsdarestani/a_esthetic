@@ -136,7 +136,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     return render(view(p.name,{subtitle:p.email,rows:[
       ...patient.appointments.map(a=>row('appointment:'+a.id,a.date+' · '+a.start,a.service_name)),
       ...patient.records.map(r=>row(r.has_file?'record:'+r.id:'',r.title,r.note||r.date.slice(0,10))),
-    ],actions:[row('new-patient-appointment',tr('Termin für Patient hinzufügen','Book for patient')),row('note',tr('Behandlungsnotiz hinzufügen','Add treatment note'))]}));
+    ],actions:[row('new-patient-appointment',tr('Termin für Patient hinzufügen','Book for patient')),row('note',tr('Behandlungsnotiz hinzufügen','Add treatment note')),row('upload-pdf',tr('PDF zur Patientenakte hinzufügen','Add PDF to patient record'))]}));
   }
   async function getAppointment(id) {
     if(appointmentsById.has(id))return appointmentsById.get(id);
@@ -173,7 +173,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     return render(view(edit?tr('Termin bearbeiten','Edit appointment'):tr('Neuer Termin','New appointment'),
       {fields,actions:[row(edit?'save-edit':'save-new',tr('Speichern','Save'))]}));
   }
-  let currentBlock, currentService;
+  let currentBlock, currentService, pendingUpload;
   async function blockForm(edit){
     catalog=catalog||await book('catalog/');
     return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Sperrzeit / Notiz','Block / note'),{fields:[
@@ -357,6 +357,21 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id==='cancel-appointment')return await render(view(tr('Absage bestätigen','Confirm cancellation'),{
         subtitle:appointment.customer_name,actions:[row('confirm-cancel',tr('Termin absagen','Cancel appointment'))]}));
       if(id==='confirm-cancel'){await command('book/appointment/',{operation:'cancel',id:appointment.id,revision:appointment.revision});appointmentsById.clear();return await screen('calendar');}
+      if(id==='upload-pdf'){
+        const chosen=await plugin.pickPDF();
+        if(chosen.cancelled)return;
+        // Never upload until the clinician confirms the exact patient and file.
+        pendingUpload={...chosen,customer_id:patient.patient.id};
+        return await render(view(tr('Datei hinzufügen','Add document'),{subtitle:patient.patient.name,
+          rows:[row('',chosen.filename,tr('Privater Akteneintrag','Private clinical record'))],
+          actions:[row('confirm-upload',tr('Datei hochladen','Upload file')),row('discard-upload',tr('Abbrechen','Cancel'))]}));
+      }
+      if(id==='discard-upload'){pendingUpload=null;return await showPatient(patient.patient.id);}
+      if(id==='confirm-upload'){
+        if(!pendingUpload||pendingUpload.customer_id!==patient.patient.id)throw new Error(tr('Patient erneut auswählen.','Select the patient again.'));
+        await command('book/record-upload/',{customer_id:pendingUpload.customer_id,filename:pendingUpload.filename,base64:pendingUpload.base64});
+        pendingUpload=null;return await showPatient(patient.patient.id);
+      }
       if(id==='note')return await render(view(tr('Neue Notiz','New note'),{fields:[value('title',tr('Titel','Title')),value('note',tr('Notiz','Note'))],actions:[row('save-note',tr('Speichern','Save'))]}));
       if(id==='save-note'){await command('book/record-note/',{customer_id:patient.patient.id,...fields});return await showPatient(patient.patient.id);}
       if(admin && id.startsWith('review:')){
@@ -444,7 +459,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       await render({...current,message:err.message||tr('Bitte erneut versuchen.','Please try again.'),fields:(current.fields||[]).map(f=>({...f,value:fields[f.id]??f.value}))});
     } finally {busy=false;}
   }
-  async function destroy(){if(!active)return;active=false;appointmentsById.clear();pendingCommands.clear();blockById.clear();await listener?.remove();await plugin.dismiss();}
+  async function destroy(){if(!active)return;active=false;pendingUpload=null;appointmentsById.clear();pendingCommands.clear();blockById.clear();await listener?.remove();await plugin.dismiss();}
   listener=await plugin.addListener('action',event=>void handle(event));
   try {
     await plugin.present({screen:current});

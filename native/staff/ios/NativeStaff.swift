@@ -1,6 +1,7 @@
 // Native staff surface. Compiled into the generated Capacitor iOS target.
 import SwiftUI
 import PDFKit
+import UniformTypeIdentifiers
 import Capacitor
 import UIKit
 
@@ -135,15 +136,17 @@ struct StaffNativeScreen: View {
 }
 
 @objc(NativeStaffPlugin)
-public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin {
+public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelegate {
     public let identifier = "NativeStaffPlugin"
     public let jsName = "NativeStaff"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "present", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "render", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "dismiss", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "previewPDF", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "previewPDF", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pickPDF", returnType: CAPPluginReturnPromise)
     ]
+    private var pickCall: CAPPluginCall?
     private var state: StaffScreenState?
     private var host: UIHostingController<StaffNativeScreen>?
 
@@ -170,6 +173,39 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("Native screen not active"); return
             }
             state.replace(screen); call.resolve()
+        }
+    }
+    @objc func pickPDF(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard self.pickCall == nil, let host = self.host else {
+                call.reject("Picker unavailable"); return
+            }
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.pdf], asCopy: true)
+            picker.delegate = self
+            picker.allowsMultipleSelection = false
+            self.pickCall = call
+            host.present(picker, animated: true)
+        }
+    }
+    public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        pickCall?.resolve(["cancelled": true]); pickCall = nil
+    }
+    public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let call = pickCall else { return }
+        pickCall = nil
+        guard let url = urls.first else { call.resolve(["cancelled": true]); return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size > 0, size <= 6 * 1024 * 1024 else { call.reject("File exceeds 6 MB"); return }
+                let data = try Data(contentsOf: url)
+                guard data.count <= 6 * 1024 * 1024, data.starts(with: Data("%PDF-".utf8)) else {
+                    call.reject("Invalid PDF"); return
+                }
+                call.resolve(["filename": url.lastPathComponent, "base64": data.base64EncodedString()])
+            } catch { call.reject("Unable to read PDF") }
         }
     }
     @objc func previewPDF(_ call: CAPPluginCall) {

@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: hsdarestani/book
-          ref: aac43178a9a6508a07fefc6e93552f6bcc728973
+          ref: 0ae4d72369dd9b0d3f5f8644c96c98f9cdc95724
           path: book
       - uses: actions/setup-python@v5
         with:

@@ -2,6 +2,14 @@ package NATIVE_STAFF_PACKAGE;
 
 import android.app.Dialog;
 import android.content.Context;
+import android.content.Intent;
+import android.app.Activity;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
+import androidx.activity.result.ActivityResult;
+import com.getcapacitor.annotation.ActivityCallback;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import android.graphics.Color;
 import android.graphics.Bitmap;
 import android.graphics.pdf.PdfRenderer;
@@ -171,6 +179,40 @@ public final class NativeStaffPlugin extends Plugin {
     }
     @PluginMethod public void render(PluginCall call) {
         getActivity().runOnUiThread(()->{JSObject s=call.getObject("screen");if(dialog==null||s==null){call.reject("Native screen unavailable");return;}draw(s);call.resolve();});
+    }
+    @PluginMethod public void pickPDF(PluginCall call) {
+        getActivity().runOnUiThread(()->{
+            Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.setType("application/pdf");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(call,intent,"pickPDFResult");
+        });
+    }
+    @ActivityCallback private void pickPDFResult(PluginCall call, ActivityResult result) {
+        if(call==null)return;
+        if(result.getResultCode()!=Activity.RESULT_OK||result.getData()==null||result.getData().getData()==null){
+            JSObject response=new JSObject();response.put("cancelled",true);call.resolve(response);return;
+        }
+        final android.net.Uri uri=result.getData().getData();
+        new Thread(()->{
+            try {
+                String filename="document.pdf";
+                try(Cursor cursor=getContext().getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){
+                    if(cursor!=null&&cursor.moveToFirst())filename=cursor.getString(0);
+                }
+                try(InputStream in=getContext().getContentResolver().openInputStream(uri);ByteArrayOutputStream out=new ByteArrayOutputStream()){
+                    if(in==null)throw new java.io.IOException("No content");
+                    byte[] chunk=new byte[16384];int count;
+                    while((count=in.read(chunk))!=-1){
+                        if(out.size()+count>6*1024*1024){call.reject("File exceeds 6 MB");return;}
+                        out.write(chunk,0,count);
+                    }
+                    byte[] data=out.toByteArray();
+                    if(data.length<5||data[0]!='%'||data[1]!='P'||data[2]!='D'||data[3]!='F'||data[4]!='-'){call.reject("Invalid PDF");return;}
+                    JSObject response=new JSObject();response.put("filename",filename);response.put("base64",Base64.encodeToString(data,Base64.NO_WRAP));call.resolve(response);
+                }
+            } catch(Exception e){call.reject("Unable to read PDF");}
+        }).start();
     }
     @PluginMethod public void previewPDF(PluginCall call) {
         getActivity().runOnUiThread(()->{

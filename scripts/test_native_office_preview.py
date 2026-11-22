@@ -1,5 +1,6 @@
 """Exercise native Office API over the actual isolated A+/Book HTTP bridge."""
 import json
+import base64
 import time
 from datetime import date
 from urllib.error import HTTPError, URLError
@@ -83,6 +84,13 @@ def main():
     issued = request(office+f"issue-simulation/{invoice['id']}/", token=admin,
                      payload={'revision':invoice['revision'],'confirmed_synthetic':True})['invoice']
     assert issued['number'].startswith('TEST-GOAE-')
+    uploaded = request(book+'record-upload/', token=admin, payload={
+        'key':str(uuid4()),'customer_id':patient_id,'filename':'synthetic-test.pdf',
+        'base64':base64.b64encode(pdf).decode(),
+    })
+    assert uploaded['ok']
+    details=request(book+f'patient/{patient_id}/',token=admin)
+    assert any(item['filename']=='synthetic-test.pdf' for item in details['records'])
     assert request(office+f"pdf/{invoice['id']}/", token=admin).startswith(b'%PDF')
     for token in (customer, doctor):
         request(office+f'invoices/{user_id}/', token=token, expected=403)
