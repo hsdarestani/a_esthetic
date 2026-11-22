@@ -82,11 +82,21 @@ jobs:
           PY
           node --check www/mobile/native-workspace.mjs
           node scripts/test_native_staff_controller.mjs
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const src = fs.readFileSync('www/mobile/workspace.mjs', 'utf8');
+          if (/signal:\\s*AbortSignal\\.any\\s*\\(/.test(src)) {
+            throw new Error('iOS 17.2 cannot execute AbortSignal.any in staff fetch');
+          }
+          console.log('PASS: legacy iOS staff requests use compatible AbortController');
+          NODE
       - name: Generate actual iOS and Android native source
         run: |
           set -euo pipefail
           npm pkg delete scripts.capacitor:sync:after
           npm install --no-audit --no-fund
+          test -s www/mobile/native-staff-bridge.js
+          grep -q 'NativeStaff' www/mobile/native-staff-bridge.js
           npx cap add ${{ matrix.platform }}
           python3 scripts/configure_native_camera_permissions.py
           python3 scripts/install_native_staff.py
