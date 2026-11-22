@@ -1,4 +1,5 @@
 name: A+ Esthetic final production-connected Appetize binaries
+# Rebuild after November 2026 Patient/Patienten UI terminology migration.
 on:
   push:
     branches: [feature/mobile-unified-overhaul]
@@ -56,6 +57,18 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Reject any remaining Kunde labels in user-facing UI
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          rx=re.compile(r'Kund(?:e|en|in|innen|es)|Neukund(?:e|en)|Bestandskund(?:e|en)',re.I)
+          matches=[str(p) for root in ('www','native/staff','templates') for p in Path(root).rglob('*')
+                   if p.is_file() and p.suffix in {'.html','.js','.mjs','.swift','.java'}
+                   and rx.search(p.read_text(encoding='utf-8'))]
+          assert not matches, 'Kunde UI labels remain: '+', '.join(matches)
+          print('PASS: all Patient labels consistent')
+          PY
       - name: Verify native UI is bundled, while the APIs use the real production URLs
         run: |
           python3 - <<'PY'
