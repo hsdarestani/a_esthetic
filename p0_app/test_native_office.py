@@ -153,3 +153,17 @@ class NativeOfficeTests(TestCase):
         self.assertEqual(invoice.total_cents, 2000)
         self.assertEqual(invoice.status, 'issued')
         self.assertEqual(invoice.native_revision, 3)
+
+    def test_tariff_catalog_and_reference_are_admin_only_and_synthetic_reference_is_gated(self):
+        with patch('p0_app.native_office._auth', return_value=(self.admin,None)), \
+             patch('p0_app.native_office._is_admin', return_value=True):
+            items = self.client.get(self.path+'tariff-catalog/').json()['items']
+            special = next(item for item in items if item['number']=='250')
+            self.assertEqual(special['category'],'technical')
+            with override_settings(OFFICE_SYNTHETIC_STAGE=False):
+                self.assertEqual(self.client.get(self.path+'reference-case/').status_code,404)
+            with override_settings(OFFICE_SYNTHETIC_STAGE=True):
+                self.assertEqual(self.client.get(self.path+'reference-case/').json()['reference_total_cents'],23600)
+        with patch('p0_app.native_office._auth', return_value=(self.patient,None)), \
+             patch('p0_app.native_office._is_admin', return_value=False):
+            self.assertEqual(self.client.get(self.path+'tariff-catalog/').status_code,403)

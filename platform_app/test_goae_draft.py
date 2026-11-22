@@ -99,3 +99,44 @@ class GoaEDraftTests(TestCase):
         for update in ({"material_eligible":False}, {"material_receipt_reference":""}):
             with self.assertRaises(ValueError):
                 calculate_goae_lines({"lines":[item | update]})
+
+    def test_official_catalog_fixes_points_and_special_blood_collection_limits(self):
+        line = {"tariff_source":"official_catalog","clinical_confirmed":True,
+                "goae_number":"250","goae_factor":"2.3","goae_vat_rate":"0",
+                "goae_category":"general","goae_points":"999","goae_base_eur":"999"}
+        # No. 250 appears in section A: 1.8 threshold, 2.5 ordinary ceiling.
+        with self.assertRaises(ValueError):
+            calculate_goae_lines(line)
+        approved = line | {"goae_justification":"Synthetischer Prüfgrund"}
+        result = calculate_goae_lines(approved)[0]
+        self.assertEqual(result["goae_base_cents"],233)
+        self.assertEqual(result["net_cents"],536)
+        with self.assertRaises(ValueError):
+            calculate_goae_lines(approved | {"goae_factor":"2.51"})
+        with self.assertRaises(ValueError):
+            calculate_goae_lines(approved | {"clinical_confirmed":False})
+
+    def test_reference_reconciliation_is_not_an_invoice_calculation(self):
+        from .goae_tariff import reference_case
+        result = reference_case()
+        self.assertEqual(result["reference_total_cents"], 23600)
+        self.assertEqual(result["medical_cents"], 10280)
+        self.assertEqual(result["residual_cents"], 8136)
+        self.assertEqual(result["derived_factor"], "3.4896")
+        self.assertTrue(result["approval_required"])
+        line = {"tariff_source":"official_catalog","clinical_confirmed":True,
+                "goae_number":"252","quantity":"10","goae_factor":"3.49",
+                "goae_justification":"Synthetischer Prüfgrund","goae_vat_rate":"19"}
+        self.assertEqual(calculate_goae_lines(line)[0]["net_cents"],8140)
+        self.assertNotEqual(calculate_goae_lines(line)[0]["net_cents"],result["residual_cents"])
+
+    def test_analogous_service_requires_independent_confirmation(self):
+        data = {"tariff_source":"official_catalog","clinical_confirmed":True,
+                "goae_number":"268","goae_description":"Synthetische Analogleistung",
+                "goae_factor":"1","goae_vat_rate":"0","analog":True}
+        with self.assertRaises(ValueError):
+            calculate_goae_lines(data)
+        item = calculate_goae_lines(data | {"analog_confirmed":True})[0]
+        self.assertEqual(item["goae_number"], "268 A")
+        self.assertEqual(item["net_cents"],758)
+        self.assertIn("entsprechend",item["description"])

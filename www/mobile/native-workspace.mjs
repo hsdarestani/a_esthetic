@@ -201,7 +201,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       value('end_2',tr('Zweites Ende (optional)','Second end (optional)'),ranges[1]?.end||''),
     ],actions:[row('load-availability',tr('Behandler / Datum laden','Load provider / date')),row('save-availability',tr('Speichern','Save'))]}));
   }
-  let billingUser, billingVisits, reviewPair, intakeRecord, invoiceLines=[], invoiceMeta={}, editingInvoice=null, selectedInvoice=null;
+  let billingUser, billingVisits, reviewPair, intakeRecord, invoiceLines=[], invoiceMeta={}, editingInvoice=null, selectedInvoice=null, tariffCatalog=null;
   async function showBilling(id) {
     const r=await office('customers/?q='+encodeURIComponent(search));
     billingUser=r.items.find(u=>u.id===id);
@@ -219,12 +219,14 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       billingVisits=r.appointments.filter(a=>a.status==='completed');
       if(!billingVisits.length)throw new Error(tr('Kein abgeschlossener Besuch.','No completed visit.'));
       const addr=billingUser.address;
+      tariffCatalog=tariffCatalog||await office('tariff-catalog/');
       invoiceLines=[];
       invoiceMeta={visit_id:billingVisits[0].public_id,street:addr.street,postal_code:addr.postal_code,city:addr.city,
-        service_date:'',date_correction_reason:''};
+        service_date:'',date_correction_reason:'',treatment:''};
     }
     const fields=[
       value('visit_id',tr('Besuch','Visit'),invoiceMeta.visit_id,billingVisits.map(a=>option(a.public_id,a.date+' · '+a.service_name))),
+      value('treatment',tr('Behandlung (nur Ziffernhinweis)','Treatment (code prompts only)'),invoiceMeta.treatment||'',[option('',tr('Ohne Auswahl','No selection')),option('botox','Botox'),option('hyaluron','Hyaluron / Filler'),option('prp','PRP'),option('lipolysis',tr('Lipolyse','Lipolysis'))]),
       value('service_date',tr('Abweichendes Leistungsdatum (optional)','Corrected visit date (optional)'),invoiceMeta.service_date),
       value('date_correction_reason',tr('Begründung der Datumskorrektur','Reason for date correction'),invoiceMeta.date_correction_reason),
       value('street',tr('Straße','Street'),invoiceMeta.street),value('postal_code',tr('PLZ','Postal code'),invoiceMeta.postal_code),value('city',tr('Ort','City'),invoiceMeta.city),
@@ -233,7 +235,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       message:tr('Gebührennummer, Einfachsatz und Steuerstatus ärztlich prüfen.','Clinician must verify tariff code, base fee and tax classification.'),
       fields, rows:invoiceLines.map((line,i)=>row('invoice-line:'+i,(line.kind==='material'?tr('Auslage','Expense'):line.goae_number)+' · '+line.goae_description,
         tr('Anzahl','Quantity')+' '+line.quantity+(line.kind==='material'?'':' · '+line.goae_factor+'×'))),
-      actions:[row('add-invoice-line',tr('GOÄ Leistung hinzufügen','Add GOÄ service')),row('add-material-line',tr('Auslage hinzufügen','Add expense')),
+      actions:[row('add-invoice-line',tr('Amtliche GOÄ Leistung hinzufügen','Add official GOÄ service')),row('add-manual-line',tr('Manuelle Ziffer (ungeprüft)','Manual code (unverified)')),row('add-material-line',tr('Auslage hinzufügen','Add expense')),
+        ...(tariffCatalog?.synthetic_reference_available?[row('reference-case',tr('Synthetische Referenz prüfen','Review synthetic reference'))]:[]),
         ...(invoiceLines.length?[row('invoice-quote',tr('Beträge prüfen','Review totals'))]:[])],
     }));
   }
@@ -245,14 +248,34 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       actions:[row('invoice-pdf:'+id,tr('PDF anzeigen','View PDF')),...(i.status==='draft'?[row('invoice-edit',tr('Entwurf bearbeiten','Edit draft'))]:[]),
         ...(i.status==='draft'&&selectedInvoice.can_simulate?[row('invoice-simulate',tr('Testrechnung nummerieren','Number test invoice'))]:[])]}));
   }
-  async function lineForm(index,material=false){
+  async function lineForm(index,material=false,manual=false){
     const line=invoiceLines[index]||{};
     if(material||line.kind==='material')return render(view(tr('Auslage erfassen','Record expense'),{message:tr('Nur tatsächlich entstandene, nach § 10 berechnungsfähige Auslagen erfassen.','Only actual eligible expenses under § 10.'),fields:[
       value('goae_description',tr('Art der Auslage','Expense description'),line.goae_description),value('goae_base_eur',tr('Tatsächlicher Einzelpreis EUR','Actual unit cost EUR'),line.goae_base_eur),
       value('quantity',tr('Anzahl','Quantity'),line.quantity||'1'),value('goae_vat_rate',tr('Umsatzsteuer','VAT'),line.goae_vat_rate||'',[option('',tr('Bitte auswählen','Select')),option('0','0%'),option('7','7%'),option('19','19%')]),
       value('material_receipt_reference',tr('Belegreferenz','Receipt reference'),line.material_receipt_reference),value('material_eligible',tr('Berechnungsfähigkeit geprüft?','Eligibility verified?'),line.material_eligible?'yes':'no',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))]),
     ],actions:[row('save-material:'+index,tr('Auslage speichern','Save expense')),...(invoiceLines[index]?[row('delete-line:'+index,tr('Position entfernen','Remove line'))]:[])]}));
-    return render(view(tr('GOÄ Position','GOÄ line'),{fields:[
+    if(!manual && (!invoiceLines[index] || line.tariff_source==='official_catalog')){
+      tariffCatalog=tariffCatalog||await office('tariff-catalog/');
+      const hints=tariffCatalog.treatments[invoiceMeta.treatment]||[];
+      const ordered=[...tariffCatalog.items].sort((a,b)=>Number(hints.includes(b.number))-Number(hints.includes(a.number)));
+      const choices=ordered.map(i=>option(i.number,(hints.includes(i.number)?tr('Prüfhinweis: ','Review prompt: '):'')+i.number+' · '+(language==='en'?i.en:i.de)+' · '+i.points+' '+tr('Punkte','points')));
+      return render(view(tr('Amtliche GOÄ Ziffer','Official GOÄ code'),{
+        message:tr('Nur tatsächlich erbrachte Leistungen eingeben. Ziffer, Menge, Faktor und Steuer ärztlich prüfen; keine Ableitung aus dem Endpreis.','Enter only services actually performed. Code, quantity, factor and tax require physician review; no reverse pricing.'),
+        fields:[
+          value('goae_number',tr('Gebührenziffer','Fee code'),line.goae_number||'',[option('',tr('Bitte auswählen','Select')),...choices]),
+          value('quantity',tr('Tatsächliche Anzahl','Actual quantity'),line.quantity||'1'),
+          value('goae_factor',tr('Dokumentierter Faktor','Documented factor'),line.goae_factor||'1.00'),
+          value('goae_justification',tr('Individuelle Begründung','Individual justification'),line.goae_justification),
+          value('goae_vat_rate',tr('Umsatzsteuer','VAT'),line.goae_vat_rate||'',[option('',tr('Bitte auswählen','Select')),option('0','0%'),option('7','7%'),option('19','19%')]),
+          value('clinical_confirmed',tr('Leistung und Anzahl geprüft?','Service and quantity confirmed?'),line.clinical_confirmed?'yes':'no',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))]),
+          value('analog',tr('Analoge Leistung (§ 6)?','Analogous service (§ 6)?'),line.analog?'yes':'no',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))]),
+          value('goae_description',tr('Beschreibung der Analogleistung (falls zutreffend)','Analogous service description (if applicable)'),line.goae_description||''),
+          value('analog_confirmed',tr('Äquivalenz ärztlich geprüft?','Equivalence physician-reviewed?'),line.analog_confirmed?'yes':'no',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))]),
+        ],actions:[row('save-verified-line:'+index,tr('Position prüfen','Validate line')),
+        ...(invoiceLines[index]?[row('delete-line:'+index,tr('Position entfernen','Remove line'))]:[])]}));
+    }
+    return render(view(tr('Manuelle GOÄ Position · ungeprüft','Manual GOÄ line · unverified'),{message:tr('Diese manuelle Ziffer ist nicht durch den hinterlegten Tarif geprüft. Nur Entwurf.','This manual code has not been verified against the included tariff. Draft only.'),fields:[
       value('goae_number','GOÄ Nr.',line.goae_number),value('goae_description',tr('Leistung','Service'),line.goae_description),
       value('goae_base_eur',tr('Einfachsatz EUR','Base fee EUR'),line.goae_base_eur),
       value('goae_points',tr('Punkte (alternativ)','Points (alternative)'),line.goae_points),
@@ -427,7 +450,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         const result=await book('patient/'+billingUser.book_customer_id+'/');
         billingVisits=result.appointments.filter(a=>a.public_id===editingInvoice.book_appointment_public_id);
         if(!billingVisits.length)throw new Error(tr('Besuch nicht verfügbar','Visit unavailable'));
-        invoiceLines=draft.lines;invoiceMeta={visit_id:draft.visit_id,service_date:draft.service_date===selectedInvoice.original_date?'':draft.service_date,date_correction_reason:draft.date_correction_reason,...draft.address};
+        invoiceLines=draft.lines;invoiceMeta={visit_id:draft.visit_id,service_date:draft.service_date===selectedInvoice.original_date?'':draft.service_date,date_correction_reason:draft.date_correction_reason,treatment:draft.treatment||'',...draft.address};
         return await invoiceForm(false);
       }
       if(admin&&id==='invoice-simulate')return await render(view(tr('Testrechnung bestätigen','Confirm test invoice'),{message:tr('Nur synthetische QA-Rechnung, nicht zur Zahlung.','Synthetic QA invoice only, not for payment.'),actions:[row('confirm-simulation',tr('Testrechnung nummerieren','Number test invoice'))]}));
@@ -435,10 +458,23 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         await office('issue-simulation/'+selectedInvoice.invoice.id+'/',{revision:selectedInvoice.invoice.revision,confirmed_synthetic:true});
         return await invoiceDetail(selectedInvoice.invoice.id);
       }
+      if(admin&&id==='reference-case'){
+        invoiceMeta={...fields};const sample=await office('reference-case/');const money=cents=>(cents/100).toFixed(2)+' EUR';
+        return await render(view(tr('Synthetische Referenz','Synthetic reference'),{message:tr('Nur Rechenvergleich. Der Zielfaktor ist keine ärztliche Freigabe.','Arithmetic comparison only. The target-derived factor is not physician approval.'),rows:[row('',tr('Zielbetrag','Target amount'),money(sample.target_cents)),row('',tr('Ärztliche Leistungen','Medical fees'),money(sample.medical_cents)),row('',tr('Auslagen','Expenses'),money(sample.material_cents)),row('',tr('Abgeleiteter Referenzfaktor','Derived reference factor'),sample.derived_factor)],actions:[row('invoice-return',tr('Zum Entwurf','Return to draft'))]}));
+      }
       if(admin&&id==='add-invoice-line'){invoiceMeta={...fields};return await lineForm(invoiceLines.length);}
+      if(admin&&id==='add-manual-line'){invoiceMeta={...fields};return await lineForm(invoiceLines.length,false,true);}
       if(admin&&id==='add-material-line'){invoiceMeta={...fields};return await lineForm(invoiceLines.length,true);}
       if(admin&&id.startsWith('invoice-line:')){invoiceMeta={...fields};return await lineForm(Number(id.split(':')[1]));}
       if(admin&&id.startsWith('save-material:')){const idx=Number(id.split(':')[1]);const material={...fields,kind:'material',material_eligible:fields.material_eligible==='yes'};await office('quote/',{lines:[material]});invoiceLines[idx]=material;return await invoiceForm(false);}
+      if(admin&&id.startsWith('save-verified-line:')){
+        const idx=Number(id.split(':')[1]);
+        const data={...fields,tariff_source:'official_catalog',clinical_confirmed:fields.clinical_confirmed==='yes',
+          analog:fields.analog==='yes',analog_confirmed:fields.analog_confirmed==='yes'};
+        const result=await office('quote/',{lines:[data]});
+        invoiceLines[idx]={...data,goae_description:data.analog?data.goae_description:result.items[0].description};
+        return await invoiceForm(false);
+      }
       if(admin&&id.startsWith('save-line:')){
         const idx=Number(id.split(':')[1]);
         await office('quote/',{lines:[fields]});
@@ -448,8 +484,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(admin&&id==='invoice-quote'){invoiceMeta={...fields};return await quote();}
       if(admin&&id==='invoice-return')return await invoiceForm(false);
       if(admin&&id==='save-invoice'){
-        const {street,postal_code,city,visit_id,service_date,date_correction_reason}=invoiceMeta;
-        const body={customer_id:billingUser.id,visit_id,address:{street,postal_code,city},service_date,date_correction_reason,save_missing_address:true,lines:invoiceLines};
+        const {street,postal_code,city,visit_id,service_date,date_correction_reason,treatment}=invoiceMeta;
+        const body={customer_id:billingUser.id,visit_id,address:{street,postal_code,city},service_date,date_correction_reason,treatment,save_missing_address:true,lines:invoiceLines};
         if(editingInvoice){await office('edit-draft/'+editingInvoice.id+'/',{...body,revision:editingInvoice.revision});editingInvoice=null;}
         else await command('office/draft/',body,'request_id');
         return await showBilling(billingUser.id);

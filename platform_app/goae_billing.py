@@ -16,6 +16,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from xml.sax.saxutils import escape
 
 from .models import Invoice, InvoiceItem, UserProfile
+from .goae_tariff import CATALOG, POINT_VALUE_EUR
 
 
 def to_decimal(value):
@@ -36,7 +37,6 @@ FEE_RANGES = {
     "technical": (Decimal("1.80"), Decimal("2.50")),
     "laboratory": (Decimal("1.15"), Decimal("1.30")),
 }
-POINT_VALUE_EUR = Decimal("0.0582873")
 
 
 def cents(amount):
@@ -81,9 +81,29 @@ def calculate_goae_lines(data):
         code = str(row.get("goae_number") or "").strip()
         desc = str(row.get("goae_description") or "").strip()
         reason = str(row.get("goae_justification") or "").strip()
-        if not re.fullmatch(r"[A-Za-z0-9 ./-]{1,24}", code) or not 4 <= len(desc) <= 220 or len(reason) > 1500:
+        if not re.fullmatch(r"[A-Za-z0-9 ./-]{1,24}", code) or len(desc) > 220 or (row.get("tariff_source") != "official_catalog" and len(desc) < 4) or len(reason) > 1500:
             raise ValueError("GOÄ Nummer und Leistungsbeschreibung sind erforderlich.")
-        category = row.get("goae_category", "general")
+        verified = row.get("tariff_source") == "official_catalog"
+        if verified:
+            tariff = CATALOG.get(code)
+            if not tariff or row.get("clinical_confirmed") is not True:
+                raise ValueError("Amtliche Ziffer und tatsächlich erbrachte Leistung bestätigen.")
+            # § 6(2)/§ 12(4): an analogous service requires an independently
+            # documented description and a physician-reviewed equivalence.
+            if row.get("analog") is True:
+                if row.get("analog_confirmed") is not True or len(desc) < 4:
+                    raise ValueError("Analoge Leistung ärztlich bestätigen.")
+                desc = desc + " – entsprechend GOÄ Nr. " + code + ": " + tariff["de"]
+                if len(desc) > 220:
+                    raise ValueError("Analogleistung bitte kürzer beschreiben.")
+                code += " A"
+            else:
+                desc = tariff["de"]
+            category = tariff["category"]
+        else:
+            category = row.get("goae_category", "general")
+        if code.split()[0] in {"250", "250a"}:
+            category = "technical"  # explicitly listed in Anlage A, even for manual drafts
         if category not in FEE_RANGES:
             raise ValueError("Bitte die Gebührenkategorie prüfen.")
         threshold, maximum = FEE_RANGES[category]
@@ -93,7 +113,9 @@ def calculate_goae_lines(data):
         if factor > threshold and not reason:
             raise ValueError("Ein erhöhter Steigerungsfaktor braucht eine individuelle Begründung.")
         points_value = row.get("goae_points")
-        if points_value is not None and str(points_value).strip():
+        if verified:
+            base = Decimal(tariff["points"]) * POINT_VALUE_EUR
+        elif points_value is not None and str(points_value).strip():
             points = to_decimal(points_value)
             if not 1 <= points <= 100000 or points != points.to_integral_value():
                 raise ValueError("Ungültige Punktzahl.")

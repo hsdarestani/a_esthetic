@@ -21,6 +21,7 @@ from django.utils import timezone
 from platform_app.admin_aware_login import _is_admin
 from platform_app.mobile_api import _auth
 from platform_app.goae_billing import calculate_goae_lines, create_goae_draft, goae_draft_pdf_bytes
+from platform_app.goae_tariff import catalog_payload, TREATMENTS, reference_case
 from platform_app.models import AuditLog, CheckInSession, Invoice, InvoiceItem, InvoiceSettings, OfficePatientLink, OfficeIntakeReview, UserProfile
 from platform_app.intake_identity import score, user_data, birth_date
 from .mobile_staff_views import NoRedirect
@@ -136,6 +137,13 @@ def office(request, operation, ident=None):
     if not _is_admin(actor):
         return error('admin_required', 403)
     if request.method == 'GET':
+        if operation == 'tariff-catalog' and ident is None:
+            return JsonResponse({'ok': True, 'items': catalog_payload(), 'treatments': TREATMENTS,
+                'approval_required': True, 'synthetic_reference_available': bool(getattr(settings, 'OFFICE_SYNTHETIC_STAGE', False))})
+        if operation == 'reference-case' and ident is None:
+            if not getattr(settings, 'OFFICE_SYNTHETIC_STAGE', False):
+                return error('not_found', 404)
+            return JsonResponse({'ok':True, **reference_case()})
         if operation == 'intake-reviews' and ident is None:
             rows = OfficeIntakeReview.objects.filter(status='pending').order_by('created_at')[:100]
             return JsonResponse({'ok': True, 'items': [{
@@ -352,10 +360,12 @@ def office(request, operation, ident=None):
             invoice.customer_city = addr['city']
             invoice.native_draft_data = {
                 'visit_id': str(visit_id), 'service_date': service_date.isoformat(),
-                'date_correction_reason': correction, 'address': addr, 'lines': [
+                'date_correction_reason': correction, 'address': addr,
+                'treatment': data.get('treatment') if data.get('treatment') in TREATMENTS else '', 'lines': [
                     {key: row[key] for key in ('kind','goae_number','goae_description','goae_points','goae_base_eur',
                         'goae_category','goae_factor','goae_vat_rate','quantity','goae_justification',
-                        'material_receipt_reference','material_eligible') if key in row}
+                        'material_receipt_reference','material_eligible','tariff_source','clinical_confirmed',
+                        'analog','analog_confirmed') if key in row}
                     for row in (data.get('lines') or [data])],
             }
             invoice.save()

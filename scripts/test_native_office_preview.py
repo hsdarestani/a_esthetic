@@ -49,6 +49,16 @@ def main():
         raise RuntimeError('Isolated servers not ready')
     admin, doctor, customer = [login(role) for role in ('admin','doctor','customer')]
     office = '/api/mobile/staff/office/'
+    catalog = request(office+'tariff-catalog/', token=admin)
+    assert next(item for item in catalog['items'] if item['number']=='250')['category']=='technical'
+    sample = request(office+'reference-case/', token=admin)
+    assert sample['reference_total_cents']==23600 and sample['derived_factor']=='3.4896'
+    verified = request(office+'quote/', token=admin, payload={'lines':[
+        {'tariff_source':'official_catalog','clinical_confirmed':True,'goae_number':'1',
+         'goae_factor':'2.30','goae_vat_rate':'19','quantity':'1'}
+    ]})
+    assert verified['subtotal_cents']==1072 and verified['total_cents']==1276
+
     book = '/api/mobile/staff/book/'
     addr = {'street':'Synthetic Testweg 1','postal_code':'60313','city':'Frankfurt'}
     request(office+'intake/', token=customer, payload={
