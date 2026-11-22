@@ -97,7 +97,7 @@
     document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());
     const node=document.createElement('div');node.className='settings-overlay';
     node.innerHTML=`<div class="settings-card"><div class="settings-head"><h2>Einstellungen & Recht</h2><button class="core-icon-btn" data-close>×</button></div>
-      <div class="settings-user"><strong>${esc(state.me?.member?.name||'A+ Kunde')}</strong><span>${esc(email)}</span></div>
+      <div class="settings-user"><strong>${esc(state.me?.member?.name||'A+ Patient')}</strong><span>${esc(email)}</span></div>
       <form data-profile-salutation class="a39-profile-choice">
         <label for="a39-salutation">Anrede für dein Startseitenbild</label>
         <div class="a39-profile-choice-controls">
