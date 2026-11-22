@@ -1,6 +1,7 @@
 // One screen/state controller; all controls are rendered by UIKit/SwiftUI or
 // Android Views. No staff HTML, browser navigation or web forms are mounted.
 import { today, startWeek, shiftDay } from './calendar.mjs';
+import { buildNativeCalendarTimeline } from './native-calendar-layout.mjs';
 
 // Keep form input semantics identical in SwiftUI and Android native controls.
 const inputKind = id => {
@@ -35,6 +36,21 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   let activeTab = 'home';
   let current = {title:'A+ Esthetic',busy:true,tabs:[]};
   const blockById = new Map();
+  const calendarCache = new Map();
+  async function getCalendarWeek(day) {
+    const key=startWeek(day);
+    const cached=calendarCache.get(key);
+    if(cached && Date.now()-cached.at<45000)return cached.data;
+    const data=await book('calendar/?start='+key+'&days=7');
+    calendarCache.set(key,{at:Date.now(),data});
+    if(calendarCache.size>6)calendarCache.delete(calendarCache.keys().next().value);
+    return data;
+  }
+  function prefetchCalendar(day) {
+    const key=startWeek(day);
+    if(calendarCache.has(key))return;
+    void getCalendarWeek(day).catch(()=>{});
+  }
   const tabs = () => [
     {...row('home',tr('Übersicht','Home')), icon:'square.grid.2x2'},
     {...row('calendar',tr('Kalender','Calendar')),icon:'calendar'},
@@ -75,7 +91,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       ],actions:[row('logout',tr('Abmelden','Sign out'))]}));
     }
     if(name==='calendar'){
-      const weekStart=startWeek(date), data=await book('calendar/?start='+weekStart+'&days=7');
+      const weekStart=startWeek(date);
+      const data=await getCalendarWeek(date);
       const days=Array.from({length:7},(_,i)=>{
         const d=shiftDay(weekStart,i);
         return {id:'date:'+d,label:dateLabel(d,locale,{weekday:'short',day:'numeric'}),selected:d===date};
@@ -88,7 +105,14 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       const found=(data.appointments||[]).filter(a=>(calendarMode==='week'||a.date===date)&&match(a));
       const blocked=(data.blocks||[]).filter(a=>(calendarMode==='week'||a.date===date)&&(providerFilter==='all'||String(a.staff_id)===providerFilter));
       found.sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
+      const timeline=buildNativeCalendarTimeline({date,mode:calendarMode,
+        providers:catalog.providers,services:catalog.services,provider:providerFilter,
+        service:serviceFilter,calendar:data});
+      // Nonblocking adjacent-week prefetch; never hold the SwiftUI timeline for it.
+      prefetchCalendar(shiftDay(weekStart,-7));
+      prefetchCalendar(shiftDay(weekStart,7));
       return render(view(tr('Kalender','Calendar'),{subtitle:dateLabel(date,locale,{weekday:'long',day:'numeric',month:'long'}),
+        timeline,
         week:days,message:date===shiftDay(weekStart,6)?tr('Sonntag · Online-Buchung geschlossen','Sunday · Online booking closed'):'',
         fields:[
           value('calendar_mode',tr('Ansicht','View'),calendarMode,[option('day',tr('Tag','Day')),option('week',tr('Woche','Week')),option('provider',tr('Behandler','Provider')),option('service',tr('Behandlung','Service'))]),
@@ -191,17 +215,17 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       row('',tr('Status','Status'),appointment.status),row('',tr('Notiz','Note'),appointment.notes||''),
     ],actions:appointment.source_managed?[]:[row('edit-appointment',tr('Bearbeiten','Edit')),row('cancel-appointment',tr('Absagen','Cancel'))]}));
   }
-  async function appendForm(edit=false, chosenPatient=null) {
+  async function appendForm(edit=false, chosenPatient=null, slot={}) {
     catalog=await book('catalog/');
     const r=await book('patients/?q='+encodeURIComponent(search));
     const options=r.items.map(x=>option(x.id,x.name));
     if(chosenPatient&&!options.some(x=>x.value===String(chosenPatient.id)))options.unshift(option(chosenPatient.id,chosenPatient.name));
     const fields=[
       value('customer_id',tr('Patient','Patient'),edit?appointment.customer_id:chosenPatient?.id||options[0]?.value,options),
-      value('staff_id',tr('Behandler','Provider'),edit?appointment.staff_id:catalog.providers[0]?.id,optionFor(catalog.providers)),
+      value('staff_id',tr('Behandler','Provider'),edit?appointment.staff_id:(slot.staff_id && slot.staff_id!=='all' ? slot.staff_id : catalog.providers[0]?.id),optionFor(catalog.providers)),
       value('service_id',tr('Behandlung','Treatment'),edit?appointment.service_id:catalog.services[0]?.id,optionFor(catalog.services.filter(x=>x.active))),
-      value('date',tr('Datum (JJJJ-MM-TT)','Date (YYYY-MM-DD)'),edit?appointment.date:date),
-      value('start',tr('Beginn (HH:MM)','Start (HH:MM)'),edit?appointment.start:'10:00'),
+      value('date',tr('Datum (JJJJ-MM-TT)','Date (YYYY-MM-DD)'),edit?appointment.date:(slot.date||date)),
+      value('start',tr('Beginn (HH:MM)','Start (HH:MM)'),edit?appointment.start:(slot.start||'10:00')),
       value('notes',tr('Notiz','Notes'),edit?appointment.notes:''),
     ];
     stack.push(edit?'edit-appointment':'new-appointment');
@@ -361,6 +385,28 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(['home','calendar','patients','office','intakes','identity-review','billing-search','billing-settings','settings','services'].includes(id)){
         if(id==='patients'||id==='billing-search')search='';
         return await screen(id);
+      }
+      if(id==='cal-today'){date=today();return await screen('calendar',{push:false});}
+      if(id.startsWith('cal-mode:')){
+        calendarMode=id.slice('cal-mode:'.length);
+        if(!['day','week','provider','service'].includes(calendarMode))return;
+        return await screen('calendar',{push:false});
+      }
+      if(id.startsWith('cal-provider:')){
+        providerFilter=id.slice('cal-provider:'.length);
+        return await screen('calendar',{push:false});
+      }
+      if(id.startsWith('cal-service:')){
+        serviceFilter=id.slice('cal-service:'.length);
+        return await screen('calendar',{push:false});
+      }
+      if(id.startsWith('slot:')){
+        const parts=id.split(':');
+        const day=parts[1],time=parts[2]+':'+parts[3];
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!/^\d{2}:\d{2}$/.test(time))return;
+        date=day;
+        search='';
+        return await appendForm(false,null,{date:day,start:time,staff_id:parts[4]||providerFilter});
       }
       if(id==='week-next'||id==='week-prev'){date=shiftDay(date,id==='week-next'?7:-7);return await screen('calendar',{push:false});}
       if(id==='day-next'||id==='day-prev'){
@@ -550,7 +596,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       await render({...current,message:err.message||tr('Bitte erneut versuchen.','Please try again.'),fields:(current.fields||[]).map(f=>({...f,value:fields[f.id]??f.value}))});
     } finally {busy=false;}
   }
-  async function destroy(){if(!active)return;active=false;pendingUpload=null;appointmentsById.clear();pendingCommands.clear();blockById.clear();await listener?.remove();await plugin.dismiss();}
+  async function destroy(){if(!active)return;active=false;pendingUpload=null;appointmentsById.clear();pendingCommands.clear();blockById.clear();calendarCache.clear();await listener?.remove();await plugin.dismiss();}
   let presented = false;
   try {
     listener = await plugin.addListener('action',event=>void handle(event));
