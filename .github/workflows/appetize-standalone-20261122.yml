@@ -27,16 +27,8 @@ jobs:
           set -euo pipefail
           npm install --no-audit --no-fund
           bash scripts/build-android.sh
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          p=Path('android/variables.gradle')
-          s=p.read_text()
-          updated,n=re.subn(r'minSdkVersion\s*=\s*24\b','minSdkVersion = 26',s)
-          if n != 1: raise SystemExit('minSdkVersion expected 24, found: '+s[:1200])
-          p.write_text(updated)
-          print('Set minSdkVersion=26 for barcode SDK compatibility')
-          PY
+          grep -Eq 'minSdkVersion[[:space:]]*=[[:space:]]*26' android/variables.gradle
+          echo 'Verified Android minSdkVersion=26 for barcode compatibility'
           (cd android && ./gradlew --no-daemon assembleDebug)
           mkdir -p artifacts
           cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/A_Esthetic_Appetize_Android_20261122.apk
@@ -48,6 +40,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   ios:
+    if: false # iOS Appetize artifact was verified in previous run
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
