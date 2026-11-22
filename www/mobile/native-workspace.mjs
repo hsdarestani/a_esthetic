@@ -37,19 +37,33 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   let current = {title:'A+ Esthetic',busy:true,tabs:[]};
   const blockById = new Map();
   const calendarCache = new Map();
-  async function getCalendarWeek(day) {
+  const calendarInFlight = new Map();
+  let prefetchBusy = false;
+  function getCalendarWeek(day) {
     const key=startWeek(day);
     const cached=calendarCache.get(key);
-    if(cached && Date.now()-cached.at<45000)return cached.data;
-    const data=await book('calendar/?start='+key+'&days=7');
-    calendarCache.set(key,{at:Date.now(),data});
-    if(calendarCache.size>6)calendarCache.delete(calendarCache.keys().next().value);
-    return data;
+    if(cached && Date.now()-cached.at<45000)return Promise.resolve(cached.data);
+    if(calendarInFlight.has(key))return calendarInFlight.get(key);
+    const pending=book('calendar/?start='+key+'&days=7').then(data=>{
+      calendarCache.set(key,{at:Date.now(),data});
+      if(calendarCache.size>6)calendarCache.delete(calendarCache.keys().next().value);
+      return data;
+    }).finally(()=>calendarInFlight.delete(key));
+    calendarInFlight.set(key,pending);
+    return pending;
   }
-  function prefetchCalendar(day) {
-    const key=startWeek(day);
-    if(calendarCache.has(key))return;
-    void getCalendarWeek(day).catch(()=>{});
+  function prefetchCalendarNeighbors(day) {
+    if(prefetchBusy)return;
+    prefetchBusy=true;
+    // Sequential and deduplicated: at most one background calendar relay
+    // runs beside the active request. Avoid app->Book->app worker starvation.
+    void (async()=>{
+      try {
+        await getCalendarWeek(shiftDay(startWeek(day),-7));
+        await getCalendarWeek(shiftDay(startWeek(day),7));
+      } catch(_) { /* Prefetch is optional; visible range reports its own errors. */ }
+      finally { prefetchBusy=false; }
+    })();
   }
   const tabs = () => [
     {...row('home',tr('Übersicht','Home')), icon:'square.grid.2x2'},
@@ -110,8 +124,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         service:serviceFilter,calendar:data});
       timeline.language=language;
       // Nonblocking adjacent-week prefetch; never hold the SwiftUI timeline for it.
-      prefetchCalendar(shiftDay(weekStart,-7));
-      prefetchCalendar(shiftDay(weekStart,7));
+      prefetchCalendarNeighbors(weekStart);
       return render(view(tr('Kalender','Calendar'),{subtitle:dateLabel(date,locale,{weekday:'long',day:'numeric',month:'long'}),
         timeline,
         week:days,message:date===shiftDay(weekStart,6)?tr('Sonntag · Online-Buchung geschlossen','Sunday · Online booking closed'):'',
