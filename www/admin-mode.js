@@ -30,32 +30,39 @@
 
   window.APlusAdminMode = {
     resolve,
-    async mount(root, token, role, logout) {
+    async mount(root, token, role, logout, {forceWeb=false}={}) {
       await this.unmount();
-      const native = Boolean(window.Capacitor?.isNativePlatform?.());
-      let bridgeReady = false;
+      const native = Boolean(window.Capacitor?.isNativePlatform?.()) && !forceWeb;
       if (native) {
-        // Capacitor custom Swift/Java plugins require explicit JS registration.
-        // Older installed builds without this bundle retain the legacy UI.
         try {
           await import('./mobile/native-staff-bridge.js');
-          bridgeReady = true;
-        } catch (failure) {
-          console.warn('Native staff bridge bootstrap unavailable', failure?.name);
+        } catch (cause) {
+          const error = new Error('Die Native-Bridge konnte nicht geladen werden.');
+          error.code = 'NATIVE_BRIDGE_IMPORT';
+          throw error;
         }
-      }
-      const renderer = window.APlusNativeStaff || window.Capacitor?.Plugins?.NativeStaff;
-      if (native && bridgeReady && !renderer) {
-        throw new Error('Der native Mitarbeiterbereich konnte nicht initialisiert werden. Bitte App-Version prüfen.');
-      }
-      if (native && renderer) {
-        const {mountNativeWorkspace} = await import('./mobile/native-workspace.mjs');
-        workspace = await mountNativeWorkspace({token, identity:role, origin:window.APlusRuntime.origin, logout,
-          initialPatient:pendingPatient, initialCalendar:pendingCalendar});
+        const renderer = window.APlusNativeStaff || window.Capacitor?.Plugins?.NativeStaff;
+        if (!renderer) {
+          const error = new Error('Die NativeStaff-Schnittstelle wurde nicht registriert.');
+          error.code = 'NATIVE_PLUGIN_NOT_REGISTERED';
+          throw error;
+        }
+        try {
+          const {mountNativeWorkspace} = await import('./mobile/native-workspace.mjs');
+          workspace = await mountNativeWorkspace({token, identity:role, origin:window.APlusRuntime.origin, logout,
+            initialPatient:pendingPatient, initialCalendar:pendingCalendar});
+        } catch (cause) {
+          const error = new Error(cause?.message || 'Native Ansicht konnte nicht geöffnet werden.');
+          error.code = String(cause?.code || 'NATIVE_SCREEN_OPEN_FAILED').slice(0,64);
+          error.status = cause?.status;
+          throw error;
+        }
         pendingPatient = null;
         pendingCalendar = false;
         return;
       }
+      // Explicit, user-selected temporary Web management when a device fails
+      // to open Native. Never pretend this fallback is SwiftUI.
       const {mountWorkspace} = await import('./mobile/workspace.mjs');
       workspace = mountWorkspace({root, token, identity: role, origin: window.APlusRuntime.origin, logout});
       if (pendingPatient) {
