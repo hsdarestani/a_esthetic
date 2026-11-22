@@ -54,6 +54,10 @@ assert.ok(current.tabs.some(tab=>tab.label==='Calendar'));
 await click('patients');
 await click('patient:23');
 assert.equal(current.title,'Demo patient');
+await click('note');
+assert.equal(current.title,'New note');
+assert.equal(current.fields.find(x=>x.id==='note').kind,'multiline');
+assert.equal(current.fields.find(x=>x.id==='title').kind,'text');
 await native.destroy();
 assert.ok(closed);
 native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'doctor',name:'Demo Doctor'},
