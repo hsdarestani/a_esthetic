@@ -65,29 +65,28 @@ struct StaffCalendarTimeline: View {
                 header
                 weekStrip
                 filters
-                HStack(spacing: 0) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 12))
-                        .foregroundColor(muted)
-                        .frame(width: rulerWidth, height: 39)
-                    ForEach(Array(columns.enumerated()), id: \.offset) { _, column in
-                        Text(columnHeading(column))
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.primary)
-                            .lineLimit(2)
-                            .frame(width: width, height: 39)
-                            .background(background)
-                            .overlay(alignment: .trailing) { Rectangle().fill(stroke).frame(width: 0.5) }
-                    }
-                }
-                .frame(width: rulerWidth + CGFloat(columns.count)*width, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(background)
-
-                // Vertical scroll is independent of the horizontal week/provider
-                // column scroll. SwiftUI preserves its position during date swipes.
+                // The column headings and the time grid share one horizontal
+                // scroll container; they never drift apart on weekly swipes.
                 ScrollView(.horizontal, showsIndicators: mode != "day") {
-                    ScrollViewReader { proxy in
+                    VStack(spacing: 0) {
+                        HStack(spacing: 0) {
+                            Image(systemName: "clock")
+                                .font(.system(size: 12))
+                                .foregroundColor(muted)
+                                .frame(width: rulerWidth, height: 39)
+                            ForEach(Array(columns.enumerated()), id: \.offset) { _, column in
+                                Text(columnHeading(column))
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(2)
+                                    .frame(width: width, height: 39)
+                                    .background(background)
+                                    .overlay(alignment: .trailing) { Rectangle().fill(stroke).frame(width: 0.5) }
+                            }
+                        }
+                        .frame(width: rulerWidth + CGFloat(columns.count)*width, alignment: .leading)
+                        .background(background)
+                        ScrollViewReader { proxy in
                         ScrollView(.vertical, showsIndicators: true) {
                             HStack(alignment: .top, spacing: 0) {
                                 ruler
@@ -113,6 +112,7 @@ struct StaffCalendarTimeline: View {
                                 }
                             }
                         )
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
