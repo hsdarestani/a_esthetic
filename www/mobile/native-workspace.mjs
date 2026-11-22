@@ -143,6 +143,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     }
     if(name==='billing-settings'&&admin){
       const response=await office('invoice-settings/');
+      officeSettingsRevision=response.revision;
       const data=response.settings, fields=[
         value('company_name',tr('Rechnungsaussteller','Invoice issuer'),data.company_name),
         value('street',tr('Straße','Street'),data.street),value('postal_code',tr('PLZ','Postal code'),data.postal_code),
@@ -235,7 +236,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       value('end_2',tr('Zweites Ende (optional)','Second end (optional)'),ranges[1]?.end||''),
     ],actions:[row('load-availability',tr('Behandler / Datum laden','Load provider / date')),row('save-availability',tr('Speichern','Save'))]}));
   }
-  let billingUser, billingVisits, reviewPair, intakeRecord, invoiceLines=[], invoiceMeta={}, editingInvoice=null, selectedInvoice=null, tariffCatalog=null;
+  let billingUser, billingVisits, reviewPair, intakeRecord, invoiceLines=[], invoiceMeta={}, editingInvoice=null, selectedInvoice=null, tariffCatalog=null, officeSettingsRevision=null;
   async function showBilling(id) {
     const r=await office('customers/?q='+encodeURIComponent(search));
     billingUser=r.items.find(u=>u.id===id);
@@ -371,9 +372,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id==='search'||id==='billing-query'){search=fields.query||'';return await screen(id==='search'?'patients':'billing-search',{push:false});}
       if(admin&&id==='save-billing-settings'){
         // Optimistic revision protects concurrent edits made in the original Office admin.
-        const {revision}=await office('invoice-settings/');
         await office('invoice-settings/',{...fields,next_sequence:Number(fields.next_sequence),
-          revision,confirmed_financial_update:true});
+          revision:officeSettingsRevision,confirmed_financial_update:true});
         return await screen('billing-settings',{push:false});
       }
       if(id.startsWith('patient:'))return await showPatient(Number(id.split(':')[1]));
