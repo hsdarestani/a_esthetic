@@ -98,7 +98,16 @@ struct StaffNativeScreen: View {
                         }.buttonStyle(.plain)
                     }
                 }.padding(.horizontal, 18).padding(.bottom, 24)
-            }
+            }.simultaneousGesture(
+                DragGesture(minimumDistance: 25).onEnded { swipe in
+                    guard !items("week").isEmpty else { return }
+                    let dx = swipe.translation.width
+                    let dy = swipe.translation.height
+                    if abs(dx) > 60 && abs(dx) > abs(dy) * 1.4 {
+                        action(dx < 0 ? "day-next" : "day-prev")
+                    }
+                }
+            )
             HStack {
                 ForEach(Array(items("tabs").enumerated()), id: \.offset) { _, tab in
                     Button { action(text(tab, "id")) } label: {
