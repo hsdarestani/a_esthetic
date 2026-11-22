@@ -1,6 +1,6 @@
 # A+ Esthetic mobile overhaul
 
-This branch requires the matching Book feature branch. Both the browser preview and the optional test packages use synthetic records. The native preview application ID ends in `.preview` and connects to loopback. Its build does not require Apple signing, Google sign-in credentials or the existing app's signing key.
+This branch requires the matching Book feature branch. Both the browser preview and the optional test packages use synthetic records. The native preview application ID ends in `.preview`; local QA uses loopback and the final acceptance build requires independent HTTPS staging. Its build does not require Apple signing, Google sign-in credentials or the existing app's signing key.
 
 ## Run the isolated preview
 
@@ -40,7 +40,7 @@ For browser regression, install Playwright and Chromium, use a clean preview sta
 | Calendar | Day, week, provider and service views, gestures, cached date changes, stable scroll, appointment create/edit/cancel, blocks, notes and availability | Real-device rendering and gesture measurements, source-managed block controls |
 | Clinic identity | Existing Book patient IDs and A+ member identities remain separate | Patient creation and identity review continue in Book desktop |
 | Points and packages | Point corrections with audit, lookups, package status and cancellation credit reconciliation | Package assignment and entitlement administration continue in existing tools |
-| Production | Current production deploy workflows are confined to their existing triggers. The preview workflow builds only this feature PR. | Independent approval and rollout rehearsal |
+| Production | Current production deploy workflows are confined to their existing triggers. Final acceptance workflow is manual and gated on staging and completed QA. | Independent approval and rollout rehearsal |
 
 ## Compatibility and release gate
 
@@ -51,6 +51,9 @@ Before a real release, verify the live ingress allows the new endpoints and orig
 
 ## Preview artifact gate
 
-The isolated preview workflow deliberately targets the loopback synthetic fixture. Its artifacts are local QA packages only, not Appetize acceptance builds. The Android preview must run the existing native camera/SDK configuration after generating Capacitor, since the barcode dependency requires Android API 26. Do not distribute older standalone artifacts as acceptance previews: the standalone build workflow uses the normal app configuration and does not prove an independent staging backend or absence of production endpoints.
+The local synthetic fixture is for internal QA only. The dedicated acceptance workflow requires two independent HTTPS staging origins and explicit completion of all QA gates; it does not package on PR updates. The Android preview must run the existing native camera/SDK configuration after generating Capacitor, since the barcode dependency requires Android API 26. Do not distribute older standalone artifacts as acceptance previews: the standalone build workflow uses the normal app configuration and does not prove an independent staging backend or absence of production endpoints.
 
 A remotely reachable, isolated two-database staging environment with synthetic users and outbound communication/payment restrictions remains mandatory before any Appetize acceptance build is produced. Do not replace that requirement with a production URL or an unsigned iOS device IPA.
+
+
+See [current staging and release gates](native-office-release.md) for Issue #82 implementation, acceptance requirements and the future rollback plan.
