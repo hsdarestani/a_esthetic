@@ -82,6 +82,16 @@ jobs:
           PY
           node --check www/mobile/native-workspace.mjs
           node scripts/test_native_staff_controller.mjs
+          # Verify native bootstrap keeps the SwiftUI workspace visible during
+          # an initial API outage instead of returning to the login reconnect.
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const native = fs.readFileSync('www/mobile/native-workspace.mjs', 'utf8');
+          if (!native.includes("id==='retry-initial'") || !native.includes('if(initialPatient)await showPatient(initialPatient)')) {
+            throw new Error('Native startup must allow retry without dismissing the screen');
+          }
+          console.log('PASS: native startup recovery path present');
+          NODE
           node - <<'NODE'
           const fs = require('node:fs');
           const src = fs.readFileSync('www/mobile/workspace.mjs', 'utf8');
