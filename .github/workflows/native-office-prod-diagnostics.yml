@@ -28,4 +28,24 @@ jobs:
             journalctl -u aesthetic-native-app-43ff902d1d.service \
               --since '2026-11-22 21:00:00 UTC' --until '2026-11-22 21:03:00 UTC' \
               --no-pager -o cat | tail -180 | grep -E 'Traceback|^  File |Error:|Exception:|Office|Template|Attribute|Programming|Operational|NoReverse|Disallowed|KeyError|TypeError|Invalid|NameError|RuntimeError|^During' | tail -85 || true
+            echo 'Reproduce anonymous Office GET from candidate Django, read-only, without patient records'
+            cd /opt/a-esthetic-mobile/releases/43ff902d1dabd9326626afc4091f1f356b707c13
+            set -a
+            . /opt/a-esthetic-mobile/mobile.env
+            set +a
+            export DJANGO_SETTINGS_MODULE=production_native_settings
+            export PYTHONPATH="$PWD"
+            /opt/a-esthetic-mobile/venv/bin/python - <<'PY'
+            import django,traceback
+            from django.test import Client
+            django.setup()
+            try:
+                r=Client(raise_request_exception=True).get('/office/',HTTP_HOST='office.a-esthetic.de',secure=True)
+                print('Anonymous GET /office/ HTTP',r.status_code)
+            except Exception as err:
+                print('Candidate Office error class:',type(err).__name__)
+                print('Candidate Office error message:',str(err)[:400])
+                print('Safe traceback (no patient identifiers):')
+                print(''.join(traceback.format_exception(type(err),err,err.__traceback__,limit=8))[:2200])
+            PY
             echo 'Read-only candidate diagnostic complete'
