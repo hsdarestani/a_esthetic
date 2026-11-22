@@ -339,6 +339,12 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         return await screen(id);
       }
       if(id==='week-next'||id==='week-prev'){date=shiftDay(date,id==='week-next'?7:-7);return await screen('calendar',{push:false});}
+      if(id==='day-next'||id==='day-prev'){
+        // Swipe the appointment body by a day, or by a week in weekly mode.
+        const delta=calendarMode==='week'?7:1;
+        date=shiftDay(date,id==='day-next'?delta:-delta);
+        return await screen('calendar',{push:false});
+      }
       if(id.startsWith('date:')){date=id.slice(5);return await screen('calendar',{push:false});}
       if(id==='search'||id==='billing-query'){search=fields.query||'';return await screen(id==='search'?'patients':'billing-search',{push:false});}
       if(id.startsWith('patient:'))return await showPatient(Number(id.split(':')[1]));
