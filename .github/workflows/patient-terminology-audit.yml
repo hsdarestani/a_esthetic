@@ -33,4 +33,6 @@ jobs:
                           total+=1
                           print(f'{path}:{n}: {line.strip()[:200]}')
           print(f'REMAINING_KUNDE_LINES={total}')
+          if total:
+              raise SystemExit('Untranslated Kunde/Kunden terminology found in patient-facing UI sources')
           PY
