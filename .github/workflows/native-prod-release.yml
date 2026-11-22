@@ -1,4 +1,5 @@
 name: A+ Esthetic approved production native blue-green rollout
+# v2: candidate uses venv Pillow, never incompatible legacy /vendor native extensions.
 on:
   push:
     branches: [feature/mobile-unified-overhaul]
