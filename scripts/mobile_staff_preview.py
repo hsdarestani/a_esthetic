@@ -132,6 +132,12 @@ def book_seed():
     names = [('Nora','Berg','customer'), ('Lea','Sommer','lea'), ('Jonas','Feld','jonas'), ('Mila','Stein','mila')]
     people = [Customer.objects.create(first_name=f,last_name=l,email=e+'@example.test') for f,l,e in names]
     date = timezone.localdate()
+    historical = timezone.make_aware(datetime.combine(date - timedelta(days=7), time(11)))
+    Appointment.objects.create(
+        customer=people[0], staff=specialist, service=visit, starts_at=historical,
+        ends_at=historical+timedelta(minutes=visit.duration_minutes),
+        status='completed', source='admin',
+    )
     for offset in range(5):
         day = date + timedelta(days=offset)
         start = timezone.make_aware(datetime.combine(day,time(10)))

@@ -1,0 +1,45 @@
+name: Isolated Office + Book end-to-end regression (no build)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'platform_app/**'
+      - 'p0_app/**'
+      - 'scripts/mobile_staff_preview.py'
+      - 'scripts/test_native_office_preview.py'
+      - '.github/workflows/office-book-isolated-qa.yml'
+permissions:
+  contents: read
+jobs:
+  office-book:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      - uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/book
+          ref: aac43178a9a6508a07fefc6e93552f6bcc728973
+          path: book
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare independent local test environments
+        run: |
+          python -m venv app-venv
+          python -m venv book-venv
+          app-venv/bin/pip install -r app/requirements.txt
+          book-venv/bin/pip install -r book/requirements.txt
+          test -x "$(pg_config --bindir)/initdb" || (sudo apt-get update && sudo apt-get install -y postgresql)
+      - name: Exercise both real APIs on synthetic PostgreSQL clusters
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/office-qa"
+          app-venv/bin/python app/scripts/mobile_staff_preview.py --book book \
+            --app-python app-venv/bin/python --book-python book-venv/bin/python \
+            --pg-bin "$(pg_config --bindir)" --state "$RUNNER_TEMP/office-qa" > "$RUNNER_TEMP/office-qa/preview.log" 2>&1 &
+          PREVIEW_PID=$!
+          trap 'kill -TERM "$PREVIEW_PID" 2>/dev/null || true' EXIT
+          app-venv/bin/python app/scripts/test_native_office_preview.py
