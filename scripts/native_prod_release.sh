@@ -24,7 +24,8 @@ revert() {
   systemctl stop "$B_UNIT" 2>/dev/null || true
   echo 'DB backups retained. Additive migrations are intentionally not reversed.'
 }
-trap revert ERR
+RELEASE_SUCCESS=0
+trap 'if [[ "$RELEASE_SUCCESS" != "1" ]]; then revert; fi' EXIT
 for p in /tmp/aesthetic-native-app.tgz /tmp/aesthetic-native-book.tgz "$A_ROOT/db.sqlite3" "$A_ROOT/mobile.env" /etc/aesthetic-book.env "$A_CONF" "$O_CONF" "$B_CONF"; do
   [[ -f "$p" ]] || { echo "Required file missing: $p"; exit 1; }
 done
@@ -162,14 +163,19 @@ PY
 nginx -t
 systemctl reload nginx
 for url in https://book.a-esthetic.de/ https://office.a-esthetic.de/office/ https://app.a-esthetic.de/api/mobile/staff/session/; do
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 12 "$url" || true)
-  [[ "$code" =~ ^(200|301|302|303|401|403|405)$ ]] || { echo "Public smoke failed $url HTTP=$code"; exit 1; }
+  ok=0
+  for try in $(seq 1 10); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 12 "$url" || true)
+    if [[ "$code" =~ ^(200|301|302|303|401|403|405)$ ]]; then ok=1; break; fi
+    sleep 2
+  done
+  [[ "$ok" == 1 ]] || { echo "Public smoke failed $url HTTP=$code"; exit 1; }
   echo "PUBLIC_SMOKE_OK $url HTTP=$code"
 done
 systemctl is-active --quiet a-esthetic-mobile
 systemctl is-active --quiet aesthetic-book
 systemctl is-active --quiet "$A_UNIT"
 systemctl is-active --quiet "$B_UNIT"
-trap - ERR
+RELEASE_SUCCESS=1
 echo "RELEASE_OK app=$A_SHA book=$B_SHA backups=$BACK"
 echo 'Original Book checkout, real patient files, and original worker services preserved.'
