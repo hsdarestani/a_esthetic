@@ -3,9 +3,6 @@ from django.conf import settings
 from django.db import migrations, models
 import django.db.models.deletion
 
-class Migration(migrations.Migration):
-    dependencies = [('platform_app','0005_goae_draft'),
-                    migrations.swappable_dependency(settings.AUTH_USER_MODEL)]
 def ensure_live_office_schema(apps, schema_editor):
     """Respect existing production fields/tables from older manual app releases."""
     from platform_app.models import UserProfile, OfficeIntakeLock, OfficeIntakeSubmission
@@ -23,6 +20,10 @@ def ensure_live_office_schema(apps, schema_editor):
         schema_editor.create_model(OfficeIntakeSubmission)
 
 
+
+class Migration(migrations.Migration):
+    dependencies = [('platform_app','0005_goae_draft'),
+                    migrations.swappable_dependency(settings.AUTH_USER_MODEL)]
     state_operations = [
         migrations.CreateModel(name='OfficeIntakeLock',fields=[
             ('id',models.BigAutoField(auto_created=True,primary_key=True,serialize=False,verbose_name='ID')),
