@@ -11,7 +11,7 @@ globalThis.Capacitor={Plugins:{NativeStaff:{
   async dismiss(){closed=true;},
   async addListener(name,fn){assert.equal(name,'action');onAction=fn;return{remove(){onAction=null;}};},
 }}};
-let lastCalendar, lastFinancialUpdate, officeRevision='v1';
+let lastCalendar, lastFinancialUpdate, officeRevision='v1', sourceEditEnabled=false;
 const officeSettings={company_name:'A+ Esthetic Demo',street:'Testweg 1',postal_code:'60313',city:'Frankfurt',
   email:'office@example.test',phone:'0691',tax_number:'',vat_id:'',bank_name:'',iban:'',bic:'',
   invoice_prefix:'RE',next_sequence:1};
@@ -29,7 +29,7 @@ globalThis.fetch=async(url,opts)=>{
     result={
       appointments:[{id:44,customer_id:23,customer_name:'Synced patient',service_name:'Consult',staff_name:'Demo clinician',staff_id:1,service_id:1,
         date:'2026-11-23',start:'09:00',end:'09:30',
-        start_at:'2026-11-23T09:00:00+01:00',end_at:'2026-11-23T09:30:00+01:00',source_managed:true,status:'confirmed'}],
+        start_at:'2026-11-23T09:00:00+01:00',end_at:'2026-11-23T09:30:00+01:00',source_managed:true,source_editable:sourceEditEnabled,status:'confirmed'}],
       blocks:[
         {id:90,staff_id:1,editable:false,source_managed:true,date:'2026-11-23',start:'12:00',end:'13:00',
           kind:'block',text:'Synced SimplyBook note',start_at:'2026-11-23T12:00:00+01:00',end_at:'2026-11-23T13:00:00+01:00'},
@@ -154,6 +154,17 @@ assert.equal(current.fields.find(x=>x.id==='note').kind,'multiline');
 assert.equal(current.fields.find(x=>x.id==='title').kind,'text');
 await native.destroy();
 assert.ok(closed);
+sourceEditEnabled=true;
+native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'admin',name:'Demo Admin'},
+  origin:'https://example.test',logout:()=>{}});
+await click('calendar');
+await click('appointment:44');
+assert.ok(current.actions.some(action=>action.id==='edit-appointment'),'server-enabled source booking can be rescheduled by admin');
+assert.ok(current.actions.some(action=>action.id==='cancel-appointment'),'server-enabled source booking can be cancelled by admin');
+await click('edit-appointment');
+assert.equal(current.fields.find(field=>field.id==='staff_id').options.length,1,'source provider kept fixed');
+assert.equal(current.fields.find(field=>field.id==='service_id').options.length,1,'source treatment kept fixed');
+await native.destroy();
 native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'doctor',name:'Demo Doctor'},
   origin:'https://example.test',logout:()=>{}});
 assert.ok(!current.tabs.some(t=>t.id==='office'));
