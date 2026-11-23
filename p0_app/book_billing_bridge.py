@@ -22,6 +22,8 @@ from .billing_admin_views import (
 from platform_app.models import Invoice
 from platform_app.office_views import _invoice_pdf_bytes
 from platform_app.models import InvoiceSettings
+from platform_app.goae_billing import calculate_goae_lines
+from platform_app.goae_tariff import catalog_payload, TREATMENTS
 
 
 def _verified(request):
@@ -48,6 +50,24 @@ def book_billing(request, operation, item_id=None):
         ("settings", "POST"): billing_settings,
         ("invoices", "POST"): billing_invoices,
     }
+    if operation == "goae" and request.method == "GET":
+        return JsonResponse({"ok": True, "catalog": catalog_payload(),
+                             "treatments": TREATMENTS,
+                             "review_required": True, "issuance_allowed": False})
+    if operation == "quote" and request.method == "POST":
+        try:
+            data = json.loads(request.body.decode("utf-8"))
+            lines = calculate_goae_lines(data)
+        except (ValueError, UnicodeError, json.JSONDecodeError, TypeError) as exc:
+            return JsonResponse({"ok": False, "error": "invalid_goae",
+                                 "message": str(exc)[:200]}, status=400)
+        return JsonResponse({"ok": True,
+            "subtotal_cents": sum(item["net_cents"] for item in lines),
+            "tax_cents": sum(item["tax_cents"] for item in lines),
+            "total_cents": sum(item["gross_cents"] for item in lines),
+            "items": [{"goae_number": item["goae_number"], "description": item["description"],
+                       "net_cents": item["net_cents"], "tax_cents": item["tax_cents"],
+                       "gross_cents": item["gross_cents"]} for item in lines]})
     handler = routes.get((operation, request.method))
     if handler:
         return handler(request)
