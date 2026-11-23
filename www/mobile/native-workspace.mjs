@@ -249,14 +249,20 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   let currentBlock, currentService, pendingUpload;
   async function blockForm(edit){
     catalog=catalog||await book('catalog/');
-    return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Sperrzeit / Notiz','Block / note'),{fields:[
-      value('staff_id',tr('Behandler','Provider'),edit?currentBlock.staff_id:catalog.providers[0]?.id,optionFor(catalog.providers)),
-      value('date',tr('Datum','Date'),edit?currentBlock.date:date),
-      value('kind',tr('Art','Type'),edit?currentBlock.kind:'block',[option('block',tr('Sperrzeit','Blocked time')),option('note',tr('Notiz','Note'))]),
-      value('start',tr('Beginn','Start'),edit?currentBlock.start:'12:00'),
-      value('end',tr('Ende','End'),edit?currentBlock.end:'13:00'),
-      value('text',tr('Text','Text'),edit?currentBlock.text:''),
-    ],actions:[row(edit?'save-block-edit':'save-block-new',tr('Speichern','Save')),...(edit?[row('remove-block',tr('Eintrag löschen','Delete entry'))]:[])]}));
+    return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Sperrzeit / Notiz','Block / note'),{
+      message:edit&&currentBlock.source_managed
+        ?tr('Dieser Eintrag stammt aus SimplyBook. Nach dem Speichern wird die lokale Book-Version verwaltet und beim nächsten Import nicht überschrieben. SimplyBook selbst wird nicht geändert.',
+          'This entry was imported from SimplyBook. Saving makes the local Book entry authoritative; the next import will not overwrite it. SimplyBook itself is not changed.')
+        :'',
+      fields:[
+        value('staff_id',tr('Behandler','Provider'),edit?currentBlock.staff_id:catalog.providers[0]?.id,optionFor(catalog.providers)),
+        value('date',tr('Startdatum','Start date'),edit?currentBlock.date:date),
+        value('end_date',tr('Enddatum','End date'),edit?(currentBlock.end_at||'').slice(0,10)||currentBlock.date:date),
+        value('kind',tr('Art','Type'),edit?currentBlock.kind:'block',[option('block',tr('Sperrzeit','Blocked time')),option('note',tr('Notiz','Note'))]),
+        value('start',tr('Beginn','Start'),edit?currentBlock.start:'12:00'),
+        value('end',tr('Ende','End'),edit?currentBlock.end:'13:00'),
+        value('text',tr('Text','Text'),edit?currentBlock.text:''),
+      ],actions:[row(edit?'save-block-edit':'save-block-new',tr('Speichern','Save')),...(edit?[row('remove-block',tr('Eintrag löschen','Delete entry'))]:[])]}));
   }
   async function availabilityForm(id){
     catalog=await book('catalog/');
@@ -447,9 +453,10 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id.startsWith('block:')){currentBlock=blockById.get(Number(id.split(':')[1]));if(currentBlock?.editable)return await blockForm(true);return;}
       if(['save-block-new','save-block-edit','remove-block'].includes(id)){
         if(id==='remove-block'){
-          await command('book/block/',{operation:'delete',staff_id:currentBlock.staff_id,id:currentBlock.id});
+          await command('book/block/',{operation:'delete',staff_id:currentBlock.staff_id,id:currentBlock.id,revision:currentBlock.revision});
         } else {
-          await command('book/block/',{...fields,staff_id:Number(fields.staff_id),operation:id==='save-block-new'?'create':'update',...(id==='save-block-edit'?{id:currentBlock.id}:{})});
+          await command('book/block/',{...fields,staff_id:Number(fields.staff_id),operation:id==='save-block-new'?'create':'update',...(id==='save-block-edit'?{id:currentBlock.id,revision:currentBlock.revision}:{})});
+          date=fields.date||date;
         }
         calendarCache.clear();
         return await screen('calendar');
