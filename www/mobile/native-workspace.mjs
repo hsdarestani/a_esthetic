@@ -20,6 +20,8 @@ const row = (id,label,detail='') => ({id,label,detail});
 const option = (value,label) => ({value:String(value),label:String(label)});
 const dateLabel = (date, locale, options) => new Date(date+'T12:00:00Z').toLocaleDateString(locale,{...options,timeZone:'UTC'});
 const optionFor = (list) => list.map(x=>option(x.id,x.name));
+const sourceOfBlock = block => block?.source_managed || /\u2063[\u200b\u200c]+\u2063/.test(block?.text||'')
+  ? 'SimplyBook' : 'Book';
 const uuid = () => globalThis.crypto.randomUUID();
 
 export async function mountNativeWorkspace({token, identity, origin, logout, initialPatient, initialCalendar}) {
@@ -134,7 +136,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           value('service_filter',tr('Behandlung','Service'),serviceFilter,[option('all',tr('Alle','All')),...optionFor(catalog.services.filter(x=>x.active))]),
         ],
         rows:[...found.map(a=>row('appointment:'+a.id,(calendarMode==='week'?a.date+' · ':'')+a.start+' · '+a.customer_name,a.service_name+' · '+a.staff_name)),
-          ...blocked.map(b=>row(b.editable?'block:'+b.id:'',b.start+' · '+(b.text||tr('Gesperrt','Blocked')),b.end||''))],
+          ...blocked.map(b=>row((b.editable?'block:':'block-info:')+b.id,b.start+' · '+(b.text||tr('Gesperrt','Blocked')).split('\u2063')[0],b.end||''))],
         actions:[row('apply-calendar-filter',tr('Ansicht aktualisieren','Apply filters')),
           row('new-appointment',tr('Termin hinzufügen','Add appointment')),row('new-block',tr('Sperrzeit / Notiz','Block / note')),
           row('availability',tr('Arbeitszeit','Working hours'))]}));
@@ -224,10 +226,19 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   async function showAppointment(id) {
     activeTab='calendar';
     appointment=await getAppointment(id);stack.push('appointment:'+id);
-    return render(view(appointment.customer_name,{subtitle:appointment.service_name,rows:[
-      row('',appointment.date+' · '+appointment.start+' – '+appointment.end, appointment.staff_name),
-      row('',tr('Status','Status'),appointment.status),row('',tr('Notiz','Note'),appointment.notes||''),
-    ],actions:appointment.source_managed?[]:[row('edit-appointment',tr('Bearbeiten','Edit')),row('cancel-appointment',tr('Absagen','Cancel'))]}));
+    return render(view(appointment.customer_name,{
+      subtitle:appointment.service_name,
+      message:appointment.source_managed
+        ? tr('Dieser Termin wird aus SimplyBook synchronisiert. Damit die Kalender übereinstimmen, ändere oder storniere ihn bitte direkt in der SimplyBook-Verwaltung. Die Änderung wird anschließend hier übernommen.',
+             'This appointment is synced from SimplyBook. To keep both calendars consistent, change or cancel it in SimplyBook administration. The update will sync back here.')
+        : '',
+      rows:[
+        row('',appointment.date+' · '+appointment.start+' – '+appointment.end, appointment.staff_name),
+        row('',tr('Status','Status'),appointment.status),row('',tr('Notiz','Note'),appointment.notes||''),
+      ],actions:appointment.source_managed
+        ? [row('calendar',tr('Zurück zum Kalender','Back to calendar'))]
+        : [row('edit-appointment',tr('Bearbeiten','Edit')),row('cancel-appointment',tr('Absagen','Cancel'))],
+    }));
   }
   async function appendForm(edit=false, chosenPatient=null, slot={}) {
     catalog=await book('catalog/');
@@ -444,7 +455,25 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         return await screen('calendar',{push:false});
       }
       if(id==='new-block')return await blockForm(false);
-      if(id.startsWith('block:')){currentBlock=blockById.get(Number(id.split(':')[1]));if(currentBlock?.editable)return await blockForm(true);return;}
+      if(id.startsWith('block:')||id.startsWith('block-info:')){
+        currentBlock=blockById.get(Number(id.split(':').at(-1)));
+        if(!currentBlock)return await screen('calendar',{push:false});
+        if(currentBlock.editable && id.startsWith('block:'))return await blockForm(true);
+        const owner=sourceOfBlock(currentBlock);
+        const viaSimplyBook=owner==='SimplyBook';
+        return await render(view(tr('Kalendereintrag','Calendar entry'),{
+          subtitle:currentBlock.date+' · '+currentBlock.start+' – '+currentBlock.end,
+          message:viaSimplyBook
+            ?tr('Dieser Eintrag wird aus SimplyBook synchronisiert und kann deshalb nicht hier geändert werden. Bitte Sperrzeit oder Notiz direkt in der SimplyBook-Verwaltung bearbeiten. Die Änderung erscheint nach der nächsten Synchronisierung.',
+                'This entry is synced from SimplyBook and cannot be edited here. Change the blocked time or note in SimplyBook administration. It will appear after the next sync.')
+            :tr('Dieser Eintrag wird in der Book-Verwaltung verwaltet und ist in der App schreibgeschützt. Bitte Änderungen dort vornehmen.',
+                'This entry is managed in Book administration and is read-only in the app. Make changes there.'),
+          rows:[row('',tr('Verwaltet in','Managed in'),owner),
+            row('',tr('Eintrag','Entry'),(currentBlock.text||'').split('\u2063')[0]),
+            row('',tr('Behandler','Provider'),(catalog?.providers||[]).find(p=>p.id===currentBlock.staff_id)?.name||'')],
+          actions:[row('calendar',tr('Zurück zum Kalender','Back to calendar'))],
+        }));
+      }
       if(['save-block-new','save-block-edit','remove-block'].includes(id)){
         if(id==='remove-block'){
           await command('book/block/',{operation:'delete',staff_id:currentBlock.staff_id,id:currentBlock.id});
