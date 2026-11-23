@@ -22,6 +22,8 @@ const dateLabel = (date, locale, options) => new Date(date+'T12:00:00Z').toLocal
 const optionFor = (list) => list.map(x=>option(x.id,x.name));
 const sourceOfBlock = block => block?.source_managed || /\u2063[\u200b\u200c]+\u2063/.test(block?.text||'')
   ? 'SimplyBook' : 'Book';
+const isSyncedProvider = p => Boolean(p?.source_managed || String(p?.name||'').startsWith('A+ Esthetic (SimplyBook #'));
+const isSyncedService = s => Boolean(s?.source_managed || String(s?.slug||'').startsWith('simplybook-event-'));
 const uuid = () => globalThis.crypto.randomUUID();
 
 export async function mountNativeWorkspace({token, identity, origin, logout, initialPatient, initialCalendar}) {
@@ -156,7 +158,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     if(name==='services'&&admin){
       catalog=await book('catalog/');
       return render(view(tr('Behandlungen','Treatments'),{rows:catalog.services.map(s=>row('service:'+s.id,s.name,
-        String(s.duration_minutes)+' min · '+String(s.buffer_minutes)+' min '+tr('Puffer','buffer')))}));
+        String(s.duration_minutes)+' min · '+String(s.buffer_minutes)+' min '+tr('Puffer','buffer')+
+        (isSyncedService(s)?' · SimplyBook':'')))}));
     }
     if(name==='office' && admin){
       return render(view('Office',{rows:[
@@ -245,10 +248,12 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     const r=await book('patients/?q='+encodeURIComponent(search));
     const options=r.items.map(x=>option(x.id,x.name));
     if(chosenPatient&&!options.some(x=>x.value===String(chosenPatient.id)))options.unshift(option(chosenPatient.id,chosenPatient.name));
+    const providersForBooking=catalog.providers.filter(p=>!isSyncedProvider(p));
+    const servicesForBooking=catalog.services.filter(s=>s.active&&!isSyncedService(s));
     const fields=[
       value('customer_id',tr('Patient','Patient'),edit?appointment.customer_id:chosenPatient?.id||options[0]?.value,options),
-      value('staff_id',tr('Behandler','Provider'),edit?appointment.staff_id:(slot.staff_id && slot.staff_id!=='all' ? slot.staff_id : catalog.providers[0]?.id),optionFor(catalog.providers)),
-      value('service_id',tr('Behandlung','Treatment'),edit?appointment.service_id:catalog.services[0]?.id,optionFor(catalog.services.filter(x=>x.active))),
+      value('staff_id',tr('Behandler','Provider'),edit?appointment.staff_id:(slot.staff_id && providersForBooking.some(p=>String(p.id)===String(slot.staff_id)) ? slot.staff_id : providersForBooking[0]?.id),optionFor(providersForBooking)),
+      value('service_id',tr('Behandlung','Treatment'),edit?appointment.service_id:servicesForBooking[0]?.id,optionFor(servicesForBooking)),
       value('date',tr('Datum (JJJJ-MM-TT)','Date (YYYY-MM-DD)'),edit?appointment.date:(slot.date||date)),
       value('start',tr('Beginn (HH:MM)','Start (HH:MM)'),edit?appointment.start:(slot.start||'10:00')),
       value('notes',tr('Notiz','Notes'),edit?appointment.notes:''),
@@ -261,7 +266,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   async function blockForm(edit){
     catalog=catalog||await book('catalog/');
     return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Sperrzeit / Notiz','Block / note'),{fields:[
-      value('staff_id',tr('Behandler','Provider'),edit?currentBlock.staff_id:catalog.providers[0]?.id,optionFor(catalog.providers)),
+      value('staff_id',tr('Behandler','Provider'),edit?currentBlock.staff_id:catalog.providers.find(p=>!isSyncedProvider(p))?.id,optionFor(catalog.providers.filter(p=>!isSyncedProvider(p)))),
       value('date',tr('Datum','Date'),edit?currentBlock.date:date),
       value('kind',tr('Art','Type'),edit?currentBlock.kind:'block',[option('block',tr('Sperrzeit','Blocked time')),option('note',tr('Notiz','Note'))]),
       value('start',tr('Beginn','Start'),edit?currentBlock.start:'12:00'),
@@ -276,6 +281,18 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     const data=await book('calendar/?start='+date+'&days=1');
     const current=data.availability.find(r=>r.staff_id===provider.id&&r.date===date);
     const ranges=current?.ranges||[];
+    if(isSyncedProvider(provider)){
+      return render(view(tr('Arbeitszeit – SimplyBook','Working hours – SimplyBook'),{
+        subtitle:provider.name+' · '+date,
+        message:tr('Diese Arbeitszeiten werden aus SimplyBook synchronisiert. Bitte direkt in der SimplyBook-Verwaltung ändern. Die Änderungen werden anschließend übernommen.',
+                   'These working hours are synced from SimplyBook. Change them in SimplyBook administration; they will sync here.'),
+        fields:[value('staff_id',tr('Behandler','Provider'),provider.id,optionFor(catalog.providers)),
+          value('date',tr('Datum','Date'),date)],
+        rows:ranges.map(r=>row('',r.start+' – '+r.end)),
+        actions:[row('load-availability',tr('Behandler / Datum laden','Load provider / date')),
+          row('calendar',tr('Zurück zum Kalender','Back to calendar'))],
+      }));
+    }
     return render(view(tr('Arbeitszeit','Working hours'),{subtitle:date,fields:[
       value('staff_id',tr('Behandler','Provider'),provider.id,optionFor(catalog.providers)),value('date',tr('Datum','Date'),date),
       value('operation',tr('Gültigkeit','Scope'),'daily',[option('daily',tr('Diesen Tag','This day')),option('weekly',tr('Wöchentlich','Weekly')),option('reset',tr('Tagesausnahme zurücksetzen','Reset override'))]),
@@ -488,6 +505,17 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id==='save-availability'){await command('book/availability/',{...fields,staff_id:Number(fields.staff_id),closed:fields.closed==='yes'});calendarCache.clear();date=fields.date;return await screen('calendar');}
       if(admin&&id.startsWith('service:')){
         currentService=catalog.services.find(s=>s.id===Number(id.split(':')[1]));
+        if(!currentService)return;
+        if(isSyncedService(currentService)){
+          return await render(view(currentService.name,{
+            message:tr('Diese Behandlung wird aus SimplyBook synchronisiert. Bitte Änderungen direkt in der SimplyBook-Verwaltung vornehmen. Die aktualisierten Daten werden anschließend hier angezeigt.',
+                       'This treatment is synced from SimplyBook. Edit it in SimplyBook administration; the updated data will appear here.'),
+            rows:[row('',tr('Verwaltet in','Managed in'),'SimplyBook'),
+              row('',tr('Dauer','Duration'),String(currentService.duration_minutes)+' min'),
+              row('',tr('Preis','Price'),currentService.price_label||'')],
+            actions:[row('services',tr('Zurück zu Behandlungen','Back to treatments'))],
+          }));
+        }
         const boolOptions=[option('yes',tr('Ja','Yes')),option('no',tr('Nein','No'))];
         return await render(view(currentService.name,{fields:[
           value('name',tr('Name','Name'),currentService.name),value('description',tr('Beschreibung','Description'),currentService.description),
