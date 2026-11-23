@@ -191,6 +191,27 @@ class OfficeIntakeReview(models.Model):
     reviewed_at = models.DateTimeField(null=True, blank=True)
 
 
+class OfficeIntakeSubmission(models.Model):
+    """Immutable public general Aufnahmebogen with private signature and Book sync receipt."""
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.PROTECT,
+                             related_name='office_intake_submissions')
+    identity = models.JSONField(default=dict)
+    answers = models.JSONField(default=dict)
+    signature_png = models.TextField()
+    consent_version = models.CharField(max_length=40, default='intake-2026-11')
+    STATUS = [('pending','Übertragung offen'),('linked','Zugeordnet'),
+              ('review','Identität prüfen'),('error','Übertragung fehlgeschlagen')]
+    sync_status = models.CharField(max_length=12,choices=STATUS,default='pending',db_index=True)
+    book_customer_id = models.PositiveBigIntegerField(null=True,blank=True)
+    book_record_id = models.CharField(max_length=36,blank=True)
+    created_at = models.DateTimeField(auto_now_add=True,db_index=True)
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Digitaler Aufnahmebogen'
+        verbose_name_plural = 'Digitale Aufnahmebögen'
+
+
 class Invoice(models.Model):
     book_appointment_public_id = models.UUIDField(null=True, blank=True, db_index=True)
     book_original_service_date = models.DateField(null=True, blank=True)
