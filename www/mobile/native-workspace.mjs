@@ -33,7 +33,6 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   const appointmentsById = new Map();
   const rememberAppointments = items => { for(const a of items||[]) appointmentsById.set(a.id,a); };
   let date = today(), search = '', calendarMode='day', providerFilter='all', serviceFilter='all', active = true, busy = false, listener, patient, catalog, appointment;
-  let patientSearchCursor = {query:null,page:0,items:[],hasMore:true};
   let activeTab = 'home';
   let current = {title:'A+ Esthetic',busy:true,tabs:[]};
   const blockById = new Map();
@@ -141,7 +140,9 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           row('availability',tr('Arbeitszeit','Working hours'))]}));
     }
     if(name==='patients'){
-      return await showPatientDirectory(true);
+      const r=await book('patients/?q='+encodeURIComponent(search));
+      return render(view(tr('Patienten','Patients'),{fields:[value('query',tr('Suchen','Search'),search)],
+        actions:[row('search',tr('Suchen','Search'))],rows:r.items.map(x=>row('patient:'+x.id,x.name,x.email||x.phone||''))}));
     }
     if(name==='settings'){
       return render(view(tr('Einstellungen','Settings'),{rows:[
@@ -198,64 +199,16 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     }
   }
 
-  async function showPatientDirectory(reset=false) {
-    const query=search.trim();
-    if(reset || patientSearchCursor.query!==query){
-      patientSearchCursor={query,page:0,items:[],hasMore:true};
-    }
-    if(patientSearchCursor.hasMore){
-      const next=patientSearchCursor.page+1;
-      const r=await book('patients/?q='+encodeURIComponent(query)+'&page='+next);
-      const seen=new Set(patientSearchCursor.items.map(x=>x.id));
-      patientSearchCursor.items.push(...r.items.filter(x=>!seen.has(x.id)));
-      patientSearchCursor.page=next;
-      patientSearchCursor.hasMore=Boolean(r.has_more);
-    }
-    return render(view(tr('Patienten','Patients'),{
-      fields:[value('query',tr('Suchen','Search'),search)],
-      actions:[row('search',tr('Suchen','Search')),
-        ...(patientSearchCursor.hasMore?[row('more-patients',tr('Weitere Patienten laden','Load more patients'))]:[])],
-      rows:patientSearchCursor.items.map(x=>row('patient:'+x.id,x.name,x.email||x.phone||'')),
-    }));
-  }
-
-  let patientHistoryCursor=null;
-  async function showPatient(id,{moreRecords=false,moreAppointments=false}={}) {
+  async function showPatient(id) {
     activeTab='patients';
-    const continued=patientHistoryCursor?.id===id && (moreRecords||moreAppointments);
-    if(!continued)patientHistoryCursor={id,recordPage:1,appointmentPage:1,records:[],appointments:[]};
-    const c=patientHistoryCursor;
-    const nextRecord=moreRecords?c.recordPage+1:c.recordPage;
-    const nextVisit=moreAppointments?c.appointmentPage+1:c.appointmentPage;
-    const result=await book('patient/'+id+'/?page='+nextRecord+'&appointment_page='+nextVisit);
-    if(!continued){
-      c.records=[...result.records];
-      c.appointments=[...result.appointments];
-      stack.push('patient:'+id);
-    } else if(moreRecords){
-      const seen=new Set(c.records.map(x=>x.id));
-      c.records.push(...result.records.filter(x=>!seen.has(x.id)));
-      c.recordPage=nextRecord;
-    } else {
-      const seen=new Set(c.appointments.map(x=>x.id));
-      c.appointments.push(...result.appointments.filter(x=>!seen.has(x.id)));
-      c.appointmentPage=nextVisit;
-    }
-    c.hasMoreRecords=moreAppointments?c.hasMoreRecords:Boolean(result.has_more);
-    c.hasMoreAppointments=moreRecords?c.hasMoreAppointments:Boolean(result.has_more_appointments);
-    patient={...result,records:c.records,appointments:c.appointments};
-    rememberAppointments(c.appointments);
+    patient=await book('patient/'+id+'/');
+    rememberAppointments(patient.appointments);
+    stack.push('patient:'+id);
     const p=patient.patient;
     return render(view(p.name,{subtitle:p.email,rows:[
-      ...c.appointments.map(a=>row('appointment:'+a.id,a.date+' · '+a.start,a.service_name)),
-      ...c.records.map(r=>row(r.has_file?'record:'+r.id:'',r.title,r.note||r.date.slice(0,10))),
-    ],actions:[
-      row('new-patient-appointment',tr('Termin für Patient hinzufügen','Book for patient')),
-      row('note',tr('Behandlungsnotiz hinzufügen','Add treatment note')),
-      row('upload-pdf',tr('PDF zur Patientenakte hinzufügen','Add PDF to patient record')),
-      ...(c.hasMoreAppointments?[row('more-patient-visits',tr('Weitere Termine anzeigen','Load more appointments'))]:[]),
-      ...(c.hasMoreRecords?[row('more-patient-records',tr('Weitere Akteneinträge anzeigen','Load more records'))]:[]),
-    ]}));
+      ...patient.appointments.map(a=>row('appointment:'+a.id,a.date+' · '+a.start,a.service_name)),
+      ...patient.records.map(r=>row(r.has_file?'record:'+r.id:'',r.title,r.note||r.date.slice(0,10))),
+    ],actions:[row('new-patient-appointment',tr('Termin für Patient hinzufügen','Book for patient')),row('note',tr('Behandlungsnotiz hinzufügen','Add treatment note')),row('upload-pdf',tr('PDF zur Patientenakte hinzufügen','Add PDF to patient record'))]}));
   }
   async function getAppointment(id) {
     if(appointmentsById.has(id))return appointmentsById.get(id);
@@ -296,20 +249,14 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   let currentBlock, currentService, pendingUpload;
   async function blockForm(edit){
     catalog=catalog||await book('catalog/');
-    return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Sperrzeit / Notiz','Block / note'),{
-      message:edit&&currentBlock.source_managed
-        ?tr('Dieser Eintrag stammt aus SimplyBook. Nach dem Speichern wird die lokale Book-Version verwaltet und beim nächsten Import nicht überschrieben. SimplyBook selbst wird nicht geändert.',
-          'This entry was imported from SimplyBook. Saving makes the local Book entry authoritative; the next import will not overwrite it. SimplyBook itself is not changed.')
-        :'',
-      fields:[
-        value('staff_id',tr('Behandler','Provider'),edit?currentBlock.staff_id:catalog.providers[0]?.id,optionFor(catalog.providers)),
-        value('date',tr('Startdatum','Start date'),edit?currentBlock.date:date),
-        value('end_date',tr('Enddatum','End date'),edit?(currentBlock.end_at||'').slice(0,10)||currentBlock.date:date),
-        value('kind',tr('Art','Type'),edit?currentBlock.kind:'block',[option('block',tr('Sperrzeit','Blocked time')),option('note',tr('Notiz','Note'))]),
-        value('start',tr('Beginn','Start'),edit?currentBlock.start:'12:00'),
-        value('end',tr('Ende','End'),edit?currentBlock.end:'13:00'),
-        value('text',tr('Text','Text'),edit?currentBlock.text:''),
-      ],actions:[row(edit?'save-block-edit':'save-block-new',tr('Speichern','Save')),...(edit?[row('remove-block',tr('Eintrag löschen','Delete entry'))]:[])]}));
+    return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Sperrzeit / Notiz','Block / note'),{fields:[
+      value('staff_id',tr('Behandler','Provider'),edit?currentBlock.staff_id:catalog.providers[0]?.id,optionFor(catalog.providers)),
+      value('date',tr('Datum','Date'),edit?currentBlock.date:date),
+      value('kind',tr('Art','Type'),edit?currentBlock.kind:'block',[option('block',tr('Sperrzeit','Blocked time')),option('note',tr('Notiz','Note'))]),
+      value('start',tr('Beginn','Start'),edit?currentBlock.start:'12:00'),
+      value('end',tr('Ende','End'),edit?currentBlock.end:'13:00'),
+      value('text',tr('Text','Text'),edit?currentBlock.text:''),
+    ],actions:[row(edit?'save-block-edit':'save-block-new',tr('Speichern','Save')),...(edit?[row('remove-block',tr('Eintrag löschen','Delete entry'))]:[])]}));
   }
   async function availabilityForm(id){
     catalog=await book('catalog/');
@@ -484,7 +431,6 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       }
       if(id.startsWith('date:')){date=id.slice(5);return await screen('calendar',{push:false});}
       if(id==='search'||id==='billing-query'){search=fields.query||'';return await screen(id==='search'?'patients':'billing-search',{push:false});}
-      if(id==='more-patients')return await showPatientDirectory(false);
       if(admin&&id==='save-billing-settings'){
         // Optimistic revision protects concurrent edits made in the original Office admin.
         await office('invoice-settings/',{...fields,next_sequence:Number(fields.next_sequence),
@@ -492,8 +438,6 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         return await screen('billing-settings',{push:false});
       }
       if(id.startsWith('patient:'))return await showPatient(Number(id.split(':')[1]));
-      if(id==='more-patient-visits' && patientHistoryCursor)return await showPatient(patientHistoryCursor.id,{moreAppointments:true});
-      if(id==='more-patient-records' && patientHistoryCursor)return await showPatient(patientHistoryCursor.id,{moreRecords:true});
       if(id.startsWith('appointment:'))return await showAppointment(Number(id.split(':')[1]));
       if(id==='apply-calendar-filter'){
         calendarMode=fields.calendar_mode;providerFilter=fields.provider_filter;serviceFilter=fields.service_filter;
@@ -503,10 +447,9 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id.startsWith('block:')){currentBlock=blockById.get(Number(id.split(':')[1]));if(currentBlock?.editable)return await blockForm(true);return;}
       if(['save-block-new','save-block-edit','remove-block'].includes(id)){
         if(id==='remove-block'){
-          await command('book/block/',{operation:'delete',staff_id:currentBlock.staff_id,id:currentBlock.id,revision:currentBlock.revision});
+          await command('book/block/',{operation:'delete',staff_id:currentBlock.staff_id,id:currentBlock.id});
         } else {
-          await command('book/block/',{...fields,staff_id:Number(fields.staff_id),operation:id==='save-block-new'?'create':'update',...(id==='save-block-edit'?{id:currentBlock.id,revision:currentBlock.revision}:{})});
-          date=fields.date||date;
+          await command('book/block/',{...fields,staff_id:Number(fields.staff_id),operation:id==='save-block-new'?'create':'update',...(id==='save-block-edit'?{id:currentBlock.id}:{})});
         }
         calendarCache.clear();
         return await screen('calendar');
@@ -668,7 +611,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       await render({...current,message:err.message||tr('Bitte erneut versuchen.','Please try again.'),fields:(current.fields||[]).map(f=>({...f,value:fields[f.id]??f.value}))});
     } finally {busy=false;}
   }
-  async function destroy(){if(!active)return;active=false;patientHistoryCursor=null;pendingUpload=null;appointmentsById.clear();pendingCommands.clear();blockById.clear();calendarCache.clear();await listener?.remove();await plugin.dismiss();}
+  async function destroy(){if(!active)return;active=false;pendingUpload=null;appointmentsById.clear();pendingCommands.clear();blockById.clear();calendarCache.clear();await listener?.remove();await plugin.dismiss();}
   let presented = false;
   try {
     listener = await plugin.addListener('action',event=>void handle(event));
