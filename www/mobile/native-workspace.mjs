@@ -232,13 +232,16 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     return render(view(appointment.customer_name,{
       subtitle:appointment.service_name,
       message:appointment.source_managed
-        ? tr('Dieser Termin wird aus SimplyBook synchronisiert. Damit die Kalender übereinstimmen, ändere oder storniere ihn bitte direkt in der SimplyBook-Verwaltung. Die Änderung wird anschließend hier übernommen.',
-             'This appointment is synced from SimplyBook. To keep both calendars consistent, change or cancel it in SimplyBook administration. The update will sync back here.')
+        ? (admin&&appointment.source_editable
+           ? tr('Mit SimplyBook synchronisiert. Terminzeit oder Stornierung wird zuerst direkt in SimplyBook bestätigt und danach hier gespeichert. Änderungen an Patient, Behandler und Behandlung bitte weiterhin in SimplyBook vornehmen.',
+                'Synced with SimplyBook. Time changes and cancellations are confirmed in SimplyBook first, then saved here. Edit patient, provider or treatment in SimplyBook directly.')
+           : tr('Dieser Termin wird aus SimplyBook synchronisiert. Bitte die Änderung direkt in der SimplyBook-Verwaltung vornehmen; sie wird danach hier übernommen.',
+                'This appointment is synced from SimplyBook. Change it in SimplyBook; the update will appear here.'))
         : '',
       rows:[
         row('',appointment.date+' · '+appointment.start+' – '+appointment.end, appointment.staff_name),
         row('',tr('Status','Status'),appointment.status),row('',tr('Notiz','Note'),appointment.notes||''),
-      ],actions:appointment.source_managed
+      ],actions:appointment.source_managed && !(admin&&appointment.source_editable)
         ? [row('calendar',tr('Zurück zum Kalender','Back to calendar'))]
         : [row('edit-appointment',tr('Bearbeiten','Edit')),row('cancel-appointment',tr('Absagen','Cancel'))],
     }));
@@ -248,8 +251,13 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     const r=await book('patients/?q='+encodeURIComponent(search));
     const options=r.items.map(x=>option(x.id,x.name));
     if(chosenPatient&&!options.some(x=>x.value===String(chosenPatient.id)))options.unshift(option(chosenPatient.id,chosenPatient.name));
-    const providersForBooking=catalog.providers.filter(p=>!isSyncedProvider(p));
-    const servicesForBooking=catalog.services.filter(s=>s.active&&!isSyncedService(s));
+    const syncedEdit=Boolean(edit&&appointment?.source_managed&&appointment?.source_editable&&admin);
+    const providersForBooking=syncedEdit
+      ? catalog.providers.filter(p=>Number(p.id)===Number(appointment.staff_id))
+      : catalog.providers.filter(p=>!isSyncedProvider(p));
+    const servicesForBooking=syncedEdit
+      ? catalog.services.filter(s=>Number(s.id)===Number(appointment.service_id))
+      : catalog.services.filter(s=>s.active&&!isSyncedService(s));
     const fields=[
       value('customer_id',tr('Patient','Patient'),edit?appointment.customer_id:chosenPatient?.id||options[0]?.value,options),
       value('staff_id',tr('Behandler','Provider'),edit?appointment.staff_id:(slot.staff_id && providersForBooking.some(p=>String(p.id)===String(slot.staff_id)) ? slot.staff_id : providersForBooking[0]?.id),optionFor(providersForBooking)),
