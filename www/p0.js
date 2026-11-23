@@ -159,7 +159,7 @@
     card.id = 'p0-patient-file';
     card.innerHTML = `
       <div class="patient-file-heading">
-        <div><span class="patient-file-kicker">Geschützter Gesundheitsbereich</span><h2>Meine Patientenakte</h2><p class="muted">Eine gemeinsame Akte für Sie und A+ Esthetic. Sie sehen nur Dokumente, die für Ihr Kundenkonto freigegeben wurden, und Ihre eigenen Uploads.</p></div>
+        <div><span class="patient-file-kicker">Geschützter Gesundheitsbereich</span><h2>Meine Patientenakte</h2><p class="muted">Eine gemeinsame Akte für Sie und A+ Esthetic. Sie sehen nur Dokumente, die für Ihr Patientenkonto freigegeben wurden, und Ihre eigenen Uploads.</p></div>
         <span class="patient-file-lock">⌾</span>
       </div>
       <div id="p0-patient-records"><p class="empty">Patientenakte wird geladen…</p></div>

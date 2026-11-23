@@ -1,0 +1,98 @@
+name: Recover staff relay deadlock without restart (production guarded)
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/native-staff-live-worker-recovery.yml]
+permissions: {contents: read}
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Add bounded A+ workers, verify authorized read-only APIs, rollback on failure
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 6m
+          script: |
+            set -euo pipefail
+            cd /opt/a-esthetic-mobile/releases/0ef54714a2a1fb476061463b56a3515d73d34cae
+            set -a; source /opt/a-esthetic-mobile/mobile.env; set +a
+            export DJANGO_SETTINGS_MODULE=production_native_settings PYTHONPATH="$PWD"
+            /opt/a-esthetic-mobile/venv/bin/python - <<'PY'
+            import json, os, signal, sys, time
+            from pathlib import Path
+            from urllib.request import Request, urlopen
+            from urllib.error import HTTPError, URLError
+            import django
+            django.setup()
+            from django.contrib.auth.models import User
+            from platform_app.admin_aware_login import _is_admin
+            from platform_app.mobile_api import _token_for
+            # Restrict to the single active A+ production upstream; no service restarts or patient data modifications.
+            def matching():
+                found={}
+                for proc in Path('/proc').glob('[0-9]*'):
+                    try:
+                        args=[x for x in (proc/'cmdline').read_bytes().split(b'\0') if x]
+                        heads=[os.path.basename(x.decode(errors='ignore')) for x in args[:2]]
+                        if not any('gunicorn' in x for x in heads): continue
+                        if b'127.0.0.1:8772' not in args: continue
+                        found[int(proc.name)]=int((proc/'stat').read_text().split(') ',1)[1].split()[1])
+                    except (OSError,ValueError): pass
+                print('MATCHED_A_PLUS_PROCESSES',len(found))
+                return found
+            found=matching()
+            masters=[pid for pid,ppid in found.items() if ppid not in found]
+            if len(masters)!=1: raise SystemExit('SAFE_ABORT: expected one A+ Gunicorn master at active port 8772')
+            master=masters[0]
+            def workers():
+                return sum(ppid==master for pid,ppid in matching().items())
+            before=workers()
+            print('ACTIVE_APP_WORKERS_BEFORE',before)
+            if before < 1 or before > 3: raise SystemExit('SAFE_ABORT: unexpected active app worker count')
+            increase=max(0,3-before)
+            for _ in range(increase):
+                os.kill(master,signal.SIGTTIN)
+                time.sleep(1)
+            for _ in range(10):
+                if workers()>=3: break
+                time.sleep(.5)
+            print('ACTIVE_APP_WORKERS_AFTER',workers())
+            if workers()<3:
+                for _ in range(increase): os.kill(master,signal.SIGTTOU)
+                raise SystemExit('SAFE_ABORT: Gunicorn did not scale')
+            actor=next((u for u in User.objects.filter(is_superuser=True,is_active=True) if _is_admin(u)),None)
+            if actor is None:
+                print('SAFE_ABORT: no valid admin identity')
+                for _ in range(increase): os.kill(master,signal.SIGTTOU)
+                raise SystemExit(2)
+            token=_token_for(actor)
+            targets={
+                'staff_session':'https://app.a-esthetic.de/api/mobile/staff/session/',
+                'staff_overview':'https://app.a-esthetic.de/api/mobile/staff/book/overview/',
+                'staff_catalog':'https://app.a-esthetic.de/api/mobile/staff/book/catalog/',
+                'staff_calendar':'https://app.a-esthetic.de/api/mobile/staff/book/calendar/?start=2026-11-23&days=1',
+                'staff_patients':'https://app.a-esthetic.de/api/mobile/staff/book/patients/?q=__internal_diagnostic_nomatch__',
+            }
+            ok=True
+            for label,url in targets.items():
+                req=Request(url,headers={'Authorization':'Bearer '+token,'Accept':'application/json','User-Agent':'APlus-read-only-staff-smoke'})
+                try:
+                    with urlopen(req, timeout=14) as resp: status=resp.status
+                except HTTPError as e: status=e.code
+                except (URLError,OSError,TimeoutError): status=0
+                print(label,'HTTP',status)
+                if status!=200: ok=False
+            if not ok:
+                for _ in range(increase):
+                    os.kill(master,signal.SIGTTOU)
+                    time.sleep(.5)
+                print('ROLLBACK_WORKERS_TO',before)
+                raise SystemExit('SAFE_ROLLBACK: authenticated smoke not fully successful')
+            print('STAFF_AUTHORIZED_READS_RECOVERED=YES')
+            print('LIVE_WORKER_SCALE=TEMPORARY_UNTIL_NEXT_SERVICE_RESTART')
+            PY

@@ -24,6 +24,7 @@
   }
 
   function recoverScroll() {
+    if (document.querySelector('#app > .mw')) return;
     neutralizeClosedLayers();
     if (!document.body) return;
 

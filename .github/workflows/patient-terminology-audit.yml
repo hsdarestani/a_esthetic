@@ -1,0 +1,38 @@
+name: Audit user-facing Patient terminology
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths:
+      - '.github/workflows/patient-terminology-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  terminology:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate remaining literal German Kunde labels in UI sources
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          prefixes=('www/','native/staff/','templates/')
+          suffixes={'.html','.js','.mjs','.swift','.java'}
+          pattern=re.compile(r'Kund(?:e|en|in|innen|es)|Neukund(?:e|en)|Bestandskund(?:e|en)',re.IGNORECASE)
+          total=0
+          for root in prefixes:
+              for path in sorted(Path(root).rglob('*')):
+                  if not path.is_file() or path.suffix not in suffixes: continue
+                  try: value=path.read_text()
+                  except (UnicodeDecodeError,OSError): continue
+                  for n,line in enumerate(value.splitlines(),1):
+                      if pattern.search(line):
+                          total+=1
+                          print(f'{path}:{n}: {line.strip()[:200]}')
+          print(f'REMAINING_KUNDE_LINES={total}')
+          if total:
+              raise SystemExit('Untranslated Kunde/Kunden terminology found in patient-facing UI sources')
+          PY

@@ -1,0 +1,111 @@
+name: A+ Esthetic approved production native blue-green rollout
+# v4: include public Office static logo and stylesheet in candidate static manifest.
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths:
+      - '.github/workflows/native-prod-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: a-esthetic-native-prod-release
+  cancel-in-progress: false
+
+jobs:
+  verify-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact A+ release source
+        uses: actions/checkout@v4
+        with:
+          path: app
+      - name: Checkout verified matching Book branch commit
+        uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/book
+          ref: d44338e48bad07a88b29061b803d07fa17e78d83
+          path: book
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify release script and native screen controller
+        run: |
+          set -euo pipefail
+          bash -n app/scripts/native_prod_release.sh
+          node --check app/www/mobile/native-workspace.mjs
+          cd app
+          node scripts/test_native_staff_controller.mjs
+      - name: Install isolated test requirements
+        run: |
+          python3 -m venv .app-env
+          python3 -m venv .book-env
+          .app-env/bin/pip install -q -r app/requirements.txt
+          .book-env/bin/pip install -q -r book/requirements.txt
+      - name: Run both Django application regressions before touching Production
+        env:
+          DJANGO_DEBUG: '1'
+        run: |
+          set -euo pipefail
+          (
+            cd app
+            ../.app-env/bin/python manage.py check
+            ../.app-env/bin/python manage.py makemigrations --check --dry-run
+            ../.app-env/bin/python manage.py test platform_app p0_app p1_app p2_app p3_app --verbosity 1
+          )
+          (
+            cd book
+            ../.book-env/bin/python manage.py check
+            ../.book-env/bin/python manage.py makemigrations --check --dry-run
+            ../.book-env/bin/python manage.py test booking --verbosity 1
+          )
+      - name: Create pinned production application archives without patient data
+        run: |
+          set -euo pipefail
+          tar -C app -czf aesthetic-native-app.tgz config platform_app p0_app p1_app p2_app p3_app templates static assets www scripts manage.py requirements.txt
+          tar -C book -czf aesthetic-native-book.tgz config booking templates static manage.py requirements.txt
+          sha256sum aesthetic-native-app.tgz aesthetic-native-book.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-native-backend-archives
+          path: |
+            aesthetic-native-app.tgz
+            aesthetic-native-book.tgz
+          if-no-files-found: error
+          retention-days: 3
+
+  deploy:
+    needs: verify-package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-native-backend-archives
+          path: .
+      - name: Upload verified candidates and safe release procedure
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: 'aesthetic-native-app.tgz,aesthetic-native-book.tgz,scripts/native_prod_release.sh'
+          target: '/tmp'
+      - name: Back up live databases, validate candidate workers, switch only safe nginx routes
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 23m
+          script: |
+            set -euo pipefail
+            bash /tmp/scripts/native_prod_release.sh "${{ github.sha }}" "d44338e48bad07a88b29061b803d07fa17e78d83"

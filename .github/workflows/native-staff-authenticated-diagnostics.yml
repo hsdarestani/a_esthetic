@@ -1,0 +1,74 @@
+name: Diagnose production staff bootstrap (read-only, status only)
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/native-staff-authenticated-diagnostics.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe authorized staff GETs without printing tokens or records
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            echo 'Production staff routing status'
+            for f in /etc/nginx/sites-enabled/a-esthetic-app.conf /etc/nginx/sites-enabled/aesthetic-book.conf; do
+              printf '%s: ' "$(basename "$f")"
+              grep -oE 'proxy_pass http://127[.]0[.]0[.]1:[0-9]+' "$f" | sort -u || true
+            done
+            cd /opt/a-esthetic-mobile/releases/0ef54714a2a1fb476061463b56a3515d73d34cae
+            set -a; source /opt/a-esthetic-mobile/mobile.env; set +a
+            export DJANGO_SETTINGS_MODULE=production_native_settings
+            export PYTHONPATH="$PWD"
+            /opt/a-esthetic-mobile/venv/bin/python - <<'PY'
+            import json, sys
+            from urllib.error import HTTPError, URLError
+            from urllib.request import Request, urlopen
+            import django
+            django.setup()
+            from django.contrib.auth.models import User
+            from platform_app.admin_aware_login import _is_admin
+            from platform_app.mobile_api import _token_for
+            actor=next((u for u in User.objects.filter(is_superuser=True,is_active=True) if _is_admin(u)),None)
+            if actor is None:
+                print('NO_ADMIN_TEST_ACCOUNT_AVAILABLE — no endpoints accessed')
+                sys.exit(0)
+            token=_token_for(actor)
+            endpoints={
+                'session': 'https://app.a-esthetic.de/api/mobile/staff/session/',
+                'app_book_overview': 'https://app.a-esthetic.de/api/mobile/staff/book/overview/',
+                'app_book_catalog': 'https://app.a-esthetic.de/api/mobile/staff/book/catalog/',
+                'app_book_calendar': 'https://app.a-esthetic.de/api/mobile/staff/book/calendar/?start=2026-11-23&days=1',
+                'app_book_patients': 'https://app.a-esthetic.de/api/mobile/staff/book/patients/?q=__unmatchable_diagnostic__',
+                'book_direct_overview': 'https://book.a-esthetic.de/api/mobile/staff/overview/',
+            }
+            for label,url in endpoints.items():
+                req=Request(url,headers={'Authorization':'Bearer '+token,'Accept':'application/json','User-Agent':'APlus-internal-status-diagnostic'})
+                try:
+                    with urlopen(req,timeout=8) as response:
+                        print(label,'HTTP',response.status)
+                except HTTPError as e:
+                    # Never print a patient response, user identity, or signed bearer token.
+                    code=''
+                    try:
+                        raw=e.read(2048)
+                        value=json.loads(raw)
+                        if isinstance(value,dict):
+                            status=str(value.get('error',''))
+                            if status.replace('_','').isalnum() and len(status)<64:
+                                code=status
+                    except (ValueError,UnicodeError): pass
+                    print(label,'HTTP',e.code,'error_code',code or 'unknown')
+                except (URLError,TimeoutError,OSError) as e:
+                    print(label,'NETWORK_ERROR',type(e).__name__)
+            PY

@@ -1,0 +1,116 @@
+name: A+ Esthetic final remote staging acceptance packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_app_url:
+        description: 'Dedicated HTTPS staging app origin'
+        required: true
+        type: string
+      staging_book_url:
+        description: 'Dedicated HTTPS staging Book origin'
+        required: true
+        type: string
+      all_qa_complete:
+        description: 'All acceptance requirements and internal QA complete'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    if: github.ref_name == 'feature/mobile-unified-overhaul' && inputs.all_qa_complete
+    name: Preview package (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+          - platform: ios
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v5
+        if: matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify reachable isolated HTTPS staging before building
+        env:
+          STAGING_APP_URL: ${{ inputs.staging_app_url }}
+          STAGING_BOOK_URL: ${{ inputs.staging_book_url }}
+        run: |
+          python3 scripts/check_remote_staging_ready.py
+      - name: Configure remote staging acceptance identity
+        env:
+          STAGING_APP_URL: ${{ inputs.staging_app_url }}
+          STAGING_BOOK_URL: ${{ inputs.staging_book_url }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          sys.path.insert(0, 'scripts')
+          from mobile_staff_preview import validate_public_origins
+          app, book, remote = validate_public_origins(os.environ['STAGING_APP_URL'], os.environ['STAGING_BOOK_URL'])
+          assert remote
+          path = Path('capacitor.config.json')
+          config = json.loads(path.read_text())
+          config.update(appId='de.aplusesthetic.preview', appName='A+ Esthetic Vorschau')
+          config['server'] = {'url': app, 'cleartext': False, 'allowNavigation': [urlsplit(app).hostname, urlsplit(book).hostname]}
+          path.write_text(json.dumps(config, indent=2))
+          for path in Path('www').rglob('*'):
+              if path.is_file() and path.suffix in {'.js','.mjs','.html','.css','.json'}:
+                  data = path.read_bytes()
+                  for original, target in [
+                    ('https://app.a-esthetic.de',app),('https://esthetic.smarbiz.sbs',app),
+                    ('https://office.a-esthetic.de',app),('https://book.a-esthetic.de',book),
+                  ]:
+                      data = data.replace(original.encode(),target.encode())
+                  path.write_bytes(data)
+          PY
+          npm pkg delete scripts.capacitor:sync:after
+          npm install --no-audit --no-fund
+          npx cap add ${{ matrix.platform }}
+          python3 scripts/install_native_staff.py
+      - name: Configure preview Android SDK and native permissions
+        if: matrix.platform == 'android'
+        run: |
+          python3 scripts/configure_native_camera_permissions.py
+          grep -Eq 'minSdkVersion[[:space:]]*=[[:space:]]*26' android/variables.gradle
+      - name: Compile Android test APK
+        if: matrix.platform == 'android'
+        run: |
+          cd android
+          ./gradlew --no-daemon assembleDebug
+          mkdir -p ../artifacts
+          cp app/build/outputs/apk/debug/app-debug.apk ../artifacts/APlus-Esthetic-Preview.apk
+      - name: Compile iOS simulator bundle
+        if: matrix.platform == 'ios'
+        run: |
+          set -euo pipefail
+          if [[ -d ios/App/App.xcworkspace ]]; then
+            container=(-workspace ios/App/App.xcworkspace)
+          else
+            container=(-project ios/App/App.xcodeproj)
+          fi
+          xcodebuild "${container[@]}" -scheme App -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/aesthetic-preview" \
+            CODE_SIGNING_ALLOWED=NO build
+          mkdir -p artifacts
+          ditto -c -k --keepParent "$RUNNER_TEMP/aesthetic-preview/Build/Products/Debug-iphonesimulator/App.app" \
+            artifacts/APlus-Esthetic-Preview-iOS-Simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-Esthetic-Preview-${{ matrix.platform }}
+          path: artifacts/
+          if-no-files-found: error

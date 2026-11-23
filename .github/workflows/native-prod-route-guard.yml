@@ -1,0 +1,59 @@
+name: A+ Esthetic production route safety guard
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/native-prod-route-guard.yml]
+permissions:
+  contents: read
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify active production route and roll back only failed candidate upstreams
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -eu
+            A=/etc/nginx/sites-enabled/a-esthetic-app.conf
+            O=/etc/nginx/sites-enabled/a-esthetic-office.conf
+            B=/etc/nginx/sites-enabled/aesthetic-book.conf
+            echo 'CURRENT UPSTREAM STATUS'
+            for conf in "$A" "$O" "$B"; do
+              echo "$(basename "$conf"):"
+              grep -oE 'proxy_pass http://127[.]0[.]0[.]1:[0-9]+' "$conf" | sort -u || true
+            done
+            if grep -q '127.0.0.1:8771' "$A" || grep -q '127.0.0.1:8771' "$O" || grep -q '127.0.0.1:8018' "$B"; then
+              echo 'Candidate upstreams found: check routed endpoint before preserving candidate'
+              result=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 https://app.a-esthetic.de/api/mobile/staff/session/ || true)
+              echo "CURRENT_PRODUCTION_NATIVE_SESSION_HTTP=$result"
+              if ! echo "$result" | grep -Eq '^(401|403)$'; then
+                echo 'Bad candidate API health: restoring all THREE previous upstreams'
+                cp -p "$A" /tmp/aesthetic-app-pre-route-guard.conf
+                cp -p "$O" /tmp/aesthetic-office-pre-route-guard.conf
+                cp -p "$B" /tmp/aesthetic-book-pre-route-guard.conf
+                sed -i 's/127[.]0[.]0[.]1:8771/127.0.0.1:8770/g' "$A" "$O"
+                sed -i 's/127[.]0[.]0[.]1:8018/127.0.0.1:8017/g' "$B"
+                if nginx -t; then systemctl reload nginx; else
+                  cp -p /tmp/aesthetic-app-pre-route-guard.conf "$A"
+                  cp -p /tmp/aesthetic-office-pre-route-guard.conf "$O"
+                  cp -p /tmp/aesthetic-book-pre-route-guard.conf "$B"
+                  echo 'REVERT CONFIG FAILED — original nginx config restored'; exit 1
+                fi
+                echo 'ROUTE_ROLLBACK_COMPLETE'
+              else
+                echo 'Candidate API responding with authentication restriction; no route changes made'
+              fi
+            else
+              echo 'Legacy upstreams retained; no route changes made'
+            fi
+            echo 'Final public status codes'
+            for url in https://book.a-esthetic.de/ https://office.a-esthetic.de/office/ https://app.a-esthetic.de/; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$url" || true)
+              echo "$url HTTP=$code"
+            done

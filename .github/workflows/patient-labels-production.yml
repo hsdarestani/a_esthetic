@@ -1,0 +1,71 @@
+name: A+ Esthetic Patient labels production hotfix
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/patient-labels-production.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: aplus-patient-labels-live
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify changes and package only UI files
+        run: |
+          set -euo pipefail
+          bash -n scripts/deploy_patient_labels_prod.sh
+          for source in www/core-app.js www/book-admin.js www/book-admin-v2.js www/ops.js www/p0.js; do node --check "$source"; done
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          rx=re.compile(r'Kund(?:e|en|in|innen|es)|Neukund(?:e|en)',re.I)
+          matches=[str(p) for root in ('www','native/staff','templates') for p in Path(root).rglob('*')
+                   if p.is_file() and p.suffix in {'.html','.js','.mjs','.swift','.java'}
+                   and rx.search(p.read_text(encoding='utf-8'))]
+          assert not matches, 'Legacy customer labels remain: '+str(matches)
+          print('PASS: all UI labels are Patient/Patienten')
+          PY
+          tar -czf aesthetic-patient-labels.tgz \
+            www/core-app.js www/book-admin.js www/book-admin-v2.js www/ops.js www/p0.js \
+            templates/app.html templates/customer_club_privacy.html templates/office/*.html
+          sha256sum aesthetic-patient-labels.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-patient-labels
+          path: aesthetic-patient-labels.tgz
+          if-no-files-found: error
+          retention-days: 3
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-patient-labels
+      - name: Upload label-only package and rollback-safe release script
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: aesthetic-patient-labels.tgz,scripts/deploy_patient_labels_prod.sh
+          target: /tmp
+      - name: Switch app/Office to patient-labelled candidate without stopping Book
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 8m
+          script: |
+            set -euo pipefail
+            bash /tmp/scripts/deploy_patient_labels_prod.sh "${{ github.sha }}"

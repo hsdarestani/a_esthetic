@@ -1,0 +1,95 @@
+name: A+ iOS NativeStaff Appetize acceptance (Swift and JS runtime)
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/ios-native-staff-appetize-acceptance.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate app and assert native registration
+        run: |
+          set -euo pipefail
+          npm pkg delete scripts.capacitor:sync:after
+          npm install --no-audit --no-fund
+          npx cap add ios
+          python3 scripts/configure_native_camera_permissions.py
+          python3 scripts/install_native_staff.py
+          node --check www/core-app.js
+          node --check www/admin-mode.js
+          node --check www/mobile/native-workspace.mjs
+          test -s www/mobile/native-staff-bridge.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, xml.etree.ElementTree as ET
+          root=Path('ios/App/App')
+          c=json.loads((root/'capacitor.config.json').read_text())
+          assert 'NativeStaffPlugin' in c.get('packageClassList',[])
+          assert any(x.get('customClass')=='StaffBridgeViewController'
+                     for x in ET.parse(root/'Base.lproj/Main.storyboard').iter('viewController'))
+          assert 'CAPPluginMethod(name: "probe"' in (root/'AppDelegate.swift').read_text()
+          print('PASS native registration source and generated iOS config')
+          PY
+      - name: Build iOS Simulator app
+        run: |
+          set -euo pipefail
+          if [[ -d ios/App/App.xcworkspace ]]; then
+            xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug \
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/aplus-ios-qa" \
+              CODE_SIGNING_ALLOWED=NO build
+          else
+            xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/aplus-ios-qa" \
+              CODE_SIGNING_ALLOWED=NO build
+          fi
+      - name: Install, launch and verify actual Swift JS plugin bridge
+        run: |
+          set -euo pipefail
+          simid=$(xcrun simctl list devices available -j | python3 -c '
+          import sys,json
+          o=json.load(sys.stdin)
+          ds=[d for arr in o["devices"].values() for d in arr if d.get("isAvailable") and "iPhone" in d.get("name","")]
+          print(ds[0]["udid"] if ds else "")
+          ')
+          test -n "$simid"
+          xcrun simctl boot "$simid" || true
+          xcrun simctl bootstatus "$simid" -b
+          app="$RUNNER_TEMP/aplus-ios-qa/Build/Products/Debug-iphonesimulator/App.app"
+          test -s "$app/App"
+          xcrun simctl install "$simid" "$app"
+          xcrun simctl launch "$simid" de.aplusesthetic.app
+          sleep 12
+          xcrun simctl spawn "$simid" log show --style compact --last 3m \
+            --predicate 'eventMessage CONTAINS[c] "APLUS_NATIVE_STAFF_"' > "$RUNNER_TEMP/aplus-ios-qa.log" || true
+          if ! grep -q 'APLUS_NATIVE_STAFF_REGISTERED bridge=available' "$RUNNER_TEMP/aplus-ios-qa.log"; then
+            echo 'FAIL Swift Capacitor plugin was not registered on Simulator'
+            exit 1
+          fi
+          if ! grep -q 'APLUS_NATIVE_STAFF_JS_BRIDGE OK' "$RUNNER_TEMP/aplus-ios-qa.log"; then
+            echo 'FAIL JS-to-Swift probe did not return OK'
+            grep 'APLUS_NATIVE_STAFF_JS_BRIDGE' "$RUNNER_TEMP/aplus-ios-qa.log" || true
+            exit 1
+          fi
+          echo 'PASS: native Swift bridge registered AND real JavaScript probe returned OK'
+          xcrun simctl shutdown "$simid" || true
+      - name: Package Appetize-compatible Simulator ZIP
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          app="$RUNNER_TEMP/aplus-ios-qa/Build/Products/Debug-iphonesimulator/App.app"
+          test -f "$app/Info.plist"
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-iOS-NativeStaff-Verified.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-Esthetic-Appetize-iOS-NativeStaff-Verified
+          path: artifacts/APlus-Esthetic-iOS-NativeStaff-Verified.zip
+          retention-days: 30
+          if-no-files-found: error

@@ -1,0 +1,56 @@
+name: Diagnose native staff read paths (read-only, no patient content)
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/native-staff-live-diagnostics.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect live routes, no real tokens or data
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -eu
+            echo 'ROUTE STATUS'
+            for file in /etc/nginx/sites-enabled/a-esthetic-app.conf /etc/nginx/sites-enabled/aesthetic-book.conf; do
+              printf '%s: ' "$(basename "$file")"
+              grep -oE 'proxy_pass http://127[.]0[.]0[.]1:[0-9]+' "$file" | sort -u || true
+            done
+            echo 'UNAUTHENTICATED STATUS CODES (EXPECTED 401, NO REAL TOKENS)'
+            for url in https://app.a-esthetic.de/api/mobile/staff/session/ https://app.a-esthetic.de/api/mobile/staff/book/overview/ https://app.a-esthetic.de/api/mobile/staff/book/catalog/ https://book.a-esthetic.de/api/mobile/staff/overview/; do
+              code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 -H 'Authorization: Bearer invalid-diagnostics-only' "$url" || true)
+              printf '%s HTTP=%s\n' "$url" "$code"
+            done
+            echo 'RECENT STAFF HTTP STATUS COUNTS ONLY — URLs, IPs, tokens, and bodies never printed'
+            python3 - <<'PY'
+            from collections import Counter
+            from pathlib import Path
+            import re
+            totals=Counter()
+            names={'overview','calendar','catalog','patients','appointments'}
+            for f in Path('/var/log/nginx').glob('*access*.log'):
+                if not f.is_file(): continue
+                try:
+                    with f.open(errors='replace') as stream:
+                        from collections import deque
+                        for line in deque(stream,maxlen=10000):
+                            m=re.search(r'"(?:GET|POST) /api/mobile/staff/book/([a-z-]+)/?[^"]* HTTP/[^"]+" ([0-9]{3})',line)
+                            if m and m.group(1) in names:
+                                totals[(m.group(1),m.group(2))]+=1
+                except (OSError,UnicodeError): continue
+            for (operation,status),n in sorted(totals.items()):
+                print(f'{operation} HTTP={status} count={n}')
+            if not totals: print('No matching access-log entries found')
+            PY
+            echo 'SANITIZED NATIVE SERVICE ERROR CLASS COUNTS'
+            journalctl --since '2 hours ago' -u aesthetic-native-app-0ef54714a2.service -u aesthetic-native-book-0ef54714a2.service -o cat --no-pager 2>/dev/null | python3 -c "import sys,re,collections; data=sys.stdin.read(); classes=collections.Counter(re.findall(r'\b(?:URLError|TimeoutError|ConnectionRefusedError|OperationalError|ProgrammingError|DisallowedHost|ValueError|HTTPError|SSLError)\b',data)); print(dict(classes))" || true

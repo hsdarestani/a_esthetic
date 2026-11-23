@@ -1,0 +1,22 @@
+name: A+ Esthetic Native Calendar behavioral QA
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/native-calendar-js-qa.yml]
+permissions: {contents: read}
+jobs:
+  calendar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate JS source and calendar interactions
+        run: |
+          set -euo pipefail
+          node --check www/mobile/native-calendar-layout.mjs
+          node --check www/mobile/native-workspace.mjs
+          node scripts/test_native_calendar_layout.mjs
+          node scripts/test_native_staff_controller.mjs

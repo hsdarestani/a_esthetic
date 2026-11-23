@@ -1,0 +1,40 @@
+name: Diagnose production A+ and Book worker concurrency (read-only)
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/native-worker-concurrency-diagnostics.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 3m
+          script: |
+            set -eu
+            echo 'A+ and Book gunicorn service commands'
+            for f in /etc/systemd/system/aesthetic-native-app*.service /etc/systemd/system/aesthetic-native-book*.service; do
+              [ -f "$f" ] || continue
+              printf '%s ' "$(basename "$f")"
+              grep '^ExecStart=' "$f" | grep -oE -- '--bind 127[.]0[.]0[.]1:[0-9]+ --workers [0-9]+' || true
+            done
+            echo 'Actual gunicorn processes bound to target ports (counts only)'
+            python3 - <<'PY'
+            from collections import Counter
+            from pathlib import Path
+            c=Counter()
+            for p in Path('/proc').glob('[0-9]*'):
+              try:
+                parts=(p/'cmdline').read_bytes().replace(b'\0',b' ').decode(errors='ignore')
+                for port in ['8771','8772','8018']:
+                  if 'gunicorn' in parts and '--bind 127.0.0.1:'+port in parts:
+                    c[port]+=1
+              except (OSError,UnicodeError): pass
+            for port in ['8771','8772','8018']: print('port',port,'gunicorn_processes',c[port])
+            PY

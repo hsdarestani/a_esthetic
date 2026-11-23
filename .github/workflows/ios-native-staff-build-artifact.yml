@@ -1,0 +1,95 @@
+name: A+ Esthetic SimplyBook-style Native Calendar iOS Simulator
+# Final safe-sync test package: external SimplyBook appointments, notes, providers, services and hours remain source-managed.
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/ios-native-staff-build-artifact.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build generated native source
+        run: |
+          set -euo pipefail
+          npm pkg delete scripts.capacitor:sync:after
+          npm install --no-audit --no-fund
+          npx cap add ios
+          python3 scripts/configure_native_camera_permissions.py
+          python3 scripts/install_native_staff.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('ios/App/App/capacitor.config.json')
+          o=json.loads(p.read_text())
+          assert 'NativeStaffPlugin' in o['packageClassList']
+          assert 'probe' in Path('native/staff/ios/NativeStaff.swift').read_text()
+          print('NativeStaff plugin class discovery configured')
+          PY
+          node --check www/admin-mode.js
+          node --check www/core-app.js
+          node --check www/mobile/native-workspace.mjs
+          node scripts/test_native_calendar_layout.mjs
+          node scripts/test_native_staff_controller.mjs
+          grep -q 'struct StaffCalendarTimeline: View' ios/App/App/AppDelegate.swift
+      - name: Xcode compile
+        run: |
+          set -euo pipefail
+          if [[ -d ios/App/App.xcworkspace ]]; then
+            xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug \
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/aplus-native" \
+              CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/build.log" 2>&1 || { tail -100 "$RUNNER_TEMP/build.log"; exit 1; }
+          else
+            xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/aplus-native" \
+              CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/build.log" 2>&1 || { tail -100 "$RUNNER_TEMP/build.log"; exit 1; }
+          fi
+      - name: Package correct Appetize ZIP
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          app="$RUNNER_TEMP/aplus-native/Build/Products/Debug-iphonesimulator/App.app"
+          test -f "$app/Info.plist"
+          test -f "$app/public/mobile/native-staff-bridge.js"
+          grep -q NativeStaffPlugin "$app/capacitor.config.json"
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-iOS-SimplyBook-Native-Calendar.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-Esthetic-Appetize-iOS-SimplyBook-Calendar
+          path: artifacts/APlus-Esthetic-iOS-SimplyBook-Native-Calendar.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Check for authorized Appetize API token
+        id: appetize_access
+        env:
+          APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+        run: |
+          if [[ -n "$APPETIZE_API_TOKEN" ]]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'No Appetize API token configured; simulator ZIP is available in GitHub artifacts.'
+          fi
+      - name: Upload latest simulator build to Appetize when authorized
+        id: appetize_upload
+        if: steps.appetize_access.outputs.enabled == 'true'
+        uses: appetizeio/github-action-appetize@v1.1.0
+        with:
+          apiToken: ${{ secrets.APPETIZE_API_TOKEN }}
+          appFile: artifacts/APlus-Esthetic-iOS-SimplyBook-Native-Calendar.zip
+          platform: ios
+          fileType: zip
+          note: A+ Esthetic safe SimplyBook sync; native source-managed items read-only
+      - name: Report iOS Appetize test link or ZIP artifact
+        run: |
+          if [[ "${{ steps.appetize_access.outputs.enabled }}" == "true" ]]; then
+            echo 'Latest iOS build: https://appetize.io/app/${{ steps.appetize_upload.outputs.publicKey }}' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Upload the packaged iOS Simulator ZIP from this workflow artifact to https://appetize.io (use inner Simulator ZIP, not the outer GitHub artifact ZIP).' >> "$GITHUB_STEP_SUMMARY"
+          fi

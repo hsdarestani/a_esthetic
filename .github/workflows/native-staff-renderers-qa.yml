@@ -1,0 +1,60 @@
+name: Compile native staff renderers (internal QA only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'native/staff/**'
+      - 'scripts/install_native_staff.py'
+      - 'www/mobile/native-workspace.mjs'
+      - '.github/workflows/native-staff-renderers-qa.yml'
+permissions:
+  contents: read
+jobs:
+  native-compile:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+          - platform: ios
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v5
+        if: matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check controller and generate native target
+        run: |
+          node --check www/mobile/native-workspace.mjs
+          node --check www/admin-mode.js
+          node scripts/test_native_staff_controller.mjs
+          npm install --no-audit --no-fund
+          npm pkg delete scripts.capacitor:sync:after
+          npx cap add ${{ matrix.platform }}
+          python3 scripts/configure_native_camera_permissions.py
+          python3 scripts/install_native_staff.py
+      - name: Compile Android native UI
+        if: matrix.platform == 'android'
+        run: |
+          cd android
+          ./gradlew --no-daemon assembleDebug
+      - name: Compile iOS native UI without signing or artifact upload
+        if: matrix.platform == 'ios'
+        run: |
+          set -euo pipefail
+          if [[ -d ios/App/App.xcworkspace ]]; then
+            container=(-workspace ios/App/App.xcworkspace)
+          else
+            container=(-project ios/App/App.xcodeproj)
+          fi
+          xcodebuild "${container[@]}" -scheme App -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/native-staff-compile" CODE_SIGNING_ALLOWED=NO build

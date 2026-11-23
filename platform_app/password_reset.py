@@ -40,3 +40,33 @@ class AestheticPasswordResetView(PasswordResetView):
             logger.exception("Password reset SMTP delivery failed")
             form.add_error(None, UNAVAILABLE_MESSAGE)
             return self.form_invalid(form)
+
+
+class MobilePasswordResetView(AestheticPasswordResetView):
+    """Use the same allauth token, delivery, account policy and rate limit."""
+
+    http_method_names = ['post']
+
+    def post(self, request, *args, **kwargs):
+        import json
+
+        from django.http import JsonResponse
+
+        if request.content_type != 'application/json' or len(request.body) > 2048:
+            return JsonResponse({'ok': False, 'error': 'invalid_request'}, status=400)
+        try:
+            body = json.loads(request.body)
+            email = body['email']
+            if not isinstance(email, str):
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            return JsonResponse({'ok': False, 'error': 'invalid_request'}, status=400)
+        form = self.get_form_class()(data={'email': email[:320]})
+        if not form.is_valid():
+            return JsonResponse({'ok': False, 'error': 'invalid_email'}, status=400)
+        response = self.form_valid(form)
+        if response.status_code == 429:
+            return JsonResponse({'ok': False, 'error': 'rate_limited'}, status=429)
+        if form.errors:
+            return JsonResponse({'ok': False, 'error': 'delivery_unavailable'}, status=503)
+        return JsonResponse({'ok': True})

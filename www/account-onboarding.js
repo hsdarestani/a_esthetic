@@ -1,9 +1,10 @@
 (() => {
   'use strict';
 
-  const APP_ORIGIN = 'https://app.a-esthetic.de';
+  const APP_ORIGIN = window.APlusRuntime.origin;
   const API = `${APP_ORIGIN}/api/mobile`;
   let cachedConfig = null;
+  const authUI = window.APlusAuth;
   const root = () => document.getElementById('app');
   const token = () => localStorage.getItem('aplus_token') || '';
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
@@ -90,79 +91,92 @@
     return '<label class="field"><span>' + label + '</span>' + control + '</label>';
   }
 
-  async function showSignup(message='') {
+  function showSignup(back = () => window.APlusRefreshAuth()) {
     const host = root();
     if (!host) return;
-    host.innerHTML =
-      '<div class="login-shell"><form class="login-card signup-card" data-signup>' +
-      logo() +
-      '<div class="eyebrow">NEUES KONTO</div><h1>Registrieren</h1>' +
-      (message ? '<div class="notice error">' + esc(message) + '</div>' : '') +
-      field('Anrede','<select name="salutation" required><option value="" selected disabled>Bitte wählen</option><option value="herr">Herr</option><option value="frau">Frau</option><option value="divers">Divers</option></select>') +
-      '<div class="grid-2">' +
-      field('Vorname','<input name="first_name" autocomplete="given-name" required>') +
-      field('Nachname','<input name="last_name" autocomplete="family-name" required>') +
-      '</div>' +
-      field('E-Mail','<input name="email" type="email" autocomplete="email" required>') +
-      field('Telefon','<input name="phone" type="tel" autocomplete="tel" placeholder="+49 …" required>') +
-      field('Empfehlungscode <small>optional</small>','<input name="referral_code" autocomplete="off" placeholder="z. B. A7K9Q2">') +
-      field('Passwort','<input name="password" type="password" minlength="12" autocomplete="new-password" required>') +
-      field('Passwort bestätigen','<input name="password2" type="password" minlength="12" autocomplete="new-password" required>') +
-      '<button class="primary wide" type="submit">Konto erstellen</button>' +
-      '<button class="text-btn wide" type="button" data-login-back>Schon ein Konto? Anmelden</button>' +
-      '</form></div>';
-
-    host.querySelector('[data-login-back]').addEventListener('click', () => location.reload());
-    host.querySelector('[data-signup]').addEventListener('submit', async event => {
+    const field = authUI.field;
+    host.innerHTML = authUI.layout({
+      heading: 'Ihr A+ Konto', back: true,
+      description: 'Beginnen Sie mit Ihren Kontaktdaten.',
+      content: `<form class="ma-form" data-signup data-own-submit novalidate>
+        ${authUI.error()}
+        <div class="ma-steps" aria-label="Schritt 1 von 2"><i></i><i></i></div>
+        <div data-signup-step="1">
+          <div class="ma-field"><label for="ma-salutation">Anrede</label>
+            <div class="ma-input"><select id="ma-salutation" name="salutation" required aria-describedby="ma-salutation-error">
+              <option value="" selected disabled>Bitte wählen</option><option value="herr">Herr</option>
+              <option value="frau">Frau</option><option value="divers">Divers</option></select></div>
+            <small class="ma-field-error" id="ma-salutation-error" hidden></small>
+          </div>
+          <div class="ma-pair">
+            ${field('Vorname', 'first_name', 'autocomplete="given-name" required')}
+            ${field('Nachname', 'last_name', 'autocomplete="family-name" required')}
+          </div>
+          ${field('E-Mail-Adresse', 'email', 'type="email" autocomplete="email" inputmode="email" required')}
+          ${field('Mobilnummer', 'phone', 'type="tel" autocomplete="tel" placeholder="+49 …" required')}
+          <button type="button" class="ma-primary" data-ma-next>Weiter</button>
+        </div>
+        <div data-signup-step="2" hidden>
+          ${field('Passwort', 'password', 'type="password" autocomplete="new-password" minlength="12" required', true)}
+          <p class="ma-hint">Mindestens 12 Zeichen</p>
+          ${field('Passwort bestätigen', 'password2', 'type="password" autocomplete="new-password" minlength="12" required', true)}
+          <details class="ma-optional"><summary>Empfehlungscode hinzufügen</summary>
+            ${field('Empfehlungscode', 'referral_code', 'autocomplete="off"')}
+          </details>
+          <button type="submit" class="ma-primary">Konto erstellen</button>
+        </div>
+      </form>`,
+    });
+    const form = host.querySelector('[data-signup]');
+    const first = form.querySelector('[data-signup-step="1"]');
+    const second = form.querySelector('[data-signup-step="2"]');
+    const setStep = number => {
+      first.hidden = number !== 1;
+      second.hidden = number !== 2;
+      const steps = form.querySelector('.ma-steps');
+      steps.classList.toggle('ma-step-two', number === 2);
+      steps.setAttribute('aria-label', 'Schritt ' + number + ' von 2');
+      host.querySelector('.ma-description').textContent = number === 1
+        ? 'Beginnen Sie mit Ihren Kontaktdaten.'
+        : 'Wählen Sie ein Passwort für Ihr Konto.';
+      host.querySelector('h1').focus();
+    };
+    authUI.bindFields(form);
+    host.querySelector('[data-ma-back]').onclick = () => {
+      if (form.getAttribute('aria-busy') === 'true') return;
+      if (second.hidden) back();
+      else setStep(1);
+    };
+    host.querySelector('[data-ma-next]').onclick = () => {
+      const invalid = [...first.querySelectorAll('input, select')].find(input => !input.validity.valid);
+      if (invalid) return authUI.report(form, invalid.validationMessage, invalid.name);
+      setStep(2);
+    };
+    form.addEventListener('submit', async event => {
       event.preventDefault();
-      const fd = new FormData(event.currentTarget);
-      const form = event.currentTarget;
-      form.querySelector('[data-signup-inline-error]')?.remove();
-      const passwordConfirm = form.querySelector('input[name="password2"]');
-      passwordConfirm?.addEventListener('input', () => passwordConfirm.setCustomValidity(''), {once:true});
-      if (fd.get('password') !== fd.get('password2')) {
-        const box = document.createElement('div');
-        box.className = 'notice error';
-        box.dataset.signupInlineError = '1';
-        box.textContent = 'Die Passwörter stimmen nicht überein.';
-        form.querySelector('button[type="submit"]')?.insertAdjacentElement('beforebegin', box);
-        passwordConfirm?.setCustomValidity('Die Passwörter stimmen nicht überein.');
-        passwordConfirm?.focus();
-        return;
-      }
-      passwordConfirm?.setCustomValidity('');
-      const submit = form.querySelector('button[type=submit]');
-      submit.disabled = true;
-      submit.textContent = 'Konto wird erstellt …';
+      if (form.getAttribute('aria-busy') === 'true') return;
+      if (second.hidden) { host.querySelector('[data-ma-next]').click(); return; }
+      const data = Object.fromEntries(new FormData(form));
+      if (data.password.length < 12) return authUI.report(form, 'Verwenden Sie mindestens 12 Zeichen.', 'password');
+      if (data.password !== data.password2) return authUI.report(form, 'Die Passwörter stimmen nicht überein.', 'password2');
+      delete data.password2;
+      authUI.submitState(form, true, 'Konto wird erstellt …', 'Konto erstellen');
       try {
-        const result = await api('/signup/', {
-          method:'POST',
-          json:{
-            salutation:fd.get('salutation'),
-            first_name:fd.get('first_name'),
-            last_name:fd.get('last_name'),
-            email:fd.get('email'),
-            phone:fd.get('phone'),
-            referral_code:fd.get('referral_code') || '',
-            password:fd.get('password')
-          }
-        });
+        const result = await api('/signup/', {method:'POST', json:data, aplusSilent:true});
         localStorage.setItem('aplus_token', result.token);
-        const note = result.sms_error === 'sms_not_configured'
-          ? 'Das Konto wurde erstellt. Die SMS-Funktion ist serverseitig noch nicht aktiviert.'
-          : '';
-        await showOnboarding(note);
-      } catch (error) {
-        submit.disabled = false;
-        submit.textContent = 'Konto erstellen';
-        form.querySelector('[data-signup-inline-error]')?.remove();
-        const box = document.createElement('div');
-        box.className = 'notice error';
-        box.dataset.signupInlineError = '1';
-        box.textContent = errorText(error);
-        submit.insertAdjacentElement('beforebegin', box);
+        await showOnboarding(result.sms_error === 'sms_not_configured'
+          ? 'Ihr Konto wurde erstellt. SMS ist derzeit nicht verfügbar.' : '');
+      } catch (failure) {
+        const fieldName = {invalid_phone:'phone', email_in_use:'email', invalid_salutation:'salutation',
+          name_required:'first_name', invalid_referral_code:'referral_code'}[failure.code];
+        if (fieldName && first.querySelector('[name=' + fieldName + ']')) setStep(1);
+        if (fieldName === 'referral_code') form.querySelector('details').open = true;
+        authUI.report(form, errorText(failure), fieldName);
+      } finally {
+        if (form.isConnected) authUI.submitState(form, false, '', 'Konto erstellen');
       }
     });
+    host.querySelector('h1').focus();
   }
 
   function verificationCard(kind, done, value, pending=false) {
@@ -194,7 +208,7 @@
     if (!host) return;
     const generation = ++onboardingGeneration;
     if (!host.querySelector('.onboarding-card')) {
-      host.innerHTML = '<div class="login-shell"><section class="login-card onboarding-card">' +
+      host.innerHTML = '<div class="ma-auth"><section class="ma-panel onboarding-card">' +
         logo() + '<h1>Registrierung wird geladen …</h1>' +
         '<p>Der Kontostatus wird überprüft.</p><div class="spinner" role="status" aria-label="Laden"></div></section></div>';
     }
@@ -208,7 +222,7 @@
         await finishVerification();
         return;
       }
-      host.innerHTML = '<div class="login-shell"><section class="login-card onboarding-card">' +
+      host.innerHTML = '<div class="ma-auth"><section class="ma-panel onboarding-card">' +
         logo() + '<h1>Verbindung unterbrochen</h1>' +
         '<p>Ihre Registrierung bleibt gespeichert. ' + esc(errorText(error)) + '</p>' +
         '<button class="primary wide" type="button" data-onboarding-retry>Erneut versuchen</button>' +
@@ -229,9 +243,9 @@
       return;
     }
     host.innerHTML =
-      '<div class="login-shell"><section class="login-card onboarding-card">' +
+      '<div class="ma-auth"><section class="ma-panel onboarding-card">' +
       logo() +
-      '<div class="eyebrow">KONTO ABSCHLIESSEN</div><h1>Fast fertig</h1>' +
+      '<div class="eyebrow">KONTO BESTÄTIGEN</div><h1>Fast fertig</h1>' +
       '<p>Bitte vervollständigen und bestätigen Sie Ihr Profil. Danach werden alle Funktionen freigeschaltet.</p>' +
       (message ? '<div class="notice">' + esc(message) + '</div>' : '') +
       '<form data-profile-completion>' +
@@ -549,7 +563,7 @@
           if (browserRequired) await browserSocialLogin(provider, config);
           else await nativeSocialLogin(provider, config);
         } catch (error) {
-          await showSignup(errorText(error));
+          showSocialError(error);
         } finally {
           button.disabled = false;
         }
@@ -592,7 +606,7 @@
           try {
             await completeSocialLogin('google', response.credential);
           } catch (error) {
-            await showSignup(errorText(error));
+            showSocialError(error);
           }
         },
         auto_select: false
@@ -637,7 +651,7 @@
           try {
             await completeSocialLogin('apple', authorization.id_token, payload.user || {});
           } catch (error) {
-            await showSignup(errorText(error));
+            showSocialError(error);
           }
         });
       }
@@ -646,28 +660,22 @@
     }
   }
 
+  function showSocialError(error) {
+    const form = root()?.querySelector('[data-login]');
+    if (form) authUI.report(form, errorText(error));
+  }
+
   async function enhanceLogin() {
     const form = document.querySelector('[data-login]');
     if (!form || form.dataset.accountEnhanced === '1') return;
     form.dataset.accountEnhanced = '1';
-    form.querySelector('.login-logo span')?.remove();
-
-    const submit = form.querySelector('button[type=submit]');
-    if (submit) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'secondary wide login-signup';
-      button.textContent = 'Konto erstellen';
-      button.addEventListener('click', () => showSignup());
-      submit.insertAdjacentElement('afterend', button);
-    }
-
     const config = await getAuthConfig();
+    if (!form.isConnected) return;
     const showApple = !/Android/i.test(navigator.userAgent) && Boolean(config.apple);
     if ((config.google || showApple) && !form.querySelector('[data-social-login]')) {
       const wrapper = document.createElement('div');
       wrapper.dataset.socialLogin = '1';
-      form.appendChild(wrapper);
+      form.querySelector('[data-social-slot]').appendChild(wrapper);
 
       if (renderNativeSocialButtons(config, wrapper)) return;
 
@@ -691,27 +699,19 @@
       const result = await api('/social-session/');
       localStorage.setItem('aplus_token', result.token);
       history.replaceState(null, '', location.pathname);
-      location.reload();
+      await window.APlusRefreshAuth();
     } catch (_) {
       history.replaceState(null, '', location.pathname);
       localStorage.removeItem('aplus_token');
     }
   }
 
-  const introStartedAt = performance.now();
-  let introHideScheduled = false;
   function hideSplash() {
     const splash = document.getElementById('brand-splash');
-    if (!splash || splash.classList.contains('is-hidden') || introHideScheduled) return;
-    introHideScheduled = true;
-    const minimumVisibleMs = 2200;
-    const elapsed = performance.now() - introStartedAt;
-    const wait = Math.max(0, minimumVisibleMs - elapsed);
-    window.setTimeout(() => {
-      splash.classList.add('is-hidden');
-      document.body.classList.remove('brand-intro-active');
-      window.dispatchEvent(new CustomEvent('aplus:intro-finished'));
-    }, wait);
+    if (!splash || splash.classList.contains('is-hidden')) return;
+    splash.remove();
+    document.body.classList.remove('brand-intro-active');
+    window.dispatchEvent(new CustomEvent('aplus:intro-finished'));
   }
 
   window.APlusOnboarding = {
@@ -720,18 +720,12 @@
     enhanceLogin
   };
 
-  new MutationObserver(() => enhanceLogin()).observe(document.documentElement, {childList:true,subtree:true});
+  new MutationObserver(() => enhanceLogin()).observe(root(), {childList:true,subtree:true});
   document.addEventListener('DOMContentLoaded', () => {
     bindBrowserSocialCallback().catch(() => {});
     enhanceLogin();
-    finishSocial();
+    void finishSocial();
     hideSplash();
   }, {once:true});
   window.addEventListener('pageshow', hideSplash);
-  setTimeout(() => {
-    bindBrowserSocialCallback().catch(() => {});
-    enhanceLogin();
-    finishSocial();
-    hideSplash();
-  }, 0);
 })();

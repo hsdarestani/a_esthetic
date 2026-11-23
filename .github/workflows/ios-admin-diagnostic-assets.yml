@@ -1,0 +1,35 @@
+name: Package iOS staff bootstrap diagnostic JS
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/ios-admin-diagnostic-assets.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify diagnostic HTML uses sanitized errors and explicit recovery
+        run: |
+          set -euo pipefail
+          node --check www/core-app.js
+          node --check www/admin-mode.js
+          node --check www/mobile/native-workspace.mjs
+          grep -q 'data-staff-stage' www/core-app.js
+          grep -q 'data-staff-web-fallback' www/core-app.js
+          grep -q 'NATIVE_PLUGIN_NOT_REGISTERED' www/admin-mode.js
+          grep -q 'forceWeb' www/admin-mode.js
+          grep -q "STAFF" www/admin-mode.js || grep -q 'staff' www/admin-mode.js
+          mkdir -p diagnostic
+          cp www/core-app.js diagnostic/
+          cp www/admin-mode.js diagnostic/
+          cp www/mobile/native-workspace.mjs diagnostic/
+          echo "$(git rev-parse HEAD)" > diagnostic/git-commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-iOS-admin-diagnostic-js
+          path: diagnostic/
+          if-no-files-found: error
+          retention-days: 7

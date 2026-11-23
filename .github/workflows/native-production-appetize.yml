@@ -1,0 +1,215 @@
+name: A+ Esthetic final production-connected Appetize binaries
+# Rebuild after November 2026 Patient/Patienten UI terminology migration.
+on:
+  push:
+    branches: [feature/mobile-unified-overhaul]
+    paths: [.github/workflows/native-production-appetize.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: a-esthetic-final-appetize-production
+  cancel-in-progress: false
+jobs:
+  backend-ready:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Wait for both approved production native APIs (unauthenticated read only)
+        run: |
+          set -euo pipefail
+          for retry in $(seq 1 120); do
+            app=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 7 https://app.a-esthetic.de/api/mobile/staff/office/invoice-settings/ || true)
+            book=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 7 https://book.a-esthetic.de/api/mobile/staff/overview/ || true)
+            if [[ "$app" =~ ^(401|403)$ && "$book" =~ ^(401|403)$ ]]; then
+              echo "Production native API readiness confirmed: app=$app book=$book"
+              exit 0
+            fi
+            if ((retry%12==0)); then echo "Awaiting production release: app=$app book=$book"; fi
+            sleep 10
+          done
+          echo 'New production APIs are not verified; refuse to build a nonfunctional Appetize app.'
+          exit 1
+  package:
+    needs: backend-ready
+    name: Final Android or iOS Simulator
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+            file: artifacts/APlus-Esthetic-Native-Production.apk
+            filetype: apk
+          - platform: ios
+            os: macos-latest
+            file: artifacts/APlus-Esthetic-Native-iOS-Simulator.zip
+            filetype: zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        if: matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Reject any remaining Kunde labels in user-facing UI
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          rx=re.compile(r'Kund(?:e|en|in|innen|es)|Neukund(?:e|en)|Bestandskund(?:e|en)',re.I)
+          matches=[str(p) for root in ('www','native/staff','templates') for p in Path(root).rglob('*')
+                   if p.is_file() and p.suffix in {'.html','.js','.mjs','.swift','.java'}
+                   and rx.search(p.read_text(encoding='utf-8'))]
+          assert not matches, 'Kunde UI labels remain: '+', '.join(matches)
+          print('PASS: all Patient labels consistent')
+          PY
+      - name: Verify native UI is bundled, while the APIs use the real production URLs
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          config=json.loads(Path('capacitor.config.json').read_text())
+          assert not config.get('server',{}).get('url'), 'Remote HTML shell is forbidden'
+          assert 'https://app.a-esthetic.de' in Path('www/mobile/runtime.js').read_text()
+          assert 'NativeStaff' in Path('www/admin-mode.js').read_text()
+          print('PASS: native bundled staff UI and production API origin')
+          PY
+          node --check www/mobile/native-workspace.mjs
+          node scripts/test_native_staff_controller.mjs
+          # Verify native bootstrap keeps the SwiftUI workspace visible during
+          # an initial API outage instead of returning to the login reconnect.
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const native = fs.readFileSync('www/mobile/native-workspace.mjs', 'utf8');
+          if (!native.includes("id==='retry-initial'") || !native.includes('if(initialPatient)await showPatient(initialPatient)')) {
+            throw new Error('Native startup must allow retry without dismissing the screen');
+          }
+          console.log('PASS: native startup recovery path present');
+          NODE
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const src = fs.readFileSync('www/mobile/workspace.mjs', 'utf8');
+          if (src.includes('signal: AbortSignal.any(')) {
+            throw new Error('iOS 17.2 cannot execute AbortSignal.any in staff fetch');
+          }
+          console.log('PASS: legacy iOS staff requests use compatible AbortController');
+          NODE
+      - name: Generate actual iOS and Android native source
+        run: |
+          set -euo pipefail
+          npm pkg delete scripts.capacitor:sync:after
+          npm install --no-audit --no-fund
+          test -s www/mobile/native-staff-bridge.js
+          grep -q 'NativeStaff' www/mobile/native-staff-bridge.js
+          npx cap add ${{ matrix.platform }}
+          python3 scripts/configure_native_camera_permissions.py
+          python3 scripts/install_native_staff.py
+          if [[ "${{ matrix.platform }}" == "ios" ]]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          import json, xml.etree.ElementTree as ET
+          root=Path('ios/App/App')
+          config=json.loads((root/'capacitor.config.json').read_text())
+          assert 'NativeStaffPlugin' in config['packageClassList'], 'NativeStaff not in iOS plugin discovery list'
+          storyboard=ET.parse(root/'Base.lproj/Main.storyboard').getroot()
+          assert any(c.get('customClass')=='StaffBridgeViewController'
+                     for c in storyboard.iter('viewController')), 'Swift bridge not in storyboard'
+          swift=(root/'AppDelegate.swift').read_text()
+          assert 'registerPluginInstance(NativeStaffPlugin())' in swift
+          assert 'CAPPluginMethod(name: "probe"' in swift
+          print('PASS: iOS native bridge wired into storyboard and plugin discovery')
+          PY
+          fi
+      - name: Build Android APK
+        if: matrix.platform == 'android'
+        run: |
+          set -euo pipefail
+          (cd android && ./gradlew --no-daemon assembleDebug)
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/APlus-Esthetic-Native-Production.apk
+          test -s artifacts/APlus-Esthetic-Native-Production.apk
+      - name: Build iOS Simulator ZIP
+        if: matrix.platform == 'ios'
+        run: |
+          set -euo pipefail
+          if [[ -d ios/App/App.xcworkspace ]]; then
+            xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug \
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/aesthetic-final" CODE_SIGNING_ALLOWED=NO build
+          else
+            xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/aesthetic-final" CODE_SIGNING_ALLOWED=NO build
+          fi
+          mkdir -p artifacts
+          app="$RUNNER_TEMP/aesthetic-final/Build/Products/Debug-iphonesimulator/App.app"
+          test -f "$app/Info.plist"
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-Native-iOS-Simulator.zip
+      - name: Runtime smoke test NativeStaff on an actual iOS Simulator
+        if: matrix.platform == 'ios'
+        run: |
+          set -euo pipefail
+          simid=$(xcrun simctl list devices available -j | python3 -c '
+          import sys,json
+          o=json.load(sys.stdin)
+          ds=[d for devices in o["devices"].values() for d in devices
+              if d.get("isAvailable",False) and "iPhone" in d.get("name","")]
+          print(ds[0]["udid"] if ds else "")
+          ')
+          if [[ -z "$simid" ]]; then
+            echo 'No available iOS Simulator runtime'; exit 1
+          fi
+          xcrun simctl boot "$simid" || true
+          xcrun simctl bootstatus "$simid" -b
+          app="$RUNNER_TEMP/aesthetic-final/Build/Products/Debug-iphonesimulator/App.app"
+          xcrun simctl install "$simid" "$app"
+          xcrun simctl launch "$simid" de.aplusesthetic.app
+          sleep 12
+          xcrun simctl spawn "$simid" log show --style compact --last 3m \
+            --predicate 'eventMessage CONTAINS[c] "APLUS_NATIVE_STAFF_"' > "$RUNNER_TEMP/native-staff-ios.log" || true
+          if ! grep -q 'APLUS_NATIVE_STAFF_REGISTERED bridge=available' "$RUNNER_TEMP/native-staff-ios.log"; then
+            echo 'FAIL: custom CAPBridgeViewController never registered NativeStaff'
+            exit 1
+          fi
+          if grep -q 'APLUS_NATIVE_STAFF_JS_BRIDGE OK' "$RUNNER_TEMP/native-staff-ios.log"; then
+            echo 'PASS: actual iOS Simulator JS-to-Swift NativeStaff probe returned OK'
+          else
+            echo 'FAIL: native Swift plugin registration did not complete a JavaScript probe'
+            grep 'APLUS_NATIVE_STAFF_JS_BRIDGE' "$RUNNER_TEMP/native-staff-ios.log" || true
+            exit 1
+          fi
+          xcrun simctl terminate "$simid" de.aplusesthetic.app || true
+          xcrun simctl shutdown "$simid" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-Esthetic-Final-${{ matrix.platform }}
+          path: ${{ matrix.file }}
+          if-no-files-found: error
+          retention-days: 30
+      - name: Check whether Appetize API access exists
+        id: access
+        env:
+          API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+        run: |
+          if [[ -n "$API_TOKEN" ]]; then echo 'yes=true' >> "$GITHUB_OUTPUT"; else echo 'yes=false' >> "$GITHUB_OUTPUT"; fi
+      - name: Upload to user's authorized Appetize account
+        id: upload
+        if: steps.access.outputs.yes == 'true'
+        uses: appetizeio/github-action-appetize@v1.1.0
+        with:
+          apiToken: ${{ secrets.APPETIZE_API_TOKEN }}
+          appFile: ${{ matrix.file }}
+          platform: ${{ matrix.platform }}
+          fileType: ${{ matrix.filetype }}
+          note: A+ Esthetic final native acceptance, production APIs; use synthetic patients only
+      - name: Report QA files and optional Appetize link
+        run: |
+          if [[ "${{ steps.access.outputs.yes }}" == "true" ]]; then
+            echo 'Appetize: https://appetize.io/app/${{ steps.upload.outputs.publicKey }}' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Appetize token unavailable. Download the generated APK or iOS Simulator ZIP from this run.' >> "$GITHUB_STEP_SUMMARY"
+          fi
