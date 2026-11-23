@@ -6,6 +6,9 @@ on:
       - .github/workflows/ios-native-staff-build-artifact.yml
       - native/staff/ios/**
       - scripts/install_native_staff.py
+      - www/mobile/native-calendar-layout.mjs
+      - www/mobile/native-workspace.mjs
+      - scripts/test_native_calendar_layout.mjs
 permissions: {contents: read}
 jobs:
   ios:
@@ -37,6 +40,19 @@ jobs:
           node --check www/core-app.js
           node --check www/mobile/native-workspace.mjs
           node scripts/test_native_calendar_layout.mjs
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const swift=fs.readFileSync('native/staff/ios/StaffSimplyBookV3.swift','utf8');
+          const model=fs.readFileSync('www/mobile/native-calendar-layout.mjs','utf8');
+          if(!swift.includes('liveSwipe') || !swift.includes('.transition(.asymmetric(')){
+            throw new Error('V3 must provide visible swipe motion and animated date transitions');
+          }
+          if(!swift.includes('hourCount*4') || !model.includes('VISIBLE_START_HOUR = 10') ||
+             !model.includes('VISIBLE_END_HOUR = 20')){
+            throw new Error('V3 must render fixed 10–20 hours and 15-minute guide lines');
+          }
+          console.log('PASS: V3 swipe animation and fixed visible hours source checks');
+          NODE
           node scripts/test_native_staff_controller.mjs
           grep -q 'struct StaffSimplyBookV3: View' ios/App/App/AppDelegate.swift
           grep -q 'StaffSimplyBookV3(state: state, model: calendar)' ios/App/App/AppDelegate.swift
