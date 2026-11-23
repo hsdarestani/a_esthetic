@@ -20,7 +20,10 @@ globalThis.fetch=async(url,opts)=>{
   const path=new URL(url).pathname;
   let result;
   if(path.endsWith('/overview/'))result={today:0,upcoming:[]};
-  else if(path.endsWith('/catalog/'))result={providers:[{id:1,name:'Demo clinician'}],services:[{id:1,name:'Consult',active:true}]};
+  else if(path.endsWith('/catalog/'))result={
+    providers:[{id:1,name:'Demo clinician'},{id:2,name:'A+ Esthetic (SimplyBook #7)',source_managed:true}],
+    services:[{id:1,name:'Consult',active:true},{id:2,name:'Imported',slug:'simplybook-event-7',active:true,source_managed:true}],
+  };
   else if(path.endsWith('/calendar/')){
     lastCalendar=new URL(url).searchParams.get('start');
     result={
@@ -60,7 +63,7 @@ assert.equal(current.timeline.mode,'day','native calendar must be a real time gr
 assert.equal(current.timeline.columns.length,1);
 assert.equal(current.timeline.firstHour,0);
 assert.equal(current.timeline.lastHour,24);
-assert.equal(current.timeline.providers.length,1);
+assert.equal(current.timeline.providers.length,2);
 assert.ok(current.timeline.events.some(e=>e.id==='block-info:90'));
 await click('block-info:90');
 assert.match(current.message,/SimplyBook/);
@@ -68,6 +71,24 @@ assert.ok(!current.actions.some(x=>x.id==='save-block-edit'));
 await click('calendar');
 await click('block-info:91');
 assert.match(current.message,/Book administration/);
+await click('calendar');
+await click('new-appointment');
+assert.ok(!current.fields.find(f=>f.id==='staff_id').options.some(o=>o.value==='2'),'imported provider unavailable for local booking');
+assert.ok(!current.fields.find(f=>f.id==='service_id').options.some(o=>o.value==='2'),'imported service unavailable for local booking');
+await click('calendar');
+await click('new-block');
+assert.ok(!current.fields.find(f=>f.id==='staff_id').options.some(o=>o.value==='2'),'imported provider unavailable for local blocks');
+await click('calendar');
+await click('settings');
+await click('services');
+await click('service:2');
+assert.match(current.message,/SimplyBook/);
+assert.ok(!current.actions.some(a=>a.id==='save-service'));
+await click('calendar');
+await click('availability');
+await click('load-availability',{staff_id:'2',date:'2026-11-23'});
+assert.match(current.message,/SimplyBook/);
+assert.ok(!current.actions.some(a=>a.id==='save-availability'));
 await click('calendar');
 await click('appointment:44');
 assert.match(current.message,/SimplyBook/);
