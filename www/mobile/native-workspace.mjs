@@ -258,7 +258,13 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     const servicesForBooking=syncedEdit
       ? catalog.services.filter(s=>Number(s.id)===Number(appointment.service_id))
       : catalog.services.filter(s=>s.active&&!isSyncedService(s));
-    const fields=[
+    // A SimplyBook source booking supports *time only* here. Never show
+    // patient/provider/treatment/notes as editable fields when the API would
+    // discard or reject those values. Source IDs travel unchanged in payload.
+    const fields=syncedEdit ? [
+      value('date',tr('Datum (JJJJ-MM-TT)','Date (YYYY-MM-DD)'),appointment.date),
+      value('start',tr('Beginn (HH:MM)','Start (HH:MM)'),appointment.start),
+    ] : [
       value('customer_id',tr('Patient','Patient'),edit?appointment.customer_id:chosenPatient?.id||options[0]?.value,options),
       value('staff_id',tr('Behandler','Provider'),edit?appointment.staff_id:(slot.staff_id && providersForBooking.some(p=>String(p.id)===String(slot.staff_id)) ? slot.staff_id : providersForBooking[0]?.id),optionFor(providersForBooking)),
       value('service_id',tr('Behandlung','Treatment'),edit?appointment.service_id:servicesForBooking[0]?.id,optionFor(servicesForBooking)),
@@ -554,6 +560,14 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id==='edit-appointment')return await appendForm(true);
       if(id==='save-new'||id==='save-edit'){
         const payload={operation:id==='save-new'?'create':'update',...fields};
+        if(id==='save-edit'&&appointment.source_managed){
+          if(!admin||!appointment.source_editable)
+            throw new Error(tr('Dieser SimplyBook-Termin ist schreibgeschützt.','This SimplyBook appointment is read-only.'));
+          // The source identity is immutable; only date/start are offered to staff.
+          payload.customer_id=appointment.customer_id;
+          payload.staff_id=appointment.staff_id;
+          payload.service_id=appointment.service_id;
+        }
         for(const k of ['customer_id','staff_id','service_id'])payload[k]=Number(payload[k]);
         if(id==='save-edit'){payload.id=appointment.id;payload.revision=appointment.revision;payload.status=appointment.status;}
         await command('book/appointment/',payload);appointmentsById.clear();calendarCache.clear();return await screen('calendar');
