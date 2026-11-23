@@ -11,7 +11,7 @@ class FeatureModule(models.Model):
 class UserProfile(models.Model):
     ROLE_CHOICES=[('customer','Kundin/Kunde'),('reception','Empfang'),('specialist','Behandler/in'),('manager','Management'),('admin','Administrator/in')]
     SALUTATION_CHOICES=[('herr','Herr'),('frau','Frau'),('divers','Divers')]
-    user=models.OneToOneField(User,on_delete=models.CASCADE,related_name='profile'); role=models.CharField(max_length=20,choices=ROLE_CHOICES,default='customer'); phone=models.CharField(max_length=40,blank=True); salutation=models.CharField(max_length=12,choices=SALUTATION_CHOICES,blank=True); street=models.CharField(max_length=180,blank=True); postal_code=models.CharField(max_length=20,blank=True); city=models.CharField(max_length=120,blank=True); country=models.CharField(max_length=2,default='DE'); preferred_language=models.CharField(max_length=10,default='de'); marketing_consent=models.BooleanField(default=False); health_data_consent=models.BooleanField(default=False); onboarding_required=models.BooleanField(default=False); auth_provider=models.CharField(max_length=20,default='password'); email_verified_at=models.DateTimeField(null=True,blank=True); phone_verified_at=models.DateTimeField(null=True,blank=True); profile_completed_at=models.DateTimeField(null=True,blank=True); referral_code_used=models.CharField(max_length=32,blank=True); created_at=models.DateTimeField(auto_now_add=True)
+    user=models.OneToOneField(User,on_delete=models.CASCADE,related_name='profile'); role=models.CharField(max_length=20,choices=ROLE_CHOICES,default='customer'); phone=models.CharField(max_length=40,blank=True); date_of_birth=models.DateField(null=True,blank=True); salutation=models.CharField(max_length=12,choices=SALUTATION_CHOICES,blank=True); street=models.CharField(max_length=180,blank=True); postal_code=models.CharField(max_length=20,blank=True); city=models.CharField(max_length=120,blank=True); country=models.CharField(max_length=2,default='DE'); preferred_language=models.CharField(max_length=10,default='de'); marketing_consent=models.BooleanField(default=False); health_data_consent=models.BooleanField(default=False); onboarding_required=models.BooleanField(default=False); auth_provider=models.CharField(max_length=20,default='password'); email_verified_at=models.DateTimeField(null=True,blank=True); phone_verified_at=models.DateTimeField(null=True,blank=True); profile_completed_at=models.DateTimeField(null=True,blank=True); referral_code_used=models.CharField(max_length=32,blank=True); created_at=models.DateTimeField(auto_now_add=True)
     def __str__(self): return f'{self.user.username} – {self.get_role_display()}'
 class AuditLog(models.Model):
     actor=models.ForeignKey(User,null=True,blank=True,on_delete=models.SET_NULL); action=models.CharField(max_length=120); entity_type=models.CharField(max_length=100,blank=True); entity_id=models.CharField(max_length=100,blank=True); metadata=models.JSONField(default=dict,blank=True); ip_address=models.GenericIPAddressField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
@@ -163,6 +163,32 @@ class CheckInSession(models.Model):
     created_at=models.DateTimeField(auto_now_add=True)
     class Meta: ordering=['-created_at']
     def __str__(self): return str(self.token)
+
+class OfficeIntakeLock(models.Model):
+    """Serialize public intake account matching and creation."""
+    pass
+
+
+class OfficeIntakeSubmission(models.Model):
+    """Immutable public general Aufnahmebogen with private signature and Book sync receipt."""
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.PROTECT,
+                             related_name='office_intake_submissions')
+    identity = models.JSONField(default=dict)
+    answers = models.JSONField(default=dict)
+    signature_png = models.TextField()
+    consent_version = models.CharField(max_length=40, default='intake-2026-11')
+    STATUS = [('pending','Übertragung offen'),('linked','Zugeordnet'),
+              ('review','Identität prüfen'),('error','Übertragung fehlgeschlagen')]
+    sync_status = models.CharField(max_length=12,choices=STATUS,default='pending',db_index=True)
+    book_customer_id = models.PositiveBigIntegerField(null=True,blank=True)
+    book_record_id = models.CharField(max_length=36,blank=True)
+    created_at = models.DateTimeField(auto_now_add=True,db_index=True)
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Digitaler Aufnahmebogen'
+        verbose_name_plural = 'Digitale Aufnahmebögen'
+
 
 class Invoice(models.Model):
     STATUS=[('draft','Entwurf'),('issued','Ausgestellt'),('cancelled','Storniert')]

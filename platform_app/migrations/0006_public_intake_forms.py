@@ -1,0 +1,56 @@
+import uuid
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+
+def ensure_live_office_schema(apps, schema_editor):
+    """Respect existing production fields/tables from older manual app releases."""
+    from platform_app.models import UserProfile, OfficeIntakeLock, OfficeIntakeSubmission
+    connection = schema_editor.connection
+    with connection.cursor() as cursor:
+        table_names = {row.name for row in connection.introspection.get_table_list(cursor)}
+        profile_table = UserProfile._meta.db_table
+        date_columns = {item.name for item in
+                        connection.introspection.get_table_description(cursor, profile_table)}
+    if 'date_of_birth' not in date_columns:
+        schema_editor.add_field(UserProfile, UserProfile._meta.get_field('date_of_birth'))
+    if OfficeIntakeLock._meta.db_table not in table_names:
+        schema_editor.create_model(OfficeIntakeLock)
+    if OfficeIntakeSubmission._meta.db_table not in table_names:
+        schema_editor.create_model(OfficeIntakeSubmission)
+
+
+
+class Migration(migrations.Migration):
+    dependencies = [('platform_app','0005_goae_draft'),
+                    migrations.swappable_dependency(settings.AUTH_USER_MODEL)]
+    state_operations = [
+        migrations.CreateModel(name='OfficeIntakeLock',fields=[
+            ('id',models.BigAutoField(auto_created=True,primary_key=True,serialize=False,verbose_name='ID')),
+        ]),
+        migrations.AddField(model_name='userprofile',name='date_of_birth',field=models.DateField(blank=True,null=True)),
+        migrations.CreateModel(
+            name='OfficeIntakeSubmission',
+            fields=[
+                ('id',models.BigAutoField(auto_created=True,primary_key=True,serialize=False,verbose_name='ID')),
+                ('public_id',models.UUIDField(default=uuid.uuid4,editable=False,unique=True)),
+                ('identity',models.JSONField(default=dict)),
+                ('answers',models.JSONField(default=dict)),
+                ('signature_png',models.TextField()),
+                ('consent_version',models.CharField(default='intake-2026-11',max_length=40)),
+                ('sync_status',models.CharField(choices=[('pending','Übertragung offen'),('linked','Zugeordnet'),('review','Identität prüfen'),('error','Übertragung fehlgeschlagen')],db_index=True,default='pending',max_length=12)),
+                ('book_customer_id',models.PositiveBigIntegerField(blank=True,null=True)),
+                ('book_record_id',models.CharField(blank=True,max_length=36)),
+                ('created_at',models.DateTimeField(auto_now_add=True,db_index=True)),
+                ('user',models.ForeignKey(blank=True,null=True,on_delete=django.db.models.deletion.PROTECT,related_name='office_intake_submissions',to=settings.AUTH_USER_MODEL)),
+            ],
+            options={'ordering':['-created_at'],'verbose_name':'Digitaler Aufnahmebogen','verbose_name_plural':'Digitale Aufnahmebögen'},
+        ),
+    ]
+    operations = [
+        migrations.SeparateDatabaseAndState(
+            database_operations=[migrations.RunPython(
+                ensure_live_office_schema, reverse_code=migrations.RunPython.noop)],
+            state_operations=state_operations,
+        ),
+    ]
