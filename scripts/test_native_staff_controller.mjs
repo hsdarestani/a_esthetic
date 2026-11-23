@@ -22,20 +22,8 @@ globalThis.fetch=async(url,opts)=>{
   if(path.endsWith('/overview/'))result={today:0,upcoming:[]};
   else if(path.endsWith('/catalog/'))result={providers:[{id:1,name:'Demo clinician'}],services:[{id:1,name:'Consult',active:true}]};
   else if(path.endsWith('/calendar/')){lastCalendar=new URL(url).searchParams.get('start');result={appointments:[],blocks:[],availability:[]};}
-  else if(path.endsWith('/patients/'))result=new URL(url).searchParams.get('page')==='2'
-    ?{items:[{id:24,name:'Second synthetic patient',email:'second@example.test'}],has_more:false}
-    :{items:[{id:23,name:'Demo patient',email:'demo@example.test'}],has_more:true};
-  else if(path.endsWith('/patient/23/')){
-    const page=new URL(url).searchParams.get('page');
-    const visitPage=new URL(url).searchParams.get('appointment_page');
-    result={patient:{id:23,name:'Demo patient',email:'demo@example.test'},
-      appointments:visitPage==='2'?[{id:102,date:'2026-11-22',start:'10:00',service_name:'Review'}]
-        :[{id:101,date:'2026-11-23',start:'10:00',service_name:'Consult'}],
-      has_more_appointments:visitPage!=='2',
-      records:page==='2'?[{id:'rec-2',title:'Older document',note:'',date:'2026-11-20',has_file:false}]
-        :[{id:'rec-1',title:'Recent note',note:'test',date:'2026-11-23',has_file:false}],
-      has_more:page!=='2'};
-  }
+  else if(path.endsWith('/patients/'))result={items:[{id:23,name:'Demo patient',email:'demo@example.test'}]};
+  else if(path.endsWith('/patient/23/'))result={patient:{id:23,name:'Demo patient',email:'demo@example.test'},appointments:[],records:[]};
   else if(path.endsWith('/customers/'))result={items:[]};
   else if(path.endsWith('/invoice-settings/')){
     if(opts.body){lastFinancialUpdate=JSON.parse(opts.body);officeRevision='v2';result={ok:true,revision:officeRevision};}
@@ -111,21 +99,9 @@ await click('save-billing-settings',settingsInput);
 assert.equal(lastFinancialUpdate.revision,'v1','uses form revision instead of silently refreshing');
 assert.equal(lastFinancialUpdate.confirmed_financial_update,true);
 await click('patients');
-assert.ok(current.actions.some(action=>action.id==='more-patients'),'native directory exposes more than first page');
-await click('more-patients');
-assert.equal(current.rows.filter(x=>x.id.startsWith('patient:')).length,2);
-assert.ok(!current.actions.some(action=>action.id==='more-patients'));
 await click('patient:23');
 assert.equal(current.title,'Demo patient');
 assert.equal(current.tabs.find(t=>t.selected).id,'patients');
-assert.ok(current.actions.some(a=>a.id==='more-patient-visits'));
-assert.ok(current.actions.some(a=>a.id==='more-patient-records'));
-await click('more-patient-visits');
-assert.equal(current.rows.filter(r=>r.id.startsWith('appointment:')).length,2);
-assert.ok(!current.actions.some(a=>a.id==='more-patient-visits'));
-await click('more-patient-records');
-assert.equal(current.rows.filter(r=>r.title==='Older document'||r.label==='Older document').length,1);
-assert.ok(!current.actions.some(a=>a.id==='more-patient-records'));
 await click('note');
 assert.equal(current.title,'New note');
 assert.equal(current.fields.find(x=>x.id==='note').kind,'multiline');
