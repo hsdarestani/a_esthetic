@@ -43,7 +43,7 @@ textarea{resize:vertical;min-height:82px}input:focus,textarea:focus,select:focus
 <label>Vorname *<input name="first_name" required maxlength="80" autocomplete="given-name" value="{{ request.POST.first_name|default:'' }}"></label>
 <label>Nachname *<input name="last_name" required maxlength="80" autocomplete="family-name" value="{{ request.POST.last_name|default:'' }}"></label>
 <div class="date-group"><label for="birthDateGerman">Geburtsdatum *</label><div class="date-entry">
-  <input id="birthDateGerman" name="date_of_birth" type="text" required inputmode="numeric" autocomplete="bday" placeholder="TT.MM.JJJJ" pattern="[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}" maxlength="10" title="TT.MM.JJJJ" value="{{ request.POST.date_of_birth|default:'' }}">
+  <input id="birthDateGerman" name="date_of_birth" type="text" required inputmode="numeric" autocomplete="bday" placeholder="TT.MM.JJJJ" pattern="[0-9]{2}\.[0-9]{2}\.[0-9]{4}" maxlength="10" title="TT.MM.JJJJ" value="{{ request.POST.date_of_birth|default:'' }}">
   <button type="button" class="date-picker-button" data-date-open aria-label="Geburtsdatum im Kalender wählen" title="Kalender öffnen">▣</button>
   <input type="date" class="native-date-picker" data-date-native tabindex="-1" aria-label="Geburtsdatum im Kalender wählen">
 </div><small class="date-hint">Format: TT.MM.JJJJ (z. B. 21.11.1990)</small></div>
@@ -113,7 +113,7 @@ function show(n){current=n;steps.forEach((s,i)=>s.classList.toggle('active',i===
 function validCurrent(){
   if(current===0){
     const value=form.querySelector('#birthDateGerman').value;
-    const p=/^(\\d{2})\\.(\\d{2})\\.(\\d{4})$/.exec(value.trim());
+    const p=/^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value.trim());
     let good=false;
     if(p){const d=new Date(p[3]+'-'+p[2]+'-'+p[1]+'T12:00:00');
       good=Number.isFinite(d.valueOf())&&d.getFullYear()===Number(p[3])&&d.getMonth()+1===Number(p[2])&&d.getDate()===Number(p[1])}
@@ -150,12 +150,12 @@ clear.addEventListener('click',()=>{ctx.clearRect(0,0,canvas.width,canvas.height
 const germanBirth=form.querySelector('#birthDateGerman'),nativeBirth=form.querySelector('[data-date-native]'),openBirth=form.querySelector('[data-date-open]');
 const germanDate=iso=>{const p=iso.split('-');return p.length===3?p[2]+'.'+p[1]+'.'+p[0]:''};
 const isoDate=str=>{
-  const match=/^(\\d{2})\\.(\\d{2})\\.(\\d{4})$/.exec(str.trim());
+  const match=/^(\d{2})\.(\d{2})\.(\d{4})$/.exec(str.trim());
   if(!match)return '';
   const iso=match[3]+'-'+match[2]+'-'+match[1],d=new Date(iso+'T12:00:00');
   return Number.isFinite(d.valueOf())&&d.getFullYear()===Number(match[3])&&d.getMonth()+1===Number(match[2])&&d.getDate()===Number(match[1])?iso:'';
 };
-if(/^\\d{4}-\\d{2}-\\d{2}$/.test(germanBirth.value))germanBirth.value=germanDate(germanBirth.value);
+if(/^\d{4}-\d{2}-\d{2}$/.test(germanBirth.value))germanBirth.value=germanDate(germanBirth.value);
 const syncBirth=()=>{nativeBirth.value=isoDate(germanBirth.value)};
 germanBirth.addEventListener('change',syncBirth);germanBirth.addEventListener('blur',syncBirth);
 nativeBirth.addEventListener('change',()=>{if(nativeBirth.value)germanBirth.value=germanDate(nativeBirth.value)});
