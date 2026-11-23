@@ -28,7 +28,7 @@ jobs:
           --health-timeout 5s
           --health-retries 15
     env:
-      BD_BUILD_SHA: 4dc3ccdc1397e9d22a5b0ccdf404be54cc3f8a28
+      BD_BUILD_SHA: f9f408f22bf50cbfba311b9306f0563441bce88e
       DATABASE_URL: postgresql://bedifferent:test_only@127.0.0.1:5432/bedifferent_build?schema=public
       NEXT_PUBLIC_APP_URL: https://bedifferent.smarbiz.sbs
       CRON_SECRET: isolated-build-only
@@ -40,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           for i in $(seq 1 60); do
-            results="$(curl -fsS --max-time 15 -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/hsdarestani/aymantraining/actions/runs?head_sha=4dc3ccdc1397e9d22a5b0ccdf404be54cc3f8a28&per_page=30")"
+            results="$(curl -fsS --max-time 15 -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/hsdarestani/aymantraining/actions/runs?head_sha=f9f408f22bf50cbfba311b9306f0563441bce88e&per_page=30")"
             state="$(printf '%s' "$results" | jq -r '[.workflow_runs[] | select(.name=="Product Quality Gate") | .conclusion] | first // "pending"')"
             echo "Exact source quality conclusion: $state"
             if [ "$state" = success ]; then exit 0; fi
@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: hsdarestani/aymantraining
-          ref: 4dc3ccdc1397e9d22a5b0ccdf404be54cc3f8a28
+          ref: f9f408f22bf50cbfba311b9306f0563441bce88e
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -61,11 +61,12 @@ jobs:
       - name: Verify isolated four-file delta and build exact source
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "4dc3ccdc1397e9d22a5b0ccdf404be54cc3f8a28"
+          test "$(git rev-parse HEAD)" = "f9f408f22bf50cbfba311b9306f0563441bce88e"
           actual="$(git diff --name-only 0359984fa826c0aafb9b4ee90481d112f6a3d619 HEAD | sort)"
-          expected="$(printf '%s\n' app/brand-system.css app/login/page.tsx lib/i18n/en.json mobile/lib/i18n/en.json | sort)"
+          expected="$(printf '%s\n' app/brand-system.css app/components/Locale.tsx app/login/page.tsx lib/i18n/en.json mobile/lib/i18n/en.json | sort)"
           if [ "$actual" != "$expected" ]; then echo "Unsafe source delta:"; echo "$actual"; exit 1; fi
           cmp lib/i18n/en.json mobile/lib/i18n/en.json
+          grep -Fq 'aria-label="Language"' app/components/Locale.tsx
           grep -Fq 'Copy text={"ATHLETEN."}' app/login/page.tsx
           grep -Fq 'font-size:.84em' app/brand-system.css
           npm ci --no-audit --no-fund
@@ -74,9 +75,9 @@ jobs:
           npx prisma db push
           npm run build
           test -s .next/standalone/server.js
-          test "$(cat .next/BUILD_ID)" = "4dc3ccdc1397e9d22a5b0ccdf404be54cc3f8a28"
+          test "$(cat .next/BUILD_ID)" = "f9f408f22bf50cbfba311b9306f0563441bce88e"
           test -d .next/static
-          echo "BD_LOGIN_BUILD_SOURCE=4dc3ccdc1397e9d22a5b0ccdf404be54cc3f8a28"
+          echo "BD_LOGIN_BUILD_SOURCE=f9f408f22bf50cbfba311b9306f0563441bce88e"
       - name: Package standalone server from only these changes
         run: |
           set -euo pipefail
@@ -89,7 +90,7 @@ jobs:
           if [ -d node_modules/.prisma ]; then cp -a node_modules/.prisma "$stage/node_modules/"; fi
           if [ -d node_modules/@prisma ]; then cp -a node_modules/@prisma "$stage/node_modules/"; fi
           if [ -d node_modules/bcryptjs ]; then cp -a node_modules/bcryptjs "$stage/node_modules/"; fi
-          printf '%s\n' '4dc3ccdc1397e9d22a5b0ccdf404be54cc3f8a28' > "$stage/.source-sha"
+          printf '%s\n' 'f9f408f22bf50cbfba311b9306f0563441bce88e' > "$stage/.source-sha"
           test -s "$stage/server.js"
           test -s "$stage/node_modules/@prisma/client/package.json"
           tar -czf bd-login-20261123.tgz -C "$stage" .
@@ -135,7 +136,7 @@ jobs:
             set -Eeuo pipefail
             APP=/opt/bedifferent-temp
             SERVICE=bedifferent-temp
-            EXPECTED=4dc3ccdc1397e9d22a5b0ccdf404be54cc3f8a28
+            EXPECTED=f9f408f22bf50cbfba311b9306f0563441bce88e
             BASE=0359984fa826c0aafb9b4ee90481d112f6a3d619
             NEW="$APP/releases/login-${{ github.run_id }}"
             switched=0
@@ -202,7 +203,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsS --max-time 20 "https://bedifferent.smarbiz.sbs/login?bd_release=${{ github.run_id }}" | grep -Fq 'ATHLETEN.'
-          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready | grep -Fq '"release":"4dc3ccdc1397e9d22a5b0ccdf404be54cc3f8a28"'
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready | grep -Fq '"release":"f9f408f22bf50cbfba311b9306f0563441bce88e"'
           curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
           curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
           echo BD_LOGIN_PRODUCTION_VERIFIED=YES
