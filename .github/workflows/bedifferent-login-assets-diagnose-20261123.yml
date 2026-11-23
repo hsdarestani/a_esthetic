@@ -70,3 +70,5 @@ jobs:
             curl -sS -o /dev/null -w 'code=%{http_code} content_type=%{content_type}\n' --max-time 10 "https://bedifferent.smarbiz.sbs$uri?test=$(date +%s)" || true
             echo "SERVICES"
             for s in a-esthetic-mobile aesthetic-book bedifferent-temp; do systemctl is-active "$s" || true; done
+
+# Verify public CSS and JS after isolated service permission repair and restart
