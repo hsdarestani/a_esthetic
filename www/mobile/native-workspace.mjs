@@ -33,6 +33,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   const appointmentsById = new Map();
   const rememberAppointments = items => { for(const a of items||[]) appointmentsById.set(a.id,a); };
   let date = today(), search = '', calendarMode='day', providerFilter='all', serviceFilter='all', active = true, busy = false, listener, patient, catalog, appointment;
+  let patientSearchCursor = {query:null,page:0,items:[],hasMore:true};
   let activeTab = 'home';
   let current = {title:'A+ Esthetic',busy:true,tabs:[]};
   const blockById = new Map();
@@ -140,9 +141,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           row('availability',tr('Arbeitszeit','Working hours'))]}));
     }
     if(name==='patients'){
-      const r=await book('patients/?q='+encodeURIComponent(search));
-      return render(view(tr('Patienten','Patients'),{fields:[value('query',tr('Suchen','Search'),search)],
-        actions:[row('search',tr('Suchen','Search'))],rows:r.items.map(x=>row('patient:'+x.id,x.name,x.email||x.phone||''))}));
+      return await showPatientDirectory(true);
     }
     if(name==='settings'){
       return render(view(tr('Einstellungen','Settings'),{rows:[
@@ -197,6 +196,27 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         fields, actions:[row('save-billing-settings',tr('Rechnungsdaten sicher speichern','Save invoice settings securely'))],
       }));
     }
+  }
+
+  async function showPatientDirectory(reset=false) {
+    const query=search.trim();
+    if(reset || patientSearchCursor.query!==query){
+      patientSearchCursor={query,page:0,items:[],hasMore:true};
+    }
+    if(patientSearchCursor.hasMore){
+      const next=patientSearchCursor.page+1;
+      const r=await book('patients/?q='+encodeURIComponent(query)+'&page='+next);
+      const seen=new Set(patientSearchCursor.items.map(x=>x.id));
+      patientSearchCursor.items.push(...r.items.filter(x=>!seen.has(x.id)));
+      patientSearchCursor.page=next;
+      patientSearchCursor.hasMore=Boolean(r.has_more);
+    }
+    return render(view(tr('Patienten','Patients'),{
+      fields:[value('query',tr('Suchen','Search'),search)],
+      actions:[row('search',tr('Suchen','Search')),
+        ...(patientSearchCursor.hasMore?[row('more-patients',tr('Weitere Patienten laden','Load more patients'))]:[])],
+      rows:patientSearchCursor.items.map(x=>row('patient:'+x.id,x.name,x.email||x.phone||'')),
+    }));
   }
 
   async function showPatient(id) {
@@ -437,6 +457,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       }
       if(id.startsWith('date:')){date=id.slice(5);return await screen('calendar',{push:false});}
       if(id==='search'||id==='billing-query'){search=fields.query||'';return await screen(id==='search'?'patients':'billing-search',{push:false});}
+      if(id==='more-patients')return await showPatientDirectory(false);
       if(admin&&id==='save-billing-settings'){
         // Optimistic revision protects concurrent edits made in the original Office admin.
         await office('invoice-settings/',{...fields,next_sequence:Number(fields.next_sequence),
