@@ -289,9 +289,15 @@ def office_public_intake(request):
                 raise ValueError('Bitte eine gültige E-Mail-Adresse angeben.')
             if len(_normalize_phone(identity['phone'])) < 8:
                 raise ValueError('Bitte eine gültige Telefonnummer angeben.')
-            birthday=date.fromisoformat(identity['date_of_birth'])
+            try:
+                birthday=datetime.strptime(identity['date_of_birth'],'%d.%m.%Y').date()
+            except ValueError:
+                birthday=date.fromisoformat(identity['date_of_birth'])
             if birthday<date(1900,1,1) or birthday>timezone.localdate():
                 raise ValueError('Bitte ein gültiges Geburtsdatum angeben.')
+            # Store a normalized ISO value in both databases; show TT.MM.JJJJ only in UI.
+            identity['date_of_birth']=birthday.isoformat()
+
             if request.POST.get('consent_accepted')!='on' or request.POST.get('privacy_ack')!='on':
                 raise ValueError('Datenschutzhinweise und Unterschrift bestätigen.')
             create_signed_submission(identity,parse_answers(request.POST),
