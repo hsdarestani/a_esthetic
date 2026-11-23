@@ -1,0 +1,97 @@
+name: Recover BE DIFFERENT login stylesheet and verify public site 20261123
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/bedifferent-login-css-recovery-20261123.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bedifferent-esthetic-temp
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Restart only BE DIFFERENT and roll back its release if CSS remains broken
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 8m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp
+            CURRENT="$(readlink -f "$APP/current")"
+            OLD="$APP/releases/42423628874"
+            case "$CURRENT" in "$APP"/releases/*) ;; *) echo "UNEXPECTED_ACTIVE_RELEASE"; exit 1;; esac
+            test "$(cat "$CURRENT/.source-sha")" = "f9f408f22bf50cbfba311b9306f0563441bce88e"
+            test -f "$OLD/.source-sha"
+            test "$(cat "$OLD/.source-sha")" = "0359984fa826c0aafb9b4ee90481d112f6a3d619"
+            for s in bedifferent-temp a-esthetic-mobile aesthetic-book nginx postgresql; do systemctl is-active --quiet "$s"; done
+            curl -fsS --max-time 8 http://127.0.0.1:3100/api/ready >/dev/null
+            # The public hashed Next assets must be readable by the unprivileged service.
+            find "$CURRENT/.next/static" -type d -exec chmod a+rx {} +
+            find "$CURRENT/.next/static" -type f -exec chmod a+r {} +
+            runuser -u bedifferenttemp -- test -r "$(find "$CURRENT/.next/static/css" -name '*.css' -type f | head -n1)"
+            verify_css(){
+              python3 - <<'PY'
+            from html.parser import HTMLParser
+            import urllib.request
+            class Styles(HTMLParser):
+              def __init__(self): super().__init__();self.urls=[]
+              def handle_starttag(self,tag,attrs):
+                d=dict(attrs)
+                if tag=='link' and d.get('rel')=='stylesheet':self.urls.append(d.get('href'))
+            with urllib.request.urlopen('http://127.0.0.1:3100/login',timeout=10) as response:
+              body=response.read().decode()
+            styles=Styles();styles.feed(body)
+            assert styles.urls, 'No stylesheet links in HTML'
+            print('STYLESHEETS',len(styles.urls),flush=True)
+            for url in styles.urls:
+              assert url.startswith('/_next/static/') and '.css' in url
+              req=urllib.request.Request('http://127.0.0.1:3100'+url,headers={'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(req,timeout=12) as response:
+                css=response.read()
+                ct=response.headers.get('Content-Type','')
+                print('ORIGIN_CSS',response.status,ct,len(css),url.split('?')[0],flush=True)
+                assert response.status==200 and 'css' in ct and len(css)>100
+            PY
+            }
+            echo "BD_RESTARTING_ONLY_BEDIFFERENT=YES"
+            systemctl restart bedifferent-temp
+            ready=0
+            for i in $(seq 1 20); do
+              if curl -fsS --max-time 5 http://127.0.0.1:3100/api/ready >/dev/null 2>&1; then ready=1; break; fi
+              sleep 2
+            done
+            if [ "$ready" -eq 1 ] && verify_css; then
+              echo "BD_NEW_RELEASE_CSS_ORIGIN=PASS"
+            else
+              echo "BD_NEW_RELEASE_CSS_FAILED_REVERTING_OLD"
+              ln -sfn "$OLD" "$APP/current.next"
+              mv -Tf "$APP/current.next" "$APP/current"
+              systemctl restart bedifferent-temp
+              ready=0
+              for i in $(seq 1 20); do
+                if curl -fsS --max-time 5 http://127.0.0.1:3100/api/ready >/dev/null 2>&1; then ready=1; break; fi
+                sleep 2
+              done
+              test "$ready" -eq 1
+              verify_css
+              echo "BD_ROLLBACK_OLD_RELEASE_RECOVERED=YES"
+            fi
+            for s in bedifferent-temp a-esthetic-mobile aesthetic-book nginx postgresql; do systemctl is-active --quiet "$s"; done
+            curl -fsS --max-time 12 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+            curl -fsS --max-time 12 https://book.a-esthetic.de/api/health/ >/dev/null
+            echo "BD_FINAL_ACTIVE_RELEASE=$(cat "$APP/current/.source-sha")"
+      - name: Public production CSS and sibling health verified
+        run: |
+          set -euo pipefail
+          curl -fsS --connect-timeout 8 --max-time 15 https://bedifferent.smarbiz.sbs/api/ready >/dev/null
+          curl -fsS --connect-timeout 8 --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --connect-timeout 8 --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo "BD_RELEASE_CSS_RECOVERY_HEALTH=PASS"
