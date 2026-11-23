@@ -6,7 +6,24 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
     dependencies = [('platform_app','0005_goae_draft'),
                     migrations.swappable_dependency(settings.AUTH_USER_MODEL)]
-    operations = [
+def ensure_live_office_schema(apps, schema_editor):
+    """Respect existing production fields/tables from older manual app releases."""
+    from platform_app.models import UserProfile, OfficeIntakeLock, OfficeIntakeSubmission
+    connection = schema_editor.connection
+    with connection.cursor() as cursor:
+        table_names = {row.name for row in connection.introspection.get_table_list(cursor)}
+        profile_table = UserProfile._meta.db_table
+        date_columns = {item.name for item in
+                        connection.introspection.get_table_description(cursor, profile_table)}
+    if 'date_of_birth' not in date_columns:
+        schema_editor.add_field(UserProfile, UserProfile._meta.get_field('date_of_birth'))
+    if OfficeIntakeLock._meta.db_table not in table_names:
+        schema_editor.create_model(OfficeIntakeLock)
+    if OfficeIntakeSubmission._meta.db_table not in table_names:
+        schema_editor.create_model(OfficeIntakeSubmission)
+
+
+    state_operations = [
         migrations.CreateModel(name='OfficeIntakeLock',fields=[
             ('id',models.BigAutoField(auto_created=True,primary_key=True,serialize=False,verbose_name='ID')),
         ]),
@@ -27,5 +44,12 @@ class Migration(migrations.Migration):
                 ('user',models.ForeignKey(blank=True,null=True,on_delete=django.db.models.deletion.PROTECT,related_name='office_intake_submissions',to=settings.AUTH_USER_MODEL)),
             ],
             options={'ordering':['-created_at'],'verbose_name':'Digitaler Aufnahmebogen','verbose_name_plural':'Digitale Aufnahmebögen'},
+        ),
+    ]
+    operations = [
+        migrations.SeparateDatabaseAndState(
+            database_operations=[migrations.RunPython(
+                ensure_live_office_schema, reverse_code=migrations.RunPython.noop)],
+            state_operations=state_operations,
         ),
     ]
