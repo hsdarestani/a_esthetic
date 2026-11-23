@@ -72,7 +72,7 @@ assert.equal(current.timeline.provider,'1');
 await click('cal-provider:all');
 assert.equal(current.timeline.provider,'all');
 await click('cal-today');
-assert.equal(current.timeline.date,selectedDay());
+assert.equal(current.timeline.date,selectedDay().slice('date:'.length),'selected week strip ID includes action prefix');
 await click('settings');
 assert.equal(current.title,'Settings');
 await click('language');
