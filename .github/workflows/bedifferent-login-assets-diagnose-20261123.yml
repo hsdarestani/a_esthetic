@@ -53,5 +53,20 @@ jobs:
                   print("CSS_ERROR",prefix,str(e)[:180])
             PY
             rm -f /tmp/bd-login-assets.html
+            echo "PERMISSION_DIAG"
+            css="$(find "$APP/.next/static" -type f -name '*.css' | head -n 1)"
+            echo "RUNUSER_STATIC_READABLE="
+            if runuser -u bedifferenttemp -- test -r "$css"; then echo yes; else echo no; fi
+            echo "RUNUSER_STATIC_SEARCHABLE="
+            if runuser -u bedifferenttemp -- test -x "$APP/.next/static/css"; then echo yes; else echo no; fi
+            echo "PATH_COMPONENT_MODES"
+            for p in /opt /opt/bedifferent-temp /opt/bedifferent-temp/current "$APP/.next" "$APP/.next/static" "$APP/.next/static/css" "$css"; do
+              stat -Lc '%a %U:%G %n' "$p" || true
+            done
+            echo "CSS_DIRECT_LOCAL_NOCACHE"
+            uri="/_next/static/css/$(basename "$css")"
+            curl -sS -o /dev/null -w 'code=%{http_code} content_type=%{content_type}\n' --max-time 10 "http://127.0.0.1:3100$uri" || true
+            echo "CSS_DIRECT_PUBLIC_NOCACHE"
+            curl -sS -o /dev/null -w 'code=%{http_code} content_type=%{content_type}\n' --max-time 10 "https://bedifferent.smarbiz.sbs$uri?test=$(date +%s)" || true
             echo "SERVICES"
             for s in a-esthetic-mobile aesthetic-book bedifferent-temp; do systemctl is-active "$s" || true; done
