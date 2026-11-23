@@ -22,7 +22,9 @@ globalThis.fetch=async(url,opts)=>{
   if(path.endsWith('/overview/'))result={today:0,upcoming:[]};
   else if(path.endsWith('/catalog/'))result={providers:[{id:1,name:'Demo clinician'}],services:[{id:1,name:'Consult',active:true}]};
   else if(path.endsWith('/calendar/')){lastCalendar=new URL(url).searchParams.get('start');result={appointments:[],blocks:[],availability:[]};}
-  else if(path.endsWith('/patients/'))result={items:[{id:23,name:'Demo patient',email:'demo@example.test'}]};
+  else if(path.endsWith('/patients/'))result=new URL(url).searchParams.get('page')==='2'
+    ?{items:[{id:24,name:'Second synthetic patient',email:'second@example.test'}],has_more:false}
+    :{items:[{id:23,name:'Demo patient',email:'demo@example.test'}],has_more:true};
   else if(path.endsWith('/patient/23/'))result={patient:{id:23,name:'Demo patient',email:'demo@example.test'},appointments:[],records:[]};
   else if(path.endsWith('/customers/'))result={items:[]};
   else if(path.endsWith('/invoice-settings/')){
@@ -99,6 +101,10 @@ await click('save-billing-settings',settingsInput);
 assert.equal(lastFinancialUpdate.revision,'v1','uses form revision instead of silently refreshing');
 assert.equal(lastFinancialUpdate.confirmed_financial_update,true);
 await click('patients');
+assert.ok(current.actions.some(action=>action.id==='more-patients'),'native directory exposes more than first page');
+await click('more-patients');
+assert.equal(current.rows.filter(x=>x.id.startsWith('patient:')).length,2);
+assert.ok(!current.actions.some(action=>action.id==='more-patients'));
 await click('patient:23');
 assert.equal(current.title,'Demo patient');
 assert.equal(current.tabs.find(t=>t.selected).id,'patients');
