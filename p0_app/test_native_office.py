@@ -122,10 +122,16 @@ class NativeOfficeTests(TestCase):
         self.patient.profile.date_of_birth = date(1990, 5, 19)
         self.patient.profile.street = 'Originalweg 7'
         self.patient.profile.save()
+        another = User.objects.create_user(username='ambiguous-intake', first_name='Anna',
+            last_name='Muster', email='other-anna@example.test')
+        UserProfile.objects.create(user=another,role='customer',phone='01721230000',date_of_birth=date(1990,5,19))
         submission = {'first_name':'Anna', 'last_name':'Muster', 'email':'changed@example.test',
                       'phone':'+49 171 9999999', 'date_of_birth':'1990-05-19',
-                      'street':'Changedweg 8', 'postal_code':'60313', 'city':'Frankfurt'}
-        response = self.client.post('/office/', submission)
+                      'street':'Changedweg 8', 'postal_code':'60313', 'city':'Frankfurt',
+                      'consent_accepted':'on','privacy_ack':'on',
+                      'signature_png':'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg=='}
+        with patch('platform_app.public_intake.sync_submission', return_value=True):
+            response = self.client.post('/office/', submission)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(OfficeIntakeReview.objects.count(), 1)
         self.assertFalse(User.objects.filter(email='changed@example.test').exists())
