@@ -219,16 +219,43 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     }));
   }
 
-  async function showPatient(id) {
+  let patientHistoryCursor=null;
+  async function showPatient(id,{moreRecords=false,moreAppointments=false}={}) {
     activeTab='patients';
-    patient=await book('patient/'+id+'/');
-    rememberAppointments(patient.appointments);
-    stack.push('patient:'+id);
+    const continued=patientHistoryCursor?.id===id && (moreRecords||moreAppointments);
+    if(!continued)patientHistoryCursor={id,recordPage:1,appointmentPage:1,records:[],appointments:[]};
+    const c=patientHistoryCursor;
+    const nextRecord=moreRecords?c.recordPage+1:c.recordPage;
+    const nextVisit=moreAppointments?c.appointmentPage+1:c.appointmentPage;
+    const result=await book('patient/'+id+'/?page='+nextRecord+'&appointment_page='+nextVisit);
+    if(!continued){
+      c.records=[...result.records];
+      c.appointments=[...result.appointments];
+      stack.push('patient:'+id);
+    } else if(moreRecords){
+      const seen=new Set(c.records.map(x=>x.id));
+      c.records.push(...result.records.filter(x=>!seen.has(x.id)));
+      c.recordPage=nextRecord;
+    } else {
+      const seen=new Set(c.appointments.map(x=>x.id));
+      c.appointments.push(...result.appointments.filter(x=>!seen.has(x.id)));
+      c.appointmentPage=nextVisit;
+    }
+    c.hasMoreRecords=moreAppointments?c.hasMoreRecords:Boolean(result.has_more);
+    c.hasMoreAppointments=moreRecords?c.hasMoreAppointments:Boolean(result.has_more_appointments);
+    patient={...result,records:c.records,appointments:c.appointments};
+    rememberAppointments(c.appointments);
     const p=patient.patient;
     return render(view(p.name,{subtitle:p.email,rows:[
-      ...patient.appointments.map(a=>row('appointment:'+a.id,a.date+' · '+a.start,a.service_name)),
-      ...patient.records.map(r=>row(r.has_file?'record:'+r.id:'',r.title,r.note||r.date.slice(0,10))),
-    ],actions:[row('new-patient-appointment',tr('Termin für Patient hinzufügen','Book for patient')),row('note',tr('Behandlungsnotiz hinzufügen','Add treatment note')),row('upload-pdf',tr('PDF zur Patientenakte hinzufügen','Add PDF to patient record'))]}));
+      ...c.appointments.map(a=>row('appointment:'+a.id,a.date+' · '+a.start,a.service_name)),
+      ...c.records.map(r=>row(r.has_file?'record:'+r.id:'',r.title,r.note||r.date.slice(0,10))),
+    ],actions:[
+      row('new-patient-appointment',tr('Termin für Patient hinzufügen','Book for patient')),
+      row('note',tr('Behandlungsnotiz hinzufügen','Add treatment note')),
+      row('upload-pdf',tr('PDF zur Patientenakte hinzufügen','Add PDF to patient record')),
+      ...(c.hasMoreAppointments?[row('more-patient-visits',tr('Weitere Termine anzeigen','Load more appointments'))]:[]),
+      ...(c.hasMoreRecords?[row('more-patient-records',tr('Weitere Akteneinträge anzeigen','Load more records'))]:[]),
+    ]}));
   }
   async function getAppointment(id) {
     if(appointmentsById.has(id))return appointmentsById.get(id);
@@ -465,6 +492,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         return await screen('billing-settings',{push:false});
       }
       if(id.startsWith('patient:'))return await showPatient(Number(id.split(':')[1]));
+      if(id==='more-patient-visits' && patientHistoryCursor)return await showPatient(patientHistoryCursor.id,{moreAppointments:true});
+      if(id==='more-patient-records' && patientHistoryCursor)return await showPatient(patientHistoryCursor.id,{moreRecords:true});
       if(id.startsWith('appointment:'))return await showAppointment(Number(id.split(':')[1]));
       if(id==='apply-calendar-filter'){
         calendarMode=fields.calendar_mode;providerFilter=fields.provider_filter;serviceFilter=fields.service_filter;
@@ -639,7 +668,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       await render({...current,message:err.message||tr('Bitte erneut versuchen.','Please try again.'),fields:(current.fields||[]).map(f=>({...f,value:fields[f.id]??f.value}))});
     } finally {busy=false;}
   }
-  async function destroy(){if(!active)return;active=false;pendingUpload=null;appointmentsById.clear();pendingCommands.clear();blockById.clear();calendarCache.clear();await listener?.remove();await plugin.dismiss();}
+  async function destroy(){if(!active)return;active=false;patientHistoryCursor=null;pendingUpload=null;appointmentsById.clear();pendingCommands.clear();blockById.clear();calendarCache.clear();await listener?.remove();await plugin.dismiss();}
   let presented = false;
   try {
     listener = await plugin.addListener('action',event=>void handle(event));
