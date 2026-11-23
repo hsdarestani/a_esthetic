@@ -1,0 +1,84 @@
+name: Store final V3 animated week/day and 10–20 QA iOS (no live activation)
+on:
+  push:
+    branches: [feature/simplybook-v3-native-20261123]
+    paths: [.github/workflows/publish-v3-ios-animated-final.yml]
+permissions: {contents: read, actions: read}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Require exact successful V3 iOS build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json,os,time,urllib.request
+          expected='058f57f06f7ca28f35f7d9ef29028f3985571bee'
+          url=f"https://api.github.com/repos/{os.environ['GH_REPO']}/actions/runs/45125774572"
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          for attempt in range(75):
+              with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=15) as r:
+                  data=json.load(r)
+              if data.get('head_sha')!=expected: raise SystemExit('SAFE_ABORT: wrong source SHA')
+              if data.get('status')=='completed':
+                  if data.get('conclusion')=='success': print('V3 iOS build verified green');break
+                  raise SystemExit('SAFE_ABORT: V3 build not successful')
+              time.sleep(12)
+          else: raise SystemExit('V3 iOS build not completed; no server writes')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: APlus-Esthetic-Appetize-iOS-V3-SimplyBook-Reference
+          path: pack
+          run-id: 45125774572
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validate Simulator ZIP, create checksum
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile,shutil
+          source=Path('pack/APlus-Esthetic-iOS-V3-SimplyBook-Reference.zip')
+          assert source.is_file(), 'missing V3 iOS archive'
+          with zipfile.ZipFile(source) as archive:
+              assert archive.testzip() is None, 'corrupted ZIP'
+              names=archive.namelist()
+              assert any(x.endswith('App.app/Info.plist') for x in names)
+              assert any(x.endswith('App.app/public/mobile/native-staff-bridge.js') for x in names)
+              assert any(x.endswith('App.app/App.debug.dylib') for x in names)
+          shutil.copy2(source,'APlus-Esthetic-V3-iOS-Simulator.zip')
+          print('Direct Appetize .app ZIP verified')
+          PY
+          sha256sum APlus-Esthetic-V3-iOS-Simulator.zip > APlus-Esthetic-V3-iOS-Simulator.sha256
+      - name: Upload V3 QA package privately, no route changes
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: 'APlus-Esthetic-V3-iOS-Simulator.zip,APlus-Esthetic-V3-iOS-Simulator.sha256'
+          target: '/tmp/aplus-v3-ios-45125774572'
+      - name: Save immutable V3 binary and check SHA without restarting server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 3m
+          script: |
+            set -euo pipefail
+            src=/tmp/aplus-v3-ios-45125774572
+            dest=/opt/a-esthetic-mobile/native-ios-releases/v3/45125774572
+            install -d -m 700 "$dest"
+            test -s "$src/APlus-Esthetic-V3-iOS-Simulator.zip"
+            install -m 600 "$src/APlus-Esthetic-V3-iOS-Simulator.zip" "$dest/APlus-Esthetic-V3-iOS-Simulator.zip"
+            install -m 600 "$src/APlus-Esthetic-V3-iOS-Simulator.sha256" "$dest/APlus-Esthetic-V3-iOS-Simulator.sha256"
+            (cd "$dest" && sha256sum -c APlus-Esthetic-V3-iOS-Simulator.sha256)
+            echo SERVER_V3_CANDIDATE_STORED=YES
+            echo PUBLIC_APP_ROUTES_UNCHANGED=YES
+            echo NO_SERVICE_RESTART=YES
