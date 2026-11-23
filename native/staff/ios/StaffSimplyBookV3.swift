@@ -274,7 +274,10 @@ struct StaffSimplyBookV3: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.white)
-        .simultaneousGesture(swipeGesture(weekNavigation:mode != "day"))
+        // In weekly/provider views the grid must scroll horizontally through
+        // columns; only the sticky date strip changes weeks via a swipe.
+        .simultaneousGesture(swipeGesture(weekNavigation:false),
+                             including:mode == "day" ? .all : .none)
     }
 
     private func columnHeading(_ column: [String: Any]) -> String {
