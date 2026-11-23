@@ -261,95 +261,51 @@ def _invoice_pdf_bytes(invoice, settings):
 
 @require_http_methods(["GET", "POST"])
 def office_public_intake(request):
-    """Public iPad intake surface. No Customer Club login is required."""
-    error = ""
-    if request.method == "POST":
-        # Invisible honeypot for basic bot protection.
-        if (request.POST.get("website") or "").strip():
-            response = render(request, "office/checkin.html", {"completed": True, "public_intake": True})
-            response["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    """Public signed general Aufnahmebogen; no login or patient PDF response."""
+    from .public_intake import create_signed_submission, parse_answers
+    error=''
+    if request.method=='POST':
+        if (request.POST.get('website') or '').strip():
+            response=render(request,'office/general_intake.html',{'completed':True})
+            response['X-Robots-Tag']='noindex, nofollow, noarchive'
+            response['Cache-Control']='private, no-store'
             return response
-
-        first_name = (request.POST.get("first_name") or "").strip()[:80]
-        last_name = (request.POST.get("last_name") or "").strip()[:80]
-        email = (request.POST.get("email") or "").strip().lower()[:254]
-        phone = (request.POST.get("phone") or "").strip()[:40]
-        salutation = (request.POST.get("salutation") or "").strip().lower()
-        street = (request.POST.get("street") or "").strip()[:180]
-        postal_code = (request.POST.get("postal_code") or "").strip()[:20]
-        city = (request.POST.get("city") or "").strip()[:120]
-
-        if not all([first_name, last_name, email, phone, street, postal_code, city]) or "@" not in email:
-            error = "Bitte alle Pflichtfelder vollständig ausfüllen."
+        identity={
+            'first_name':(request.POST.get('first_name') or '').strip()[:80],
+            'last_name':(request.POST.get('last_name') or '').strip()[:80],
+            'email':(request.POST.get('email') or '').strip().lower()[:254],
+            'phone':(request.POST.get('phone') or '').strip()[:40],
+            'salutation':(request.POST.get('salutation') or '').strip()[:10],
+            'date_of_birth':(request.POST.get('date_of_birth') or '').strip(),
+            'street':(request.POST.get('street') or '').strip()[:180],
+            'postal_code':(request.POST.get('postal_code') or '').strip()[:20],
+            'city':(request.POST.get('city') or '').strip()[:120],
+        }
+        required=('first_name','last_name','email','phone','date_of_birth','street','postal_code','city')
+        try:
+            if not all(identity.get(k) for k in required):
+                raise ValueError('Bitte alle Pflichtfelder ausfüllen.')
+            if '@' not in identity['email'] or len(identity['email'].split('@')[-1]) < 3:
+                raise ValueError('Bitte eine gültige E-Mail-Adresse angeben.')
+            if len(_normalize_phone(identity['phone'])) < 8:
+                raise ValueError('Bitte eine gültige Telefonnummer angeben.')
+            birthday=date.fromisoformat(identity['date_of_birth'])
+            if birthday<date(1900,1,1) or birthday>timezone.localdate():
+                raise ValueError('Bitte ein gültiges Geburtsdatum angeben.')
+            if request.POST.get('consent_accepted')!='on' or request.POST.get('privacy_ack')!='on':
+                raise ValueError('Datenschutzhinweise und Unterschrift bestätigen.')
+            create_signed_submission(identity,parse_answers(request.POST),
+                                     request.POST.get('signature_png') or '')
+        except (ValueError,TypeError) as exc:
+            error=str(exc)[:180]
         else:
-            email_user = User.objects.filter(email__iexact=email).order_by("pk").first()
-            phone_user = None
-            normalized_phone = _normalize_phone(phone)
-            if normalized_phone:
-                for profile in UserProfile.objects.exclude(phone="").select_related("user").order_by("pk"):
-                    if _normalize_phone(profile.phone) == normalized_phone:
-                        phone_user = profile.user
-                        break
-
-            if email_user and phone_user and email_user.pk != phone_user.pk:
-                error = "E-Mail und Telefonnummer gehören bereits zu unterschiedlichen Kundenkonten. Bitte den Empfang informieren."
-            else:
-                user = email_user or phone_user
-                created = False
-                if user:
-                    existing_profile = UserProfile.objects.filter(user=user).first()
-                    if user.is_staff or user.is_superuser or (existing_profile and existing_profile.role in OFFICE_ROLES):
-                        error = "Diese Daten können hier nicht als Kundenkonto verwendet werden. Bitte den Empfang informieren."
-                if not error:
-                    if not user:
-                        user = User.objects.create(
-                            username=_unique_username(email),
-                            email=email,
-                            first_name=first_name,
-                            last_name=last_name,
-                            is_active=True,
-                        )
-                        user.set_unusable_password()
-                        user.save(update_fields=["password"])
-                        created = True
-                    else:
-                        user.email = email
-                        user.first_name = first_name
-                        user.last_name = last_name
-                        user.save(update_fields=["email", "first_name", "last_name"])
-
-                    profile, _ = UserProfile.objects.get_or_create(user=user)
-                    profile.role = "customer"
-                    profile.phone = phone
-                    if salutation in {"herr", "frau", "divers"}:
-                        profile.salutation = salutation
-                    profile.street = street
-                    profile.postal_code = postal_code
-                    profile.city = city
-                    profile.country = "DE"
-                    profile.onboarding_required = created or profile.onboarding_required
-                    profile.save()
-
-                    member, _ = MemberAccount.objects.get_or_create(user=user)
-                    book_synced, _ = sync_customer_to_book(user)
-                    AuditLog.objects.create(
-                        actor=None,
-                        action="iPad Kundenaufnahme abgeschlossen",
-                        entity_type="User",
-                        entity_id=str(user.pk),
-                        metadata={"created": created, "member_number": member.member_number, "source": "office_public_ipad", "book_synced": book_synced},
-                        ip_address=request.META.get("REMOTE_ADDR"),
-                    )
-                    response = render(request, "office/checkin.html", {
-                        "completed": True,
-                        "public_intake": True,
-                        "member_number": member.member_number,
-                    })
-                    response["X-Robots-Tag"] = "noindex, nofollow, noarchive"
-                    return response
-
-    response = render(request, "office/checkin.html", {"error": error, "public_intake": True})
-    response["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+            response=render(request,'office/general_intake.html',{'completed':True})
+            response['X-Robots-Tag']='noindex, nofollow, noarchive'
+            response['Cache-Control']='private, no-store'
+            return response
+    response=render(request,'office/general_intake.html',{'error':error})
+    response['X-Robots-Tag']='noindex, nofollow, noarchive'
+    response['Cache-Control']='private, no-store'
     return response
 
 
