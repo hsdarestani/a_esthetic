@@ -1,0 +1,77 @@
+name: Fix BE DIFFERENT static asset permissions — 2026-11-23
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/bedifferent-login-static-permissions-20261123.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bedifferent-esthetic-temp
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - name: Fix only world-readable public static resources on exact BE DIFFERENT release
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp
+            REL="$(readlink -f "$APP/current")"
+            case "$REL" in "$APP"/releases/*) : ;; *) echo "WRONG_RELEASE_ROOT"; exit 1;; esac
+            test "$(cat "$REL/.source-sha")" = "f9f408f22bf50cbfba311b9306f0563441bce88e"
+            test -d "$REL/.next/static"
+            test -s "$REL/server.js"
+            for svc in bedifferent-temp a-esthetic-mobile aesthetic-book nginx postgresql; do systemctl is-active --quiet "$svc"; done
+            curl -fsS --max-time 10 http://127.0.0.1:3100/api/ready >/dev/null
+            test -d /opt/a-esthetic-mobile && test -d /opt/aesthetic-book
+            echo "CSS_DIR_PERMISSION_BEFORE=$(stat -c %a "$REL/.next/static/css")"
+            # Next standalone serves public hashed CSS/JS from here; publishing it read-only is intentional.
+            find "$REL/.next/static" -type d -exec chmod a+rx {} +
+            find "$REL/.next/static" -type f -exec chmod a+r {} +
+            test "$(stat -c %a "$REL/.next/static/css")" = 755
+            css="$(find "$REL/.next/static/css" -type f -name '*.css' | head -n 1)"
+            test -n "$css"
+            runuser -u bedifferenttemp -- test -r "$css"
+            echo "CSS_PERMISSION_REPAIRED=YES"
+            python3 - <<'PY'
+            from html.parser import HTMLParser
+            import urllib.request
+            class Styles(HTMLParser):
+              def __init__(self): super().__init__(); self.urls=[]
+              def handle_starttag(self,tag,attrs):
+                d=dict(attrs)
+                if tag=="link" and d.get("rel")=="stylesheet": self.urls.append(d.get("href"))
+            page=urllib.request.urlopen("http://127.0.0.1:3100/login",timeout=12).read().decode()
+            assert "WERDE" in page and "ATHLETEN." in page
+            p=Styles();p.feed(page)
+            assert len(p.urls)>=1,p.urls
+            for url in p.urls:
+              assert url.startswith('/_next/static/') and url.split('?')[0].endswith('.css'),url
+              for base in ("http://127.0.0.1:3100","https://bedifferent.smarbiz.sbs"):
+                req=urllib.request.Request(base+url,headers={'User-Agent':'Mozilla/5.0 BE-DIFFERENT-release-asset-healthcheck'})
+                with urllib.request.urlopen(req,timeout=15) as resp:
+                  body=resp.read()
+                  ctype=resp.headers.get('Content-Type','')
+                  print("CSS_OK",base,url.split('?')[0],resp.status,ctype,len(body),flush=True)
+                  assert resp.status==200 and "css" in ctype.lower() and len(body)>100
+            PY
+            for svc in bedifferent-temp a-esthetic-mobile aesthetic-book nginx postgresql; do systemctl is-active --quiet "$svc"; done
+            curl -fsS --max-time 12 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+            curl -fsS --max-time 12 https://book.a-esthetic.de/api/health/ >/dev/null
+            echo "BD_CSS_LIVE_FIX=SUCCESS"
+      - name: Verify public services and CSS after repair
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready | grep -Fq '"release":"f9f408f22bf50cbfba311b9306f0563441bce88e"'
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo "BD_LOGIN_SITE_AND_SIBLINGS_HEALTHY=YES"
