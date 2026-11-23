@@ -50,3 +50,4 @@ jobs:
           set -euo pipefail
           curl -fsS --connect-timeout 8 --max-time 20 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
           curl -fsS --connect-timeout 8 --max-time 20 https://book.a-esthetic.de/api/health/ >/dev/null
+# Read-only web-login release preflight 2026-11-23
