@@ -1,0 +1,123 @@
+{% load static %}
+<!doctype html><html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive"><meta name="theme-color" content="#11242d">
+<title>Allgemeiner Aufnahmebogen · A+ Esthetic</title>
+<style>
+:root{--ink:#1c2a30;--gold:#bb995e;--cream:#f5f2ed;--line:#dedbd5;--muted:#676f70}
+*{box-sizing:border-box}body{margin:0;color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:radial-gradient(circle at 5% 10%,#f1e6d3,transparent 33%),var(--cream)}
+main{max-width:1030px;margin:auto;padding:clamp(14px,3vw,40px)}header{display:flex;gap:15px;align-items:center;padding:24px 0 20px}header img{width:54px}header strong{display:block;font-size:17px;letter-spacing:.12em}header small{font-size:11px;color:var(--muted);letter-spacing:.11em}
+.hero{background:linear-gradient(128deg,#101b22,#1e3a42);color:#fff;border-radius:22px 22px 0 0;padding:clamp(24px,4vw,45px)}
+.hero .eyebrow{color:#e1c78d;letter-spacing:.12em;font-size:11px;font-weight:700}.hero h1{font-size:clamp(27px,4vw,43px);margin:9px 0;font-weight:600}.hero p{color:#d1d9dc;max-width:700px;line-height:1.7;margin:0}
+.sheet{background:#fff;border-radius:0 0 22px 22px;padding:clamp(20px,4vw,43px);box-shadow:0 20px 60px rgba(26,26,26,.08)}
+.progress{display:flex;gap:8px;margin-bottom:26px}.progress span{height:5px;border-radius:10px;flex:1;background:#e9e5dd}.progress span.active{background:var(--gold)}
+.step{display:none}.step.active{display:block}.step h2{font-size:21px;margin:0 0 8px}.step .subtitle{color:var(--muted);font-size:13px;line-height:1.65;margin:0 0 24px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.full{grid-column:1/-1}
+label{display:block;color:#303939;font-size:13px;font-weight:620}input:not([type=checkbox]):not([type=radio]),select,textarea{width:100%;margin-top:7px;padding:13px 14px;border:1px solid #d6d6d1;border-radius:11px;background:#fff;color:var(--ink);font:inherit;min-height:46px}
+textarea{resize:vertical;min-height:82px}input:focus,textarea:focus,select:focus{outline:2px solid #d8c39a;outline-offset:1px}
+.question{border:1px solid #e5e3db;border-radius:13px;padding:16px;margin-bottom:15px}.question h3{font-size:14px;font-weight:680;margin:0 0 12px;line-height:1.5}.choices{display:flex;gap:13px 20px;flex-wrap:wrap}.choices label,.consent-check{display:flex;align-items:flex-start;gap:8px;font-weight:500;font-size:13px;line-height:1.5;cursor:pointer}.choices input,.consent-check input{width:19px;height:19px;accent-color:#907144;margin-top:1px;flex-shrink:0}.details{margin-top:14px}
+.signature{border:1px solid #ded8cc;border-radius:14px;background:#fffcf5;padding:10px}.signature canvas{height:140px;width:100%;display:block;touch-action:none;border-bottom:1px dashed #bca878;cursor:crosshair}.signature button{margin-top:9px;border:0;background:transparent;color:#6c5631;cursor:pointer}
+.privacy{padding:20px;border:1px solid #e8ddc8;background:#fffaf1;border-radius:14px;line-height:1.7;font-size:13px}.privacy h3{font-size:17px;margin:0 0 12px}.privacy p{margin:9px 0}
+.actions{display:flex;gap:12px;justify-content:space-between;margin-top:29px}.actions button{font:inherit;font-weight:700;border-radius:12px;border:1px solid #c0b7a7;padding:14px 20px;cursor:pointer}.actions .primary{background:#163842;color:#fff;border-color:#163842;margin-left:auto}.actions .back{background:#fff;color:#555}
+.error{background:#fff0ef;color:#962f30;border-radius:12px;padding:14px;margin-bottom:19px}.success{text-align:center;padding:50px 0}.success b{font-size:48px;color:#59836a}.success h2{font-size:31px}
+.honeypot{position:absolute;left:-100vw;opacity:0}.footnote{padding:22px 5px 10px;color:#7f8180;font-size:11px;text-align:center}
+@media(max-width:620px){.grid{grid-template-columns:1fr}.hero{padding:25px 21px}.sheet{padding:25px 19px}.question{padding:13px}.actions button{min-width:94px}}
+</style></head>
+<body><main>
+<header><img src="{% static 'assets/logo.svg' %}" alt=""><div><strong>A+ ESTHETIC</strong><small>FRANKFURT AM MAIN · PATIENTENAUFNAHME</small></div></header>
+<div class="hero"><div class="eyebrow">DIGITALER PATIENTENBOGEN</div><h1>Allgemeiner Aufnahmebogen</h1>
+<p>Ihre Angaben helfen unserem Team bei der Vorbereitung Ihrer Betreuung. Der Bogen ist für alle Behandlungen vorgesehen und kann auf dem iPad, Handy oder Computer ausgefüllt werden.</p></div>
+<div class="sheet">
+{% if completed %}
+<section class="success"><b>✓</b><h2>Vielen Dank!</h2><p>Ihr Aufnahmebogen wurde sicher übermittelt. Unser Praxisteam hat Zugriff auf Ihre Angaben.</p>
+<p>Die Bestätigung enthält aus Datenschutzgründen weder Ihre Patientenakte noch einen PDF-Download.</p></section>
+{% else %}
+{% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+<div class="progress" aria-label="Fortschritt"><span class="active"></span><span></span><span></span><span></span></div>
+<form method="post" id="intakeForm" autocomplete="on">{% csrf_token %}
+<div class="honeypot" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+<fieldset class="step active" data-step="0" style="border:0;padding:0;margin:0">
+<h2>01 · Patienteninformationen</h2><p class="subtitle">Persönliche Angaben. Pflichtfelder sind mit * gekennzeichnet.</p>
+<div class="grid">
+<label>Vorname *<input name="first_name" required maxlength="80" autocomplete="given-name" value="{{ request.POST.first_name|default:'' }}"></label>
+<label>Nachname *<input name="last_name" required maxlength="80" autocomplete="family-name" value="{{ request.POST.last_name|default:'' }}"></label>
+<label>Geburtsdatum *<input name="date_of_birth" type="date" required autocomplete="bday" value="{{ request.POST.date_of_birth|default:'' }}"></label>
+<label>Beruf<input name="profession" maxlength="120"></label>
+<label class="full">Straße und Hausnummer *<input name="street" required maxlength="180" autocomplete="street-address" value="{{ request.POST.street|default:'' }}"></label>
+<label>PLZ *<input name="postal_code" required maxlength="20" autocomplete="postal-code" value="{{ request.POST.postal_code|default:'' }}"></label>
+<label>Ort *<input name="city" required maxlength="120" autocomplete="address-level2" value="{{ request.POST.city|default:'' }}"></label>
+<label>E-Mail *<input type="email" name="email" required maxlength="254" autocomplete="email" value="{{ request.POST.email|default:'' }}"></label>
+<label>Telefon *<input type="tel" name="phone" required maxlength="40" autocomplete="tel" value="{{ request.POST.phone|default:'' }}"></label>
+<label>Geschlecht<select name="gender"><option value="">Keine Angabe</option><option>Männlich</option><option>Weiblich</option><option>Divers</option></select></label>
+</div></fieldset>
+<fieldset class="step" data-step="1" style="border:0;padding:0;margin:0">
+<h2>02 · Anamnese</h2><p class="subtitle">Medizinische Angaben zur Vorbereitung des Gesprächs mit Ihrem Behandlungsteam.</p>
+<div class="question"><h3>Allergien (z. B. Medikamente, Lebensmittel)</h3><div class="choices"><label><input type="radio" name="allergies" value="Ja">Ja</label><label><input type="radio" name="allergies" value="Nein">Nein</label></div><label class="details">Falls ja, bitte spezifizieren<textarea name="allergies_notes" maxlength="3000"></textarea></label></div>
+<div class="question"><h3>Bestehende Erkrankungen</h3><div class="choices">
+<label><input type="checkbox" name="diseases" value="Keine">Keine</label>
+<label><input type="checkbox" name="diseases" value="Diabetes mellitus">Diabetes mellitus</label>
+<label><input type="checkbox" name="diseases" value="Infektionskrankheiten">Infektionskrankheiten</label>
+<label><input type="checkbox" name="diseases" value="Herz-Kreislauf-Erkrankungen">Herz-Kreislauf-Erkrankungen</label>
+<label><input type="checkbox" name="diseases" value="Autoimmunerkrankungen">Autoimmunerkrankungen</label>
+<label><input type="checkbox" name="diseases" value="Implantate">Implantate</label></div><label class="details">Weitere Erkrankungen<input name="other_diseases" maxlength="3000"></label></div>
+<div class="question"><h3>Regelmäßige Medikamenteneinnahme</h3><div class="choices"><label><input type="radio" name="medications" value="Ja">Ja</label><label><input type="radio" name="medications" value="Nein">Nein</label></div><label class="details">Wenn ja, welche?<textarea name="medications_notes" maxlength="3000"></textarea></label></div>
+<div class="question"><h3>Frühere Operationen oder ästhetische Eingriffe</h3><div class="choices"><label><input type="radio" name="surgeries" value="Ja">Ja</label><label><input type="radio" name="surgeries" value="Nein">Nein</label></div><label class="details">Wenn ja, welche und wann?<textarea name="surgeries_notes" maxlength="3000"></textarea></label></div>
+<div class="question"><h3>Schwangerschaft oder Stillzeit (falls zutreffend)</h3><div class="choices"><label><input type="radio" name="pregnancy" value="Ja">Ja</label><label><input type="radio" name="pregnancy" value="Nein">Nein</label><label><input type="radio" name="pregnancy" value="Nicht zutreffend">Nicht zutreffend</label></div></div>
+<div class="grid"><div class="question"><h3>Rauchen</h3><div class="choices"><label><input type="radio" name="smoking" value="Ja">Ja</label><label><input type="radio" name="smoking" value="Nein">Nein</label></div><label class="details">Zigaretten pro Tag<input name="cigarettes" type="number" min="0" max="200"></label></div>
+<div class="question"><h3>Alkoholkonsum</h3><div class="choices"><label><input type="radio" name="alcohol" value="Ja">Ja</label><label><input type="radio" name="alcohol" value="Nein">Nein</label></div><label class="details">Wie oft pro Woche?<input name="alcohol_frequency" maxlength="100"></label></div></div>
+</fieldset>
+<fieldset class="step" data-step="2" style="border:0;padding:0;margin:0">
+<h2>03 · Ästhetische Anliegen</h2><p class="subtitle">Welche Behandlungen interessieren Sie und welche Erfahrungen haben Sie gemacht?</p>
+<div class="question"><h3>Welche Behandlungen interessieren Sie?</h3><div class="choices">
+<label><input type="checkbox" name="interests" value="Botox">Botox</label>
+<label><input type="checkbox" name="interests" value="Hyaluron">Hyaluron</label>
+<label><input type="checkbox" name="interests" value="Haarentfernung">Haarentfernung</label>
+<label><input type="checkbox" name="interests" value="Injektions-Lipolyse">Injektions-Lipolyse</label>
+<label><input type="checkbox" name="interests" value="Vitamininfusion">Vitamininfusion</label>
+<label><input type="checkbox" name="interests" value="Hautstraffung">Hautstraffung</label>
+<label><input type="checkbox" name="interests" value="RF-Microneedling">RF-Microneedling</label></div></div>
+<div class="question"><label>Welche Erwartungen haben Sie an die Behandlung?<textarea name="expectations" maxlength="3000"></textarea></label></div>
+<div class="question"><h3>Frühere ästhetische Behandlungen</h3><div class="choices"><label><input type="radio" name="prior_treatments" value="Ja">Ja</label><label><input type="radio" name="prior_treatments" value="Nein">Nein</label></div><label class="details">Wenn ja, welche, wo und mit welchem Präparat?<textarea name="prior_treatments_notes" maxlength="3000"></textarea></label></div>
+<div class="question"><h3>Wie sind Sie auf uns aufmerksam geworden?</h3><div class="choices"><label><input type="radio" name="referral" value="Instagram">Instagram</label><label><input type="radio" name="referral" value="TikTok">TikTok</label><label><input type="radio" name="referral" value="Google">Google</label><label><input type="radio" name="referral" value="Freunde und Bekannte">Freunde und Bekannte</label><label><input type="radio" name="referral" value="Website">Website</label><label><input type="radio" name="referral" value="Andere">Andere</label></div><label class="details">Falls Andere<input name="referral_other" maxlength="3000"></label></div>
+<div class="question"><h3>Optionale Fotofreigaben (unabhängig vom Aufnahmebogen)</h3>
+<label class="consent-check"><input type="checkbox" name="photo_consultation" value="Ja">Ich stimme der Verwendung von Fotos für interne Beratungsgespräche zu.</label>
+<label class="consent-check"><input type="checkbox" name="photo_marketing" value="Ja">Ich stimme der Verwendung von Fotos für Marketingzwecke zu (freiwillig und widerruflich).</label></div>
+</fieldset>
+<fieldset class="step" data-step="3" style="border:0;padding:0;margin:0">
+<h2>04 · Datenerhebung & Unterschrift</h2><p class="subtitle">Bitte lesen und bestätigen Sie die Datenschutzhinweise.</p>
+<div class="privacy"><h3>Datenerhebung und Datenschutz – A+ Esthetic</h3>
+<p>A+ Esthetic erhebt und verarbeitet die von Ihnen bereitgestellten personenbezogenen Daten zur Bearbeitung Ihrer Anfrage, zur Terminverwaltung und zur Erbringung unserer Dienstleistungen.</p>
+<p>Mit meiner Unterschrift bestätige ich, dass die von mir angegebenen Informationen nach bestem Wissen richtig und vollständig sind.</p>
+<p>Die Verarbeitung meiner personenbezogenen Daten erfolgt gemäß den geltenden Datenschutzbestimmungen, insbesondere der Datenschutz-Grundverordnung (DSGVO). Die Datenschutzhinweise von A+ Esthetic wurden mir zur Verfügung gestellt.</p>
+</div>
+<label class="consent-check" style="margin-top:18px"><input name="consent_accepted" type="checkbox" required> Ich bestätige die obigen Angaben und die Datenerhebung mit meiner Unterschrift. *</label>
+<label class="consent-check" style="margin-top:13px"><input name="privacy_ack" type="checkbox" required> Ich habe die <a href="https://a-esthetic.de/datenschutz/" target="_blank" rel="noopener">Datenschutzhinweise</a> erhalten und zur Kenntnis genommen. *</label>
+<h3 style="margin:25px 0 9px">Unterschrift Patient/in *</h3><p class="subtitle">Mit Finger, Stift oder Maus unterschreiben.</p>
+<div class="signature"><canvas id="signaturePad" aria-label="Digitale Unterschrift"></canvas><button id="clearSignature" type="button">Unterschrift löschen</button></div>
+<input type="hidden" name="signature_png" id="signatureData">
+</fieldset>
+<div class="actions"><button type="button" class="back" data-back hidden>Zurück</button><button type="button" class="primary" data-next>Weiter</button><button type="submit" class="primary" data-submit hidden>Sicher übermitteln</button></div>
+</form>
+{% endif %}</div>
+<p class="footnote">A+ Esthetic · Stiftstraße 14 · 60313 Frankfurt am Main · Vertrauliche Übermittlung</p>
+</main>
+<script>
+(()=>{'use strict';const form=document.getElementById('intakeForm');if(!form)return;
+const steps=[...form.querySelectorAll('.step')],bar=[...document.querySelectorAll('.progress span')],next=form.querySelector('[data-next]'),back=form.querySelector('[data-back]'),submit=form.querySelector('[data-submit]');let current=0;
+function show(n){current=n;steps.forEach((s,i)=>s.classList.toggle('active',i===n));bar.forEach((s,i)=>s.classList.toggle('active',i<=n));back.hidden=n===0;next.hidden=n===steps.length-1;submit.hidden=n!==steps.length-1;window.scrollTo({top:100,behavior:'smooth'});}
+function validCurrent(){for(const el of steps[current].querySelectorAll('[required]'))if(!el.checkValidity()){el.reportValidity();return false}return true;}
+next.addEventListener('click',()=>{if(validCurrent())show(Math.min(current+1,steps.length-1))});back.addEventListener('click',()=>show(Math.max(0,current-1)));
+const canvas=document.getElementById('signaturePad'),ctx=canvas.getContext('2d'),clear=document.getElementById('clearSignature');let drawing=false,signed=false;
+function size(){const rect=canvas.getBoundingClientRect();const ratio=Math.min(window.devicePixelRatio||1,2);const old=signed?canvas.toDataURL():null;canvas.width=Math.round(rect.width*ratio);canvas.height=Math.round(rect.height*ratio);ctx.scale(ratio,ratio);ctx.lineWidth=2.2;ctx.strokeStyle='#263b3f';ctx.lineCap='round';ctx.lineJoin='round';if(old){const image=new Image();image.onload=()=>ctx.drawImage(image,0,0,rect.width,rect.height);image.src=old}}
+size();window.addEventListener('resize',size);
+function position(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+canvas.addEventListener('pointerdown',e=>{drawing=true;canvas.setPointerCapture(e.pointerId);const p=position(e);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+.1,p.y+.1);ctx.stroke();signed=true});
+canvas.addEventListener('pointermove',e=>{if(!drawing)return;const p=position(e);ctx.lineTo(p.x,p.y);ctx.stroke()});
+['pointerup','pointercancel','pointerleave'].forEach(type=>canvas.addEventListener(type,()=>{drawing=false}));
+clear.addEventListener('click',()=>{ctx.clearRect(0,0,canvas.width,canvas.height);signed=false;form.querySelector('#signatureData').value=''});
+form.addEventListener('submit',e=>{e.preventDefault();if(!validCurrent())return;if(!signed){alert('Bitte unterschreiben Sie vor dem Absenden.');return;}
+const value=canvas.toDataURL('image/png');if(value.length>260000){alert('Die Unterschrift ist zu groß. Bitte löschen und erneut unterschreiben.');return}
+form.querySelector('#signatureData').value=value;submit.disabled=true;submit.textContent='Wird sicher übermittelt …';HTMLFormElement.prototype.submit.call(form)});
+})();
+</script>
+</body></html>
