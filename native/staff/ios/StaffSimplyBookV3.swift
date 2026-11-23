@@ -289,7 +289,7 @@ struct StaffSimplyBookV3: View {
 
     private var hourRuler: some View {
         VStack(spacing: 0) {
-            ForEach(0..<24, id: \.self) { hour in
+            ForEach(firstHour..<lastHour, id: \.self) { hour in
                 Text(String(format: "%02d:00", hour))
                     .font(.system(size: 10, weight: .regular))
                     .foregroundStyle(ink.opacity(0.58))
@@ -305,24 +305,24 @@ struct StaffSimplyBookV3: View {
     private func gridColumn(index: Int, column: [String: Any], width: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             Color.white
-            ForEach(0..<24, id: \.self) { hour in
+            ForEach(0..<hourCount, id: \.self) { hour in
                 Rectangle().fill(rule).frame(height: 0.7)
                     .offset(y: CGFloat(hour) * hourHeight)
                     .allowsHitTesting(false)
             }
-            ForEach(0..<48, id: \.self) { half in
-                Rectangle().fill(rule.opacity(0.42)).frame(height: 0.4)
-                    .offset(y: CGFloat(half) * hourHeight / 2)
+            ForEach(0..<(hourCount*4), id: \.self) { quarter in
+                Rectangle().fill(rule.opacity(0.36)).frame(height: 0.4)
+                    .offset(y: CGFloat(quarter) * hourHeight / 4)
                     .allowsHitTesting(false)
             }
             ForEach(Array(bands.filter { number($0,"column") == index }.enumerated()), id: \.offset) { _, band in
                 Rectangle().fill(Color(red: 1, green: 0.98, blue: 0.92))
                     .frame(height: CGFloat(max(0, number(band,"upper") - number(band,"lower"))) * hourHeight / 60)
-                    .offset(y: CGFloat(number(band,"lower")) * hourHeight / 60)
+                    .offset(y: CGFloat(number(band,"lower")-firstMinute) * hourHeight / 60)
                     .allowsHitTesting(false)
             }
-            ForEach(0..<48, id: \.self) { slot in
-                let slotTime = String(format: "%02d:%02d", slot/2, (slot%2)*30)
+            ForEach(0..<(hourCount*2), id: \.self) { slot in
+                let slotTime = String(format: "%02d:%02d", firstHour+slot/2, (slot%2)*30)
                 Button {
                     let staff = mode == "provider" ? text(column, "ref") : selectedProvider
                     fire("slot:" + text(column, "date") + ":" + slotTime + ":" + staff)
@@ -340,7 +340,7 @@ struct StaffSimplyBookV3: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .allowsHitTesting(false)
         }
-        .frame(width: width, height: hourHeight * 24)
+        .frame(width: width, height: hourHeight * CGFloat(hourCount))
         .clipped()
     }
 
@@ -382,7 +382,7 @@ struct StaffSimplyBookV3: View {
             .overlay(Rectangle().stroke(.white.opacity(0.55), lineWidth: 0.6))
         }
         .buttonStyle(.plain)
-        .offset(x: CGFloat(lane) * width, y: CGFloat(start) * hourHeight / 60)
+        .offset(x: CGFloat(lane) * width, y: CGFloat(start-firstMinute) * hourHeight / 60)
         .accessibilityLabel(title+" "+time)
     }
 
