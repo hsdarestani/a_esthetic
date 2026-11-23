@@ -162,8 +162,8 @@ await click('appointment:44');
 assert.ok(current.actions.some(action=>action.id==='edit-appointment'),'server-enabled source booking can be rescheduled by admin');
 assert.ok(current.actions.some(action=>action.id==='cancel-appointment'),'server-enabled source booking can be cancelled by admin');
 await click('edit-appointment');
-assert.equal(current.fields.find(field=>field.id==='staff_id').options.length,1,'source provider kept fixed');
-assert.equal(current.fields.find(field=>field.id==='service_id').options.length,1,'source treatment kept fixed');
+assert.deepEqual(current.fields.map(field=>field.id),['date','start'],
+  'source appointment offers only the two supported editable time fields');
 await native.destroy();
 native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'doctor',name:'Demo Doctor'},
   origin:'https://example.test',logout:()=>{}});
