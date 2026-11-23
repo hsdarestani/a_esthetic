@@ -1,4 +1,5 @@
 name: A+ Esthetic SimplyBook-style Native Calendar iOS Simulator
+# Final safe-sync test package: external SimplyBook appointments, notes, providers, services and hours remain source-managed.
 on:
   push:
     branches: [feature/mobile-unified-overhaul]
