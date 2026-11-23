@@ -50,7 +50,7 @@ assert.notEqual(day.events.find(e=>e.id==='appointment:1').lane,
   day.events.find(e=>e.id==='appointment:2').lane);
 assert.equal(day.events.find(e=>e.id==='appointment:3').lanes,1);
 assert.equal(day.events.find(e=>e.id==='block:90').kind,'note');
-assert.equal(day.events.filter(e=>e.kind==='block')[0].id,'');
+assert.equal(day.events.filter(e=>e.kind==='block')[0].id,'block-info:91');
 assert.equal(day.bands.length,2);
 const week=model('week');
 assert.equal(week.columns.length,7);
