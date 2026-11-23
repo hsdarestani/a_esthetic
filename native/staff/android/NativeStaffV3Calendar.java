@@ -226,7 +226,17 @@ final class NativeStaffV3Calendar {
         page.addView(strip,lp(-1,d(60)));
     }
     private void buildTimeline(LinearLayout page){
-        HorizontalScrollView horizontal=new HorizontalScrollView(ctx);
+        HorizontalScrollView horizontal=new HorizontalScrollView(ctx) {
+            @Override public boolean onInterceptTouchEvent(MotionEvent event) {
+                // A one-column day grid uses a native follow-finger date swipe;
+                // it must not be stolen by a non-scrollable horizontal container.
+                if("day".equals(mode()))return false;
+                return super.onInterceptTouchEvent(event);
+            }
+            @Override public boolean onTouchEvent(MotionEvent event) {
+                return !"day".equals(mode()) && super.onTouchEvent(event);
+            }
+        };
         horizontal.setHorizontalScrollBarEnabled(false);
         horizontal.setFillViewport(true);
         LinearLayout inner=vertical();
