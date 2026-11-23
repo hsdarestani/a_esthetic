@@ -63,6 +63,10 @@ def android():
         raise RuntimeError('Missing Android package')
     native = (ROOT / 'native/staff/android/NativeStaffPlugin.java').read_text()
     (main.parent / 'NativeStaffPlugin.java').write_text(native.replace('NATIVE_STAFF_PACKAGE', package[1]))
+    calendar = (ROOT / 'native/staff/android/NativeStaffV3Calendar.java').read_text()
+    (main.parent / 'NativeStaffV3Calendar.java').write_text(calendar.replace('NATIVE_STAFF_PACKAGE', package[1]))
+    if 'new NativeStaffV3Calendar(' not in native:
+        raise RuntimeError('Android V3 calendar source is not wired to NativeStaff renderer')
     register = 'registerPlugin(NativeStaffPlugin.class);'
     if register not in code:
         if 'super.onCreate(savedInstanceState);' in code:
