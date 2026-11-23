@@ -1,0 +1,57 @@
+name: Diagnose BE DIFFERENT login assets 20261123
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/bedifferent-login-assets-diagnose-20261123.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect production stylesheet links and isolated service
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 4m
+          script: |
+            set -euo pipefail
+            APP=/opt/bedifferent-temp/current
+            echo "BD_ACTIVE_RELEASE=$(cat "$APP/.source-sha")"
+            echo "NEXT_BUILD_ID=$(cat "$APP/.next/BUILD_ID")"
+            echo "NEXT_STATIC_COUNT=$(find "$APP/.next/static" -type f | wc -l)"
+            echo "NEXT_CSS_COUNT=$(find "$APP/.next/static" -type f -name '*.css' | wc -l)"
+            echo "NEXT_CSS_SAMPLES"
+            find "$APP/.next/static" -type f -name '*.css' | head -n 8
+            echo "NEXT_STATIC_ROOTS"
+            ls -ld "$APP/.next/static" "$APP/.next/static/chunks" "$APP/current" 2>&1 || true
+            curl -fsS --max-time 12 http://127.0.0.1:3100/login >/tmp/bd-login-assets.html
+            python3 - <<'PY'
+            from html.parser import HTMLParser
+            class Links(HTMLParser):
+              def __init__(self): super().__init__();self.links=[]
+              def handle_starttag(self,tag,attrs):
+                if tag == "link":
+                  d=dict(attrs)
+                  if d.get("rel") == "stylesheet" or ".css" in d.get("href",""):
+                    self.links.append(d.get("href"))
+            x=Links();x.feed(open('/tmp/bd-login-assets.html').read())
+            print("LOGIN_CSS_REFERENCES",len(x.links))
+            import urllib.request, urllib.error
+            for u in x.links[:10]:
+              print("CSS_PATH",u)
+              for prefix in ("http://127.0.0.1:3100","https://bedifferent.smarbiz.sbs"):
+                try:
+                  with urllib.request.urlopen(prefix+u,timeout=12) as q:
+                    print("CSS_CHECK",prefix,q.status,q.headers.get("Content-Type"),len(q.read()))
+                except Exception as e:
+                  print("CSS_ERROR",prefix,str(e)[:180])
+            PY
+            rm -f /tmp/bd-login-assets.html
+            echo "SERVICES"
+            for s in a-esthetic-mobile aesthetic-book bedifferent-temp; do systemctl is-active "$s" || true; done
