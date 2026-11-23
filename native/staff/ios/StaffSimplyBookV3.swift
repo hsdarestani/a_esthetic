@@ -11,7 +11,9 @@ struct StaffSimplyBookV3: View {
     @State private var showFilters = false
     @State private var showActions = false
     @State private var showViewModes = false
-    @State private var initialScrollPerformed = false
+    @State private var slideForward = true
+    @State private var releasedSwipe: CGFloat = 0
+    @GestureState private var liveSwipe: CGFloat = 0
 
     private let navy = Color(red: 32/255, green: 43/255, blue: 61/255)
     private let pink = Color(red: 249/255, green: 27/255, blue: 82/255)
@@ -24,6 +26,36 @@ struct StaffSimplyBookV3: View {
     private let rulerWidth: CGFloat = 56
     private let hourHeight: CGFloat = 82
     private let referenceWeekColumnWidth: CGFloat = 165
+    private var firstHour: Int { model["firstHour"] as? Int ?? 10 }
+    private var lastHour: Int { model["lastHour"] as? Int ?? 20 }
+    private var hourCount: Int { max(1,lastHour-firstHour) }
+    private var firstMinute: Int { firstHour*60 }
+    private func navigate(_ action: String, forward: Bool) {
+        slideForward = forward
+        fire(action)
+    }
+    private func navigateTo(_ day: String) {
+        navigate("date:"+day, forward: day >= selectedDate)
+    }
+    private func swipeGesture(weekNavigation: Bool) -> some Gesture {
+        DragGesture(minimumDistance: 18)
+            .updating($liveSwipe) { drag, value, _ in
+                if abs(drag.translation.width) > abs(drag.translation.height) * 1.25 {
+                    value = max(-220,min(220,drag.translation.width))
+                }
+            }
+            .onEnded { drag in
+                let dx = drag.translation.width
+                guard abs(dx)>75, abs(dx)>abs(drag.translation.height)*1.4 else {
+                    withAnimation(.interactiveSpring(response:0.25,dampingFraction:0.8)) { releasedSwipe=0 }
+                    return
+                }
+                let forward=dx < 0
+                withAnimation(.easeOut(duration:0.16)) { releasedSwipe = forward ? -72 : 72 }
+                navigate(weekNavigation ? (forward ? "week-next":"week-prev")
+                                        : (forward ? "day-next":"day-prev"), forward:forward)
+            }
+    }
 
     private var mode: String { model["mode"] as? String ?? "day" }
     private var selectedDate: String { model["date"] as? String ?? "" }
@@ -74,7 +106,21 @@ struct StaffSimplyBookV3: View {
                 dateNavigator
                 dateStrip
                 Rectangle().fill(rule).frame(height: 0.6)
-                timeline(availableWidth: geometry.size.width)
+                ZStack {
+                    timeline(availableWidth: geometry.size.width)
+                        .id(selectedDate+"-"+mode)
+                        .transition(.asymmetric(
+                            insertion:.move(edge:slideForward ? .trailing : .leading).combined(with:.opacity),
+                            removal:.move(edge:slideForward ? .leading : .trailing).combined(with:.opacity)
+                        ))
+                        .offset(x:liveSwipe+releasedSwipe)
+                }
+                .clipped()
+                .animation(.easeInOut(duration:0.34),value:selectedDate)
+                .animation(.easeInOut(duration:0.34),value:mode)
+                .onChange(of: selectedDate) { _ in
+                    withAnimation(.easeInOut(duration:0.34)) { releasedSwipe=0 }
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.white)
@@ -143,7 +189,7 @@ struct StaffSimplyBookV3: View {
 
     private var dateNavigator: some View {
         HStack(spacing: 0) {
-            Button { fire(mode == "day" ? "day-prev" : "week-prev") } label: {
+            Button { navigate(mode == "day" ? "day-prev" : "week-prev",forward:false) } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 17, weight: .medium))
                     .frame(width: 56, height: 53)
@@ -154,7 +200,7 @@ struct StaffSimplyBookV3: View {
                 .foregroundStyle(ink)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 0)
-            Button { fire(mode == "day" ? "day-next" : "week-next") } label: {
+            Button { navigate(mode == "day" ? "day-next" : "week-next",forward:true) } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 17, weight: .medium))
                     .frame(width: 56, height: 53)
@@ -169,7 +215,7 @@ struct StaffSimplyBookV3: View {
             ForEach(Array(week.enumerated()), id: \.offset) { _, day in
                 let active = mode == "week" || day == selectedDate
                 Button {
-                    if day != selectedDate { fire("date:" + day) }
+                    if day != selectedDate { navigateTo(day) }
                 } label: {
                     VStack(spacing: 5) {
                         Text(formatDate(day, "EE"))
@@ -194,11 +240,7 @@ struct StaffSimplyBookV3: View {
         .padding(.horizontal, 10)
         .padding(.bottom, 6)
         .background(.white)
-        .simultaneousGesture(DragGesture(minimumDistance: 45).onEnded { drag in
-            if abs(drag.translation.width) > abs(drag.translation.height) * 1.5 {
-                fire(drag.translation.width < 0 ? "week-next" : "week-prev")
-            }
-        })
+        .simultaneousGesture(swipeGesture(weekNavigation:true))
     }
 
     private func timeline(availableWidth: CGFloat) -> some View {
@@ -219,40 +261,20 @@ struct StaffSimplyBookV3: View {
                 }
                 .background(.white)
                 Rectangle().fill(rule).frame(height: 0.6)
-                ScrollViewReader { scrollProxy in
-                    ScrollView(.vertical, showsIndicators: false) {
+                ScrollView(.vertical, showsIndicators: false) {
                         HStack(alignment: .top, spacing: 0) {
                             hourRuler
                             ForEach(Array(columns.enumerated()), id: \.offset) { index, column in
                                 gridColumn(index: index, column: column, width: width)
                             }
                         }
-                        .frame(height: hourHeight * 24, alignment: .top)
+                        .frame(height: hourHeight * CGFloat(hourCount), alignment: .top)
                     }
-                    .onAppear {
-                        if !initialScrollPerformed {
-                            initialScrollPerformed = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                scrollProxy.scrollTo("ruler-10", anchor: .top)
-                            }
-                        }
-                    }
-                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.white)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 75).onEnded { drag in
-                // Day-view dates move by exactly one day; week/provider grids
-                // scroll horizontally without the global gesture interfering.
-                if mode == "day" &&
-                    abs(drag.translation.width) > 100 &&
-                    abs(drag.translation.width) > abs(drag.translation.height) * 1.6 {
-                    fire(drag.translation.width < 0 ? "day-next" : "day-prev")
-                }
-            }
-        )
+        .simultaneousGesture(swipeGesture(weekNavigation:mode != "day"))
     }
 
     private func columnHeading(_ column: [String: Any]) -> String {
