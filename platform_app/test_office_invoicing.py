@@ -105,6 +105,9 @@ class OfficeInvoicingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Allgemeiner Aufnahmebogen")
         self.assertContains(response, "Datenerhebung und Datenschutz – A+ Esthetic")
+        self.assertContains(response, 'placeholder="TT.MM.JJJJ"')
+        self.assertContains(response, 'requestAnimationFrame(size)')
+        self.assertContains(response, "ResizeObserver")
         self.assertEqual(response.headers.get("X-Robots-Tag"), "noindex, nofollow, noarchive")
         input_data = {
             "salutation": "herr",
@@ -112,7 +115,7 @@ class OfficeInvoicingTests(TestCase):
             "last_name": "Beispiel",
             "email": "ali@example.com",
             "phone": "+49 171 1112233",
-            "date_of_birth": "1987-04-05",
+            "date_of_birth": "05.04.1987",
             "street": "Zeil 10",
             "postal_code": "60313",
             "city": "Frankfurt am Main",
