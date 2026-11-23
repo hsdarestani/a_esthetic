@@ -1,0 +1,87 @@
+name: A+ Esthetic Android Native SimplyBook V3 QA
+on:
+  push:
+    branches: [feature/simplybook-v3-android-20261123]
+    paths:
+      - .github/workflows/android-v3-simplybook-qa.yml
+      - native/staff/android/**
+      - native/staff/ios/**
+      - scripts/install_native_staff.py
+      - scripts/test_native_calendar_layout.mjs
+      - www/mobile/**
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  android-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Validate consistent UI and booking calendar model
+        run: |
+          set -euo pipefail
+          node --check www/mobile/native-workspace.mjs
+          node --check www/mobile/native-calendar-layout.mjs
+          node scripts/test_native_calendar_layout.mjs
+          node scripts/test_native_staff_controller.mjs
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const java = fs.readFileSync('native/staff/android/NativeStaffV3Calendar.java','utf8');
+          const plugin = fs.readFileSync('native/staff/android/NativeStaffPlugin.java','utf8');
+          const js = fs.readFileSync('www/mobile/native-calendar-layout.mjs','utf8');
+          const required = [
+            'NativeStaffV3Calendar', 'NAVY', 'PINK', 'AMBER', 'BLUE',
+            'onTouchEvent', 'SwipeStrip', 'day-next', 'week-next',
+            'hourStart', 'hourEnd', 'hourHeight/4', 'showFilters',
+            'new-appointment','new-block','availability',
+          ];
+          for (const term of required) if(!java.includes(term))throw new Error('Android V3 missing '+term);
+          if (!plugin.includes('s.optJSONObject("timeline")') ||
+              !plugin.includes('new NativeStaffV3Calendar(getActivity(),s,this::action)'))
+            throw new Error('Android plugin must use real native V3 calendar, not generic list');
+          if(!js.includes('VISIBLE_START_HOUR = 10') || !js.includes('VISIBLE_END_HOUR = 20'))
+            throw new Error('Both platforms must share fixed 10:00–20:00 model');
+          console.log('PASS: native Android V3 design/interaction parity static checks');
+          NODE
+      - name: Generate Capacitor Android shell and install native calendar
+        run: |
+          set -euo pipefail
+          npm pkg delete scripts.capacitor:sync:after
+          npm install --no-audit --no-fund
+          npx cap add android
+          python3 scripts/configure_native_camera_permissions.py
+          python3 scripts/install_native_staff.py
+          python3 - <<'PY'
+          from pathlib import Path
+          java=list(Path('android/app/src/main/java').rglob('NativeStaffV3Calendar.java'))
+          plugin=list(Path('android/app/src/main/java').rglob('NativeStaffPlugin.java'))
+          assert len(java)==len(plugin)==1
+          assert 'new NativeStaffV3Calendar(' in plugin[0].read_text()
+          assert 'package NATIVE_STAFF_PACKAGE;' not in java[0].read_text()
+          assert 'registerPlugin(NativeStaffPlugin.class);' in list(Path('android/app/src/main/java').rglob('MainActivity.java'))[0].read_text()
+          print('PASS: V3 renderer installed into generated native Android source')
+          PY
+      - name: Build QA APK
+        run: |
+          set -euo pipefail
+          (cd android && ./gradlew --no-daemon assembleDebug > "$RUNNER_TEMP/android-v3-gradle.log" 2>&1) || {
+            tail -160 "$RUNNER_TEMP/android-v3-gradle.log"
+            exit 1
+          }
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/APlus-Esthetic-Android-V3-SimplyBook-QA.apk
+          test -s artifacts/APlus-Esthetic-Android-V3-SimplyBook-QA.apk
+          sha256sum artifacts/APlus-Esthetic-Android-V3-SimplyBook-QA.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-Esthetic-Android-V3-SimplyBook-QA-APK
+          path: artifacts/APlus-Esthetic-Android-V3-SimplyBook-QA.apk
+          if-no-files-found: error
+          retention-days: 30
