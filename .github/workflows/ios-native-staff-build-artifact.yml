@@ -2,7 +2,10 @@ name: A+ Esthetic V3 SimplyBook reference native iOS Simulator
 on:
   push:
     branches: [feature/simplybook-v3-native-20261123]
-    paths: [.github/workflows/ios-native-staff-build-artifact.yml]
+    paths:
+      - .github/workflows/ios-native-staff-build-artifact.yml
+      - native/staff/ios/**
+      - scripts/install_native_staff.py
 permissions: {contents: read}
 jobs:
   ios:
