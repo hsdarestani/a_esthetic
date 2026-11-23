@@ -365,7 +365,7 @@ struct StaffSimplyBookV3: View {
     }
 
     private var filterSheet: some View {
-        NavigationStack {
+        NavigationView {
             List {
                 Section(t("Behandler", "Provider")) {
                     Button(t("Alle", "All")) { showFilters=false;fire("cal-provider:all") }
@@ -397,15 +397,13 @@ struct StaffSimplyBookV3: View {
                 }
             }
             .navigationTitle(t("Filter", "Filter"))
-            .toolbar { ToolbarItem(placement: .topBarTrailing) {
-                Button(t("Fertig", "Done")) { showFilters=false }
-            }}
+            .navigationBarItems(trailing: Button(t("Fertig", "Done")) { showFilters=false })
         }
-        .presentationDetents([.medium, .large])
+        
     }
 
     private var navigationSheet: some View {
-        NavigationStack {
+        NavigationView {
             List {
                 Button(t("Übersicht", "Home")) { showNavigation=false;fire("home") }
                 Button(t("Kalender", "Calendar")) { showNavigation=false;fire("calendar") }
@@ -414,11 +412,9 @@ struct StaffSimplyBookV3: View {
                 Button(t("Einstellungen", "Settings")) { showNavigation=false;fire("settings") }
             }
             .navigationTitle("A+ ESTHETIC")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) {
-                Button(t("Schließen", "Close")) { showNavigation=false }
-            }}
+            .navigationBarItems(trailing: Button(t("Schließen", "Close")) { showNavigation=false })
         }
-        .presentationDetents([.medium, .large])
+        
     }
 }
 
