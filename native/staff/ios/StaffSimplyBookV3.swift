@@ -104,7 +104,17 @@ struct StaffSimplyBookV3: View {
             VStack(spacing: 0) {
                 topBar
                 dateNavigator
-                dateStrip
+                ZStack {
+                    dateStrip
+                        .id(week.first ?? selectedDate)
+                        .transition(.asymmetric(
+                            insertion:.move(edge:slideForward ? .trailing : .leading).combined(with:.opacity),
+                            removal:.move(edge:slideForward ? .leading : .trailing).combined(with:.opacity)
+                        ))
+                }
+                .clipped()
+                .animation(.easeInOut(duration:0.34),value:week.first ?? selectedDate)
+                .animation(.easeInOut(duration:0.25),value:selectedDate)
                 Rectangle().fill(rule).frame(height: 0.6)
                 ZStack {
                     timeline(availableWidth: geometry.size.width)
