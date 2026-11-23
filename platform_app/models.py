@@ -164,6 +164,11 @@ class CheckInSession(models.Model):
     class Meta: ordering=['-created_at']
     def __str__(self): return str(self.token)
 
+class OfficeIntakeLock(models.Model):
+    """Serialize public intake account matching and creation."""
+    pass
+
+
 class OfficeIntakeSubmission(models.Model):
     """Immutable public general Aufnahmebogen with private signature and Book sync receipt."""
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
