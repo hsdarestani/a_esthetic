@@ -18,10 +18,10 @@ const appointment=(id,day,from,to,staff=1,service=10)=>({
 });
 const calendar={
   appointments:[
-    appointment(1,'2026-11-23','09:00','10:00'),
-    appointment(2,'2026-11-23','09:30','10:30',2,10),
+    appointment(1,'2026-11-23','10:00','11:00'),
+    appointment(2,'2026-11-23','10:30','11:30',2,10),
     appointment(3,'2026-11-23','12:00','12:45',1,11),
-    appointment(4,'2026-11-24','09:15','10:00',1,10),
+    appointment(4,'2026-11-24','10:15','11:00',1,10),
     appointment(5,'2026-11-29','14:00','15:00',1,11),
   ],
   blocks:[
@@ -42,8 +42,8 @@ assert.equal(day.mode,'day');
 assert.equal(day.weekStart,'2026-11-23');
 assert.equal(day.columns.length,1);
 assert.equal(day.events.filter(e=>e.kind==='appointment').length,3);
-assert.equal(day.events.find(e=>e.id==='appointment:1').lower,540);
-assert.equal(day.events.find(e=>e.id==='appointment:1').upper,600);
+assert.equal(day.events.find(e=>e.id==='appointment:1').lower,600);
+assert.equal(day.events.find(e=>e.id==='appointment:1').upper,660);
 assert.equal(day.events.find(e=>e.id==='appointment:1').lanes,2);
 assert.equal(day.events.find(e=>e.id==='appointment:2').lanes,2);
 assert.notEqual(day.events.find(e=>e.id==='appointment:1').lane,
@@ -75,8 +75,25 @@ const midnight = buildNativeCalendarTimeline({
       end_at:'2026-11-24T00:30:00+01:00'}],
   },
 });
-assert.equal(midnight.events.length,2);
-assert.equal(midnight.events[0].upper,1440);
-assert.equal(midnight.events[1].lower,0);
+assert.equal(midnight.events.length,0,'overnight events outside approved 10:00–20:00 are hidden');
+const clipped = buildNativeCalendarTimeline({date:'2026-11-23',mode:'day',providers,services,
+  calendar:{appointments:[
+    appointment(101,'2026-11-23','09:00','10:00'),
+    appointment(102,'2026-11-23','09:30','10:30'),
+    appointment(103,'2026-11-23','19:30','21:00'),
+    appointment(104,'2026-11-23','20:00','21:00'),
+  ],blocks:[{id:105,kind:'block',editable:true,text:'All day',staff_id:1,
+    start_at:'2026-11-23T00:00:00+01:00',end_at:'2026-11-24T00:00:00+01:00'}],
+  availability:[{date:'2026-11-23',staff_id:1,ranges:[{start:'08:00',end:'21:00'}]}]}});
+assert.equal(clipped.firstHour,10);
+assert.equal(clipped.lastHour,20);
+assert.equal(clipped.events.some(e=>e.id==='appointment:101'),false);
+assert.equal(clipped.events.find(e=>e.id==='appointment:102').lower,600);
+assert.equal(clipped.events.find(e=>e.id==='appointment:102').upper,630);
+assert.equal(clipped.events.find(e=>e.id==='appointment:103').upper,1200);
+assert.equal(clipped.events.some(e=>e.id==='appointment:104'),false);
+assert.deepEqual(clipped.bands.map(b=>[b.lower,b.upper]),[[600,1200]]);
+assert.equal(clipped.events.find(e=>e.kind==='block').lower,600);
+assert.equal(clipped.events.find(e=>e.kind==='block').upper,1200);
 assert.throws(()=>model('bad'),/Invalid calendar view/);
-console.log('PASS native calendar timeline: day/week/provider/service, real hour geometry, lanes, notes, blocks, availability, midnight, filters');
+console.log('PASS fixed 10:00–20:00 daily calendar, clipped intervals and day/week/provider/service, real hour geometry, lanes, notes, blocks, availability, midnight, filters');
