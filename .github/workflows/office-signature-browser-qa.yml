@@ -1,0 +1,52 @@
+name: Office signature canvas browser regression (no patient submission)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - templates/office/general_intake.html
+      - platform_app/office_views.py
+      - scripts/test_office_signature_browser.py
+      - .github/workflows/office-signature-browser-qa.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: office-signature-browser-qa
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    env:
+      DJANGO_DEBUG: '1'
+      DJANGO_ALLOWED_HOSTS: 'localhost,127.0.0.1,testserver'
+      DATABASE_URL: 'sqlite:///office-signature-browser-ci.sqlite3'
+      EMAIL_BACKEND: 'django.core.mail.backends.locmem.EmailBackend'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Django and browser test dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Prepare isolated app and launch test server
+        run: |
+          python manage.py migrate --noinput
+          nohup python manage.py runserver 127.0.0.1:8000 --noreload > /tmp/office-test-server.log 2>&1 &
+          for i in $(seq 1 40); do if curl -fsS http://127.0.0.1:8000/office/ > /dev/null; then break; fi; sleep 1; done
+          curl -fsS http://127.0.0.1:8000/office/ | grep -q 'Allgemeiner Aufnahmebogen'
+      - name: Test German date, pointer ink and clear (never submit)
+        run: python scripts/test_office_signature_browser.py
+      - name: Show local server logs on failure
+        if: failure()
+        run: tail -n 100 /tmp/office-test-server.log || true
