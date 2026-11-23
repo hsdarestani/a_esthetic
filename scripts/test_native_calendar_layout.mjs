@@ -29,6 +29,9 @@ const calendar={
       start_at:'2026-11-23T11:00:00+01:00',end_at:'2026-11-23T11:30:00+01:00'},
     {id:91,kind:'block',editable:false,text:'TEST BREAK',staff_id:2,
       start_at:'2026-11-23T13:00:00+01:00',end_at:'2026-11-23T13:45:00+01:00'},
+    {id:92,kind:'block',editable:true,source_managed:true,
+      text:'LEGACY IMPORT ADMIN EDIT',staff_id:1,
+      start_at:'2026-11-23T14:00:00+01:00',end_at:'2026-11-23T15:00:00+01:00'},
   ],
   availability:[
     {date:'2026-11-23',staff_id:1,ranges:[{start:'08:00',end:'17:00'}]},
@@ -50,7 +53,8 @@ assert.notEqual(day.events.find(e=>e.id==='appointment:1').lane,
   day.events.find(e=>e.id==='appointment:2').lane);
 assert.equal(day.events.find(e=>e.id==='appointment:3').lanes,1);
 assert.equal(day.events.find(e=>e.id==='block:90').kind,'note');
-assert.equal(day.events.filter(e=>e.kind==='block')[0].id,'');
+assert.equal(day.events.find(e=>e.title==='TEST BREAK').id,'');
+assert.equal(day.events.find(e=>e.title==='LEGACY IMPORT ADMIN EDIT').id,'block:92');
 assert.equal(day.bands.length,2);
 const week=model('week');
 assert.equal(week.columns.length,7);
