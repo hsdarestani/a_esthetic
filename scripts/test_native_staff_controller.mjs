@@ -21,7 +21,20 @@ globalThis.fetch=async(url,opts)=>{
   let result;
   if(path.endsWith('/overview/'))result={today:0,upcoming:[]};
   else if(path.endsWith('/catalog/'))result={providers:[{id:1,name:'Demo clinician'}],services:[{id:1,name:'Consult',active:true}]};
-  else if(path.endsWith('/calendar/')){lastCalendar=new URL(url).searchParams.get('start');result={appointments:[],blocks:[],availability:[]};}
+  else if(path.endsWith('/calendar/')){
+    lastCalendar=new URL(url).searchParams.get('start');
+    result={
+      appointments:[{id:44,customer_id:23,customer_name:'Synced patient',service_name:'Consult',staff_name:'Demo clinician',staff_id:1,service_id:1,
+        date:'2026-11-23',start:'09:00',end:'09:30',
+        start_at:'2026-11-23T09:00:00+01:00',end_at:'2026-11-23T09:30:00+01:00',source_managed:true,status:'confirmed'}],
+      blocks:[
+        {id:90,staff_id:1,editable:false,source_managed:true,date:'2026-11-23',start:'12:00',end:'13:00',
+          kind:'block',text:'Synced SimplyBook note',start_at:'2026-11-23T12:00:00+01:00',end_at:'2026-11-23T13:00:00+01:00'},
+        {id:91,staff_id:1,editable:false,source_managed:false,date:'2026-11-23',start:'13:00',end:'14:00',
+          kind:'note',text:'Legacy Book note',start_at:'2026-11-23T13:00:00+01:00',end_at:'2026-11-23T14:00:00+01:00'},
+      ],availability:[]
+    };
+  }
   else if(path.endsWith('/patients/'))result={items:[{id:23,name:'Demo patient',email:'demo@example.test'}]};
   else if(path.endsWith('/patient/23/'))result={patient:{id:23,name:'Demo patient',email:'demo@example.test'},appointments:[],records:[]};
   else if(path.endsWith('/customers/'))result={items:[]};
@@ -48,6 +61,18 @@ assert.equal(current.timeline.columns.length,1);
 assert.equal(current.timeline.firstHour,0);
 assert.equal(current.timeline.lastHour,24);
 assert.equal(current.timeline.providers.length,1);
+assert.ok(current.timeline.events.some(e=>e.id==='block-info:90'));
+await click('block-info:90');
+assert.match(current.message,/SimplyBook/);
+assert.ok(!current.actions.some(x=>x.id==='save-block-edit'));
+await click('calendar');
+await click('block-info:91');
+assert.match(current.message,/Book administration/);
+await click('calendar');
+await click('appointment:44');
+assert.match(current.message,/SimplyBook/);
+assert.ok(!current.actions.some(x=>x.id==='edit-appointment' || x.id==='cancel-appointment'));
+await click('calendar');
 const selectedDay=()=>current.week.find(x=>x.selected)?.id;
 const originalDay=selectedDay();
 await click('day-next');
