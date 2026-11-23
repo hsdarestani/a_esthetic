@@ -29,45 +29,18 @@ All preview accounts use the password `Preview-only-2026!`. For the Android APK 
 
 For browser regression, install Playwright and Chromium, use a clean preview state, and run `python scripts/test_mobile_staff_preview.py`. Add `--output /path/to/evidence` to retain screenshots and a screen recording.
 
-## Feature parity — owner-mandated release requirement (2026-11-23)
+## Feature parity
 
-The authenticated clinic administrator must be able to execute every action
-available in the existing Book/Office/A+ desktop admin directly from a genuine
-native mobile interface. **The mobile app is the future authoritative console.**
-No desktop-only administration, silent WebView substitutions, permanently
-read-only records, or arbitrary mobile-only caps are acceptable for release.
-
-This is a target and an acceptance criterion, **not a claim of current feature
-parity**. Keep the existing desktop consoles available as safe fallbacks until
-every capability is implemented and verified. Explicitly track and close gaps:
-
-| Domain | Native capabilities already present on the draft branch | Still required / mandatory before claiming full admin parity |
+| Surface | This branch | Release follow-up |
 | --- | --- | --- |
-| Bookings and schedule | Native day/week/provider/service timeline, create/edit/cancel first-party appointments, work hours, blocks and notes | Historical and upstream source-managed booking operations with verified source sync; arbitrary date/provider edits, full booking statuses, bulk workflows, legacy blocks end-to-end on both platforms |
-| Patients and clinical records | Search, timeline, private notes, patient PDF read/upload, reviewed identity links | Full create/edit patient demographics, record management, uploads, files sharing/revocation, intake and document workflows |
-| Clinicians and service catalog | Read provider list; edit certain services and availability | Create/update/deactivate providers, provider-service assignments, all service catalog fields, service price/duration configuration, every desktop setting |
-| Package, wallet and points | Customer view and certain audited point corrections, cancellation credit reconciliation | All package grant/revoke/assign/renew/reconcile, entitlements, wallet/points ledgers, financial adjustments and audit |
-| Office and billing | Intake review, identity review, GOÄ draft, quote, PDF/history, issuer/numbering settings | All office actions, safely issued/adjusted invoices after independent medical/accounting approval and official tariff reference validation |
-| Staff, notifications, system | Role-scoped staff session, staff dashboard, localized settings | Comprehensive staff identity/roles, reminders, templates, push/email settings, clinic configuration and audit |
-| QA/release | Draft iOS and Android native renderers plus synthetic CI | All-role device E2E, exact action-by-action parity inventory, source-of-truth reconciliation, backup/rollback, signed store artifact review |
-
-**SimplyBook caveat:** The new imported-note/blocked-time fix keeps a
-local Book override/tombstone so SimplyBook imports do not overwrite an
-admin's edit. It does **not** change SimplyBook itself. For imported
-source-owned *appointments*, do not simply remove the existing safeguard:
-first establish and verify upstream write+reconciliation or an explicit
-migration of source ownership, otherwise bookings can silently diverge.
-
-Every admin action must enforce authenticated server-side authorization,
-optimistic concurrency and safe idempotency where relevant, auditable actor
-identity, patient-data privacy, and canonical Book/A+ financial ledgers.
-The native client cannot bypass these safeguards.
-
-**MUST NOT RELEASE AS FULL ADMIN APP** while any mandatory row above lacks
-documented production-equivalent E2E evidence on iOS and Android. App Store
-and Google Play submission must only use a new build containing the reviewed
-client code and compatible Book/A+ server changes, with actual signed
-artifacts and release eligibility confirmed.
+| Authentication | New shared sign-in and progressive registration, password controls, in-app reset request, existing email/SMS verification and social provider integrations | Native Apple and Google end-to-end testing, and isolated SMS delivery |
+| Customer | Existing account, appointment, package, point, wallet, record and referral routes retained | Device regression for booking, documents, wallet and notifications |
+| Administration | Bundled workspace, dashboard, calendar, appointment and patient search, services, account and notification history | Operational settings, provider/service assignment, advanced notifications and desktop workflows |
+| Clinician | Scoped calendar, appointments, patient records, download and private notes | File upload/sharing and desktop feature parity |
+| Calendar | Day, week, provider and service views, gestures, cached date changes, stable scroll, appointment create/edit/cancel, blocks, notes and availability | Real-device rendering and gesture measurements, source-managed block controls |
+| Clinic identity | Existing Book patient IDs and A+ member identities remain separate | Patient creation and identity review continue in Book desktop |
+| Points and packages | Point corrections with audit, lookups, package status and cancellation credit reconciliation | Package assignment and entitlement administration continue in existing tools |
+| Production | Current production deploy workflows are confined to their existing triggers. Final acceptance workflow is manual and gated on staging and completed QA. | Independent approval and rollout rehearsal |
 
 ## Compatibility and release gate
 
