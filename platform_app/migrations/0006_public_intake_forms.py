@@ -7,6 +7,9 @@ class Migration(migrations.Migration):
     dependencies = [('platform_app','0005_goae_draft'),
                     migrations.swappable_dependency(settings.AUTH_USER_MODEL)]
     operations = [
+        migrations.CreateModel(name='OfficeIntakeLock',fields=[
+            ('id',models.BigAutoField(auto_created=True,primary_key=True,serialize=False,verbose_name='ID')),
+        ]),
         migrations.AddField(model_name='userprofile',name='date_of_birth',field=models.DateField(blank=True,null=True)),
         migrations.CreateModel(
             name='OfficeIntakeSubmission',
