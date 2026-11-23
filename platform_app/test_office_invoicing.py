@@ -1,4 +1,5 @@
 import shutil
+from unittest.mock import patch
 import tempfile
 from datetime import timedelta
 
@@ -8,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 from allauth.account.models import EmailAddress
 
-from .models import CheckInSession, Invoice, InvoiceSettings, Service, UserProfile
+from .models import CheckInSession, Invoice, InvoiceSettings, OfficeIntakeSubmission, Service, UserProfile
 
 
 TEST_MEDIA = tempfile.mkdtemp(prefix="aesthetic-office-test-")
@@ -102,28 +103,35 @@ class OfficeInvoicingTests(TestCase):
     def test_public_ipad_intake_needs_no_login(self):
         response = self.client.get(reverse("office_intake"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Ihre Daten")
+        self.assertContains(response, "Allgemeiner Aufnahmebogen")
+        self.assertContains(response, "Datenerhebung und Datenschutz – A+ Esthetic")
         self.assertEqual(response.headers.get("X-Robots-Tag"), "noindex, nofollow, noarchive")
-
-        response = self.client.post(
-            reverse("office_intake"),
-            {
-                "salutation": "herr",
-                "first_name": "Ali",
-                "last_name": "Beispiel",
-                "email": "ali@example.com",
-                "phone": "+49 171 1112233",
-                "street": "Zeil 10",
-                "postal_code": "60313",
-                "city": "Frankfurt am Main",
-                "website": "",
-            },
-        )
+        input_data = {
+            "salutation": "herr",
+            "first_name": "Ali",
+            "last_name": "Beispiel",
+            "email": "ali@example.com",
+            "phone": "+49 171 1112233",
+            "date_of_birth": "1987-04-05",
+            "street": "Zeil 10",
+            "postal_code": "60313",
+            "city": "Frankfurt am Main",
+            "website": "",
+            "consent_accepted": "on",
+            "privacy_ack": "on",
+            "signature_png": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==",
+        }
+        with patch('platform_app.public_intake.sync_submission', return_value=True):
+            response = self.client.post(reverse("office_intake"), input_data)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Vielen Dank")
+        self.assertNotContains(response, "PDF herunterladen")
         user = User.objects.get(email="ali@example.com")
         self.assertEqual(user.profile.street, "Zeil 10")
         self.assertTrue(hasattr(user, "member_account"))
+        form = OfficeIntakeSubmission.objects.get()
+        self.assertEqual(form.user_id, user.pk)
+        self.assertEqual(form.identity["date_of_birth"], "1987-04-05")
 
     def test_admin_can_save_billing_settings_and_service_tax(self):
         service = Service.objects.create(
