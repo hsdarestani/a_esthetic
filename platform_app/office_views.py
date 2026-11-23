@@ -317,7 +317,51 @@ def _submit_unverified_intake(data, session=None):
 
 @require_http_methods(["GET", "POST"])
 def office_public_intake(request):
-    """Public iPad intake surface. No Customer Club login is required."""
+    """Public general multi-step Aufnahmebogen; no member login or patient PDF."""
+    from .public_intake import create_signed_submission, parse_answers
+    error = ''
+    if request.method == 'POST':
+        if (request.POST.get('website') or '').strip():
+            response=render(request,'office/general_intake.html',{'completed':True})
+            response['X-Robots-Tag']='noindex, nofollow, noarchive'
+            return response
+        identity={
+            'first_name':(request.POST.get('first_name') or '').strip()[:80],
+            'last_name':(request.POST.get('last_name') or '').strip()[:80],
+            'email':(request.POST.get('email') or '').strip().lower()[:254],
+            'phone':(request.POST.get('phone') or '').strip()[:40],
+            'salutation':(request.POST.get('salutation') or '').strip()[:10],
+            'date_of_birth':(request.POST.get('date_of_birth') or '').strip(),
+            'street':(request.POST.get('street') or '').strip()[:180],
+            'postal_code':(request.POST.get('postal_code') or '').strip()[:20],
+            'city':(request.POST.get('city') or '').strip()[:120],
+        }
+        required=('first_name','last_name','email','phone','date_of_birth','street','postal_code','city')
+        try:
+            if not all(identity.get(k) for k in required):raise ValueError('Bitte alle Pflichtfelder ausfüllen.')
+            validate_email(identity['email'])
+            if not normalize_intake_phone(identity['phone']):raise ValueError('Bitte eine gültige Telefonnummer angeben.')
+            birth_date(identity['date_of_birth'])
+            if request.POST.get('consent_accepted')!='on' or request.POST.get('privacy_ack')!='on':
+                raise ValueError('Datenschutz und Unterschrift müssen bestätigt werden.')
+            create_signed_submission(identity,parse_answers(request.POST),
+                request.POST.get('signature_png') or '')
+        except (ValidationError,ValueError) as exc:
+            error=str(exc) if isinstance(exc,ValueError) else 'Bitte Ihre Angaben überprüfen.'
+        else:
+            response=render(request,'office/general_intake.html',{'completed':True})
+            response['X-Robots-Tag']='noindex, nofollow, noarchive'
+            response['Cache-Control']='private, no-store'
+            return response
+    response=render(request,'office/general_intake.html',{'error':error})
+    response['X-Robots-Tag']='noindex, nofollow, noarchive'
+    response['Cache-Control']='private, no-store'
+    return response
+
+
+@require_http_methods(["GET", "POST"])
+def old_office_public_intake_unused(request):
+    """Retained only as a source reference; this legacy handler is not routed."""
     error = ""
     if request.method == "POST":
         # Invisible honeypot for basic bot protection.
