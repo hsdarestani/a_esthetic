@@ -182,6 +182,14 @@ path.write_text(text, encoding='utf-8')
 print(f'Applied native system-bar inset handling to {path}')
 PY
 
+# The system-bar fix recreates MainActivity.java. Restore the Capacitor native
+# plugin registration AFTER that rewrite, otherwise Google Play builds work
+# but staff sign-in silently falls back to an unimplemented Android bridge.
+python3 scripts/install_native_staff.py
+grep -R -q 'registerPlugin(NativeStaffPlugin.class);' android/app/src/main/java
+test "$(find android/app/src/main/java -name 'NativeStaffV3Calendar.java' | wc -l)" -eq 1
+echo 'NativeStaff and V3 SimplyBook calendar registered in signed Publisher source.'
+
 # Apply the version supplied by A+ Publisher before Gradle packages the bundle.
 python3 scripts/configure_android_release.py
 
