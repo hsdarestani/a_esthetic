@@ -85,9 +85,9 @@ export function buildNativeCalendarTimeline({date,mode='day',providers=[],servic
         (mode==='provider' && String(item.staff_id)!==col.ref) ||
         (mode==='service' && item.service_id && String(item.service_id)!==col.ref))continue;
       colEvents.push({
-        id:item.editable?'block:'+item.id:'',kind:item.kind==='note'?'note':'block',
+        id:(item.editable?'block:':'block-info:')+item.id,kind:item.kind==='note'?'note':'block',
         date:col.date,column:index,lower:span.lower,upper:span.upper,
-        title:String(item.text||''),
+        title:String(item.text||'').split('\u2063')[0].trim(),
         detail:item.kind==='note'?'Notiz':'Gesperrt',
         start:clock(item.start)||'',end:clock(item.end)||'',
       });
