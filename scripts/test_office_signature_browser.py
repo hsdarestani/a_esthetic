@@ -36,11 +36,15 @@ def run():
                 arg=expected,
             )
         canvas = page.locator("#signaturePad")
+        page.wait_for_function("""() => {
+          const c=document.querySelector('#signaturePad'),r=c.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2);
+          return r.width>350 && c.width===Math.round(r.width*dpr) && c.height===Math.round(r.height*dpr);
+        }""")
         size = page.evaluate("""() => {
           const c=document.querySelector('#signaturePad');
           return {w:c.width,h:c.height,rect:c.getBoundingClientRect().width};
         }""")
-        assert size["w"] >= 200 and size["h"] >= 100, f"Canvas is still zero sized: {size}"
+        assert size["w"] >= 350 and size["h"] >= 100, f"Canvas not matched to visible size: {size}"
         bbox = canvas.bounding_box()
         assert bbox is not None
         x, y = bbox["x"] + 25, bbox["y"] + 45
