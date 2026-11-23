@@ -3,6 +3,7 @@ on:
   push:
     branches: [feature/mobile-unified-overhaul]
     paths: [.github/workflows/ios-native-staff-build-artifact.yml]
+  workflow_dispatch:
 permissions: {contents: read}
 jobs:
   ios:
@@ -63,3 +64,31 @@ jobs:
           path: artifacts/APlus-Esthetic-iOS-SimplyBook-Native-Calendar.zip
           if-no-files-found: error
           retention-days: 30
+      - name: Check for authorized Appetize API token
+        id: appetize_access
+        env:
+          APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+        run: |
+          if [[ -n "$APPETIZE_API_TOKEN" ]]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'No Appetize API token configured; simulator ZIP is available in GitHub artifacts.'
+          fi
+      - name: Upload latest simulator build to Appetize when authorized
+        id: appetize_upload
+        if: steps.appetize_access.outputs.enabled == 'true'
+        uses: appetizeio/github-action-appetize@v1.1.0
+        with:
+          apiToken: ${{ secrets.APPETIZE_API_TOKEN }}
+          appFile: artifacts/APlus-Esthetic-iOS-SimplyBook-Native-Calendar.zip
+          platform: ios
+          fileType: zip
+          note: A+ Esthetic safe SimplyBook sync; native source-managed items read-only
+      - name: Report iOS Appetize test link or ZIP artifact
+        run: |
+          if [[ "${{ steps.appetize_access.outputs.enabled }}" == "true" ]]; then
+            echo 'Latest iOS build: https://appetize.io/app/${{ steps.appetize_upload.outputs.publicKey }}' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Upload the packaged iOS Simulator ZIP from this workflow artifact to https://appetize.io (use inner Simulator ZIP, not the outer GitHub artifact ZIP).' >> "$GITHUB_STEP_SUMMARY"
+          fi
