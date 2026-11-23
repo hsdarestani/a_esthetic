@@ -42,6 +42,8 @@ public final class NativeStaffPlugin extends Plugin {
     private static final int GREEN = Color.rgb(35,71,59);
     private static final int MUTED = Color.rgb(84,94,85);
     private Dialog dialog;
+    // Keeps direction across the asynchronous native -> Book -> native render.
+    private int calendarPageDirection = 0;
     private final Map<String, EditText> edits = new LinkedHashMap<>();
     private final Map<String, Spinner> selects = new LinkedHashMap<>();
     private final Map<String, String[]> optionValues = new LinkedHashMap<>();
@@ -68,6 +70,10 @@ public final class NativeStaffPlugin extends Plugin {
     }
     private void action(String id) {
         if (id.isEmpty()) return;
+        if(id.equals("day-next") || id.equals("week-next"))calendarPageDirection=1;
+        else if(id.equals("day-prev") || id.equals("week-prev"))calendarPageDirection=-1;
+        // A changed date via the day strip also uses a subtle entry animation.
+        else if(id.startsWith("date:"))calendarPageDirection=1;
         JSObject values = new JSObject();
         for (Map.Entry<String,EditText> entry : edits.entrySet()) values.put(entry.getKey(), entry.getValue().getText().toString());
         for (Map.Entry<String,Spinner> entry : selects.entrySet()) {
@@ -90,6 +96,18 @@ public final class NativeStaffPlugin extends Plugin {
     }
     private void draw(JSONObject s) {
         edits.clear(); selects.clear(); optionValues.clear();
+        if(s.optJSONObject("timeline") != null) {
+            View calendar=new NativeStaffV3Calendar(getActivity(),s,this::action).build();
+            dialog.setContentView(calendar);
+            if(calendarPageDirection!=0) {
+                int width=getContext().getResources().getDisplayMetrics().widthPixels;
+                calendar.setTranslationX(calendarPageDirection*width*.42f);
+                calendar.setAlpha(.82f);
+                calendar.animate().translationX(0).alpha(1f).setDuration(290).start();
+                calendarPageDirection=0;
+            }
+            return;
+        }
         LinearLayout root = column(); root.setBackgroundColor(PAPER);
         root.setPadding(dp(14),dp(12),dp(14),dp(8));
         LinearLayout header = row();
@@ -229,6 +247,10 @@ public final class NativeStaffPlugin extends Plugin {
         JSONArray tabs=list(s,"tabs"); LinearLayout nav=row();
         for(int i=0;i<tabs.length();i++){JSONObject item=tabs.optJSONObject(i);if(item!=null)weight(nav,button(item.optString("label"),item.optString("id"),item.optBoolean("selected")));}
         add(root,nav,0);dialog.setContentView(root);
+    }
+    @PluginMethod public void probe(PluginCall call) {
+        JSObject result=new JSObject();result.put("ok",true);result.put("native",true);
+        result.put("bridge","NativeStaff");call.resolve(result);
     }
     @PluginMethod public void present(PluginCall call) {
         getActivity().runOnUiThread(()->{
