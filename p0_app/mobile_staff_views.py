@@ -49,11 +49,11 @@ def book(request, operation):
         return error
     if identity['role'] == 'customer':
         return JsonResponse({'ok': False, 'error': 'staff_required'}, status=403)
-    read = r'(?:overview|calendar|catalog|appointments|patients|identity-review|patient/[1-9][0-9]*(?:/records/[0-9a-f-]{36})?)'
-    write = r'(?:appointment|block|availability|service|record-note|record-upload|identity-review)'
+    read = r'(?:overview|calendar|catalog|appointments|patients|identity-review|forms(?:/[1-9][0-9]*(?:/pdf)?)?|patient/[1-9][0-9]*(?:/records/[0-9a-f-]{36})?)'
+    write = r'(?:appointment|block|availability|service|record-note|record-upload|identity-review|forms/[1-9][0-9]*/link)'
     if not re.fullmatch(read if request.method == 'GET' else write, operation):
         return JsonResponse({'ok': False, 'error': 'not_found'}, status=404)
-    if identity['role'] == 'doctor' and operation in {'service', 'identity-review'}:
+    if identity['role'] == 'doctor' and (operation in {'service', 'identity-review'} or operation == 'forms' or operation.startswith('forms/')):
         return JsonResponse({'ok': False, 'error': 'admin_required'}, status=403)
     origin = getattr(settings, 'MOBILE_STAFF_BOOK_ORIGIN', 'https://book.a-esthetic.de')
     url = f'{origin}/api/mobile/staff/{operation}/'
@@ -72,11 +72,12 @@ def book(request, operation):
     except (URLError, TimeoutError):
         return JsonResponse({'ok': False, 'error': 'book_unavailable'}, status=503)
 
-    if '/records/' in operation and upstream.code == 200 and upstream.headers.get_content_type() == 'application/octet-stream':
+    if upstream.code == 200 and (('/records/' in operation and upstream.headers.get_content_type() == 'application/octet-stream') or
+                                 (operation.startswith('forms/') and operation.endswith('/pdf') and upstream.headers.get_content_type() == 'application/pdf')):
         def stream():
             with upstream:
                 yield from iter(lambda: upstream.read(64 * 1024), b'')
-        response = StreamingHttpResponse(stream(), content_type='application/octet-stream')
+        response = StreamingHttpResponse(stream(), content_type=upstream.headers.get_content_type())
         response['Content-Disposition'] = upstream.headers.get('Content-Disposition', 'attachment')
         response['X-Content-Type-Options'] = 'nosniff'
         return response

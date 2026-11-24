@@ -22,7 +22,7 @@ from platform_app.admin_aware_login import _is_admin
 from platform_app.mobile_api import _auth
 from platform_app.goae_billing import calculate_goae_lines, create_goae_draft, goae_draft_pdf_bytes
 from platform_app.goae_tariff import catalog_payload, TREATMENTS, reference_case
-from platform_app.models import AuditLog, CheckInSession, Invoice, InvoiceItem, InvoiceSettings, OfficePatientLink, OfficeIntakeReview, UserProfile
+from platform_app.models import AuditLog, CheckInSession, Invoice, InvoiceItem, InvoiceSettings, OfficePatientLink, OfficeIntakeReview, OfficeIntakeSubmission, UserProfile
 from platform_app.intake_identity import score, user_data, birth_date
 from .mobile_staff_views import NoRedirect
 
@@ -156,6 +156,42 @@ def office(request, operation, ident=None):
             return JsonResponse({'ok': True, 'items': [{
                 'id': row.pk, 'submission': row.payload, 'created_at': row.created_at.isoformat(),
             } for row in rows]})
+        if operation == 'submissions' and ident is None:
+            # List only the minimal identifying fields; clinical answers and
+            # signature bytes are loaded only on explicit detail selection.
+            query = request.GET.get('q', '').strip()[:100]
+            status = request.GET.get('status', '')
+            try:
+                page = max(1, min(10000, int(request.GET.get('page', '1'))))
+            except ValueError:
+                return error('invalid_page')
+            rows = OfficeIntakeSubmission.objects.all()
+            if status:
+                if status not in {'pending', 'linked', 'review', 'error'}:
+                    return error('invalid_status')
+                rows = rows.filter(sync_status=status)
+            for term in query.split():
+                rows = rows.filter(Q(identity__first_name__icontains=term) |
+                                   Q(identity__last_name__icontains=term) |
+                                   Q(identity__email__icontains=term) |
+                                   Q(identity__phone__icontains=term))
+            start = (page - 1) * 30
+            result = list(rows.order_by('-created_at', '-pk').defer('signature_png', 'answers')[start:start+31])
+            return JsonResponse({'ok': True, 'has_more': len(result) > 30, 'items': [{
+                'id': row.pk, 'name': ' '.join(str(row.identity.get(k, '')) for k in ('first_name', 'last_name')).strip(),
+                'email': row.identity.get('email', ''), 'created_at': row.created_at.isoformat(),
+                'status': row.sync_status,
+            } for row in result[:30]]})
+        if operation == 'submission' and ident is not None:
+            row = OfficeIntakeSubmission.objects.filter(pk=ident).first()
+            if not row:
+                return error('not_found', 404)
+            return JsonResponse({'ok': True, 'submission': {
+                'id': row.pk, 'identity': row.identity, 'answers': row.answers,
+                'signature_png': row.signature_png, 'created_at': row.created_at.isoformat(),
+                'status': row.sync_status, 'book_customer_id': row.book_customer_id,
+                'book_record_id': row.book_record_id,
+            }})
         if operation == 'customers' and ident is None:
             query = request.GET.get('q', '').strip()[:100]
             if len(query) < 2:

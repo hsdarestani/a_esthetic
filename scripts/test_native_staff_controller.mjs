@@ -40,9 +40,11 @@ globalThis.fetch=async(url,opts)=>{
       ],availability:[]
     };
   }
-  else if(path.endsWith('/patients/'))result={items:[{id:23,name:'Demo patient',email:'demo@example.test'}]};
+  else if(path.endsWith('/patients/'))result={items:[{id:23,name:'Demo patient',email:'demo@example.test'}],has_more:new URL(url).searchParams.get('page')==='1'};
   else if(path.endsWith('/patient/23/'))result={patient:{id:23,name:'Demo patient',email:'demo@example.test'},appointments:[],records:[]};
   else if(path.endsWith('/customers/'))result={items:[]};
+  else if(path.endsWith('/forms/'))result={items:[{id:17,name:'Synthetic patient',email:'synthetic@example.test',created_at:'2026-11-23T14:00:00Z',status:'review'}]};
+  else if(path.endsWith('/forms/17/'))result={submission:{id:17,identity:{first_name:'Synthetic',last_name:'Patient'},answers:{allergies:'None'},created_at:'2026-11-23T14:00:00Z',status:'review',signature_png:''}};
   else if(path.endsWith('/invoice-settings/')){
     if(opts.body){lastFinancialUpdate=JSON.parse(opts.body);officeRevision='v2';result={ok:true,revision:officeRevision};}
     else result={ok:true,revision:officeRevision,ready_for_issue:false,settings:officeSettings};
@@ -55,6 +57,8 @@ const click=async(id,values={})=>{onAction({id,values});await pause();};
 let native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'admin',name:'Demo Admin'},
   origin:'https://example.test',logout:()=>{}});
 assert.equal(current.title,'Welcome');
+assert.equal(current.hero,'Practice overview');
+assert.equal(current.metrics[0].detail,'0');
 assert.equal(current.tabs.filter(t=>t.selected).length,1);
 assert.equal(current.tabs.find(t=>t.selected).id,'home');
 assert.ok(current.tabs.some(t=>t.id==='office'));
@@ -75,6 +79,7 @@ await click('block-info:91');
 assert.match(current.message,/Book administration/);
 await click('calendar');
 await click('new-appointment');
+assert.equal(current.presentation,'calendar-sheet');
 assert.ok(!current.fields.find(f=>f.id==='staff_id').options.some(o=>o.value==='2'),'imported provider unavailable for local booking');
 assert.ok(!current.fields.find(f=>f.id==='service_id').options.some(o=>o.value==='2'),'imported service unavailable for local booking');
 await click('calendar');
@@ -138,7 +143,13 @@ assert.equal(current.title,'Settings');
 assert.ok(current.tabs.some(tab=>tab.label==='Calendar'));
 await click('office');
 assert.equal(current.tabs.find(t=>t.selected).id,'office');
-assert.ok(current.rows.some(x=>x.id==='billing-settings'));
+assert.deepEqual(current.rows.map(x=>x.id),['intakes','billing-search']);
+await click('intakes');
+assert.equal(current.title,'Submitted forms');
+await click('submission:17');
+assert.ok(current.rows.some(x=>x.detail==='None'));
+await click('billing-search');
+assert.ok(current.shortcuts.some(x=>x.id==='billing-settings'));
 await click('billing-settings');
 assert.equal(current.title,'Invoice settings');
 assert.ok(current.fields.some(x=>x.id==='next_sequence'&&x.kind==='integer'));
@@ -147,9 +158,14 @@ await click('save-billing-settings',settingsInput);
 assert.equal(lastFinancialUpdate.revision,'v1','uses form revision instead of silently refreshing');
 assert.equal(lastFinancialUpdate.confirmed_financial_update,true);
 await click('patients');
+assert.ok(current.actions.some(x=>x.id==='patient-page-next'));
+await click('patient-page-next');
+assert.match(current.sectionTitle,/Page 2/);
 await click('patient:23');
 assert.equal(current.title,'Demo patient');
 assert.equal(current.tabs.find(t=>t.selected).id,'patients');
+await click('patient-section:records');
+assert.equal(current.segments.find(x=>x.selected).id,'patient-section:records');
 await click('note');
 assert.equal(current.title,'New note');
 assert.equal(current.fields.find(x=>x.id==='note').kind,'multiline');

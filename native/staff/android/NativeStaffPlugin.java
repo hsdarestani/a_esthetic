@@ -36,21 +36,29 @@ import java.util.Map;
 
 @CapacitorPlugin(name = "NativeStaff")
 public final class NativeStaffPlugin extends Plugin {
-    private static final int PAPER = Color.rgb(248,246,241);
-    private static final int CARD = Color.rgb(255,253,250);
+    private static final int PAPER = Color.rgb(247,245,240);
+    private static final int CARD = Color.rgb(255,252,248);
     private static final int INK = Color.rgb(23,41,35);
-    private static final int GREEN = Color.rgb(35,71,59);
-    private static final int MUTED = Color.rgb(84,94,85);
+    private static final int GREEN = Color.rgb(19,37,31);
+    private static final int MUTED = Color.rgb(104,115,108);
+    private static final int GOLD = Color.rgb(204,171,112);
+    private static final int EDGE = Color.rgb(230,223,211);
+    private static final int NAVY = Color.rgb(32,43,61);
+    private static final int WINE = Color.rgb(98,12,14);
+    private int accent=GREEN;
+    private JSONObject calendarScreen;
     private Dialog dialog;
     // Keeps direction across the asynchronous native -> Book -> native render.
     private int calendarPageDirection = 0;
     private final Map<String, EditText> edits = new LinkedHashMap<>();
-    private final Map<String, Spinner> selects = new LinkedHashMap<>();
-    private final Map<String, String[]> optionValues = new LinkedHashMap<>();
+    private final Map<String, String> choices = new LinkedHashMap<>();
 
     private int dp(float n) { return (int)(n * getContext().getResources().getDisplayMetrics().density + .5f); }
     private GradientDrawable background(int color, int radius) {
         GradientDrawable bg = new GradientDrawable(); bg.setColor(color); bg.setCornerRadius(dp(radius)); return bg;
+    }
+    private GradientDrawable outlined(int fill, int radius, int border) {
+        GradientDrawable bg=background(fill,radius); bg.setStroke(dp(1),border); return bg;
     }
     private LinearLayout column() {
         LinearLayout v = new LinearLayout(getContext()); v.setOrientation(LinearLayout.VERTICAL); return v;
@@ -65,8 +73,11 @@ public final class NativeStaffPlugin extends Plugin {
     }
     private Button button(String label, String id, boolean primary) {
         Button v = new Button(getContext()); v.setText(label); v.setAllCaps(false);
-        v.setTextColor(primary ? Color.WHITE : GREEN); v.setMinHeight(dp(48)); v.setMinimumHeight(dp(48));
-        v.setBackground(background(primary ? GREEN : CARD, 12)); v.setOnClickListener(x -> action(id)); return v;
+        boolean danger=id.contains("cancel-appointment")||id.contains("confirm-cancel")||id.contains("delete-line")||id.contains("remove-block");
+        int tone=danger?Color.rgb(158,45,45):accent;
+        v.setTextColor(primary&&!danger ? Color.WHITE : tone); v.setMinHeight(dp(49)); v.setMinimumHeight(dp(49));
+        v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);v.setTextSize(14);v.setPadding(dp(12),dp(9),dp(12),dp(9));
+        v.setBackground(primary&&!danger?background(tone,13):outlined(CARD,13,EDGE)); v.setOnClickListener(x -> action(id)); return v;
     }
     private void action(String id) {
         if (id.isEmpty()) return;
@@ -76,11 +87,7 @@ public final class NativeStaffPlugin extends Plugin {
         else if(id.startsWith("date:"))calendarPageDirection=1;
         JSObject values = new JSObject();
         for (Map.Entry<String,EditText> entry : edits.entrySet()) values.put(entry.getKey(), entry.getValue().getText().toString());
-        for (Map.Entry<String,Spinner> entry : selects.entrySet()) {
-            int i = entry.getValue().getSelectedItemPosition();
-            String[] items = optionValues.get(entry.getKey());
-            if (items != null && i >= 0 && i < items.length) values.put(entry.getKey(), items[i]);
-        }
+        for (Map.Entry<String,String> entry : choices.entrySet()) values.put(entry.getKey(),entry.getValue());
         JSObject event = new JSObject(); event.put("id", id); event.put("values", values);
         notifyListeners("action", event);
     }
@@ -94,9 +101,65 @@ public final class NativeStaffPlugin extends Plugin {
     private JSONArray list(JSONObject s, String key) {
         JSONArray a = s.optJSONArray(key); return a == null ? new JSONArray() : a;
     }
+    private String icon(String id) {
+        if(id.startsWith("appointment:")||id.contains("calendar"))return "◷";
+        if(id.startsWith("patient:")||id.contains("patient"))return "♙";
+        if(id.contains("billing")||id.contains("invoice")||id.contains("record")||id.contains("intake"))return "▤";
+        if(id.equals("settings"))return "⚙";
+        return "↗";
+    }
+    private LinearLayout panel() {
+        LinearLayout box=column();box.setPadding(dp(16),dp(14),dp(16),dp(14));box.setBackground(outlined(CARD,17,EDGE));return box;
+    }
+    private void label(LinearLayout parent,String title) {
+        if(title.isEmpty())return;
+        TextView t=text(title,11,MUTED,true); t.setLetterSpacing(.09f);add(parent,t,9);
+    }
+    private void grid(LinearLayout parent,JSONArray items,boolean metrics) {
+        int count=getContext().getResources().getConfiguration().screenWidthDp>=700?3:2;
+        for(int i=0;i<items.length();i+=count){
+            LinearLayout line=row();line.setGravity(Gravity.TOP);
+            for(int k=0;k<count;k++){
+                JSONObject item=items.optJSONObject(i+k);
+                if(item==null){weight(line,new View(getContext()));continue;}
+                String id=item.optString("id");
+                if(metrics){
+                    LinearLayout box=panel();add(box,text(icon(id),21,accent,true),6);
+                    add(box,text(item.optString("detail"),29,INK,true),4);
+                    add(box,text(item.optString("label"),12,MUTED,true),0);
+                    if(!id.isEmpty()){box.setOnClickListener(v->action(id));box.setFocusable(true);}
+                    weight(line,box);
+                }else weight(line,button(item.optString("label"),id,false));
+            }add(parent,line,9);
+        }
+    }
+    private void choiceDialog(String key,String title,JSONArray options,TextView control) {
+        Dialog choice=new Dialog(getActivity(),android.R.style.Theme_Material_Light_NoActionBar);
+        if(choice.getWindow()!=null){
+            choice.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            choice.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+        LinearLayout wrap=column();wrap.setPadding(dp(18),dp(18),dp(18),dp(20));wrap.setBackground(background(PAPER,24));
+        LinearLayout header=row();TextView h=text(title,21,INK,true);header.addView(h,new LinearLayout.LayoutParams(0,-2,1));
+        Button close=button("×","",false);close.setOnClickListener(v->choice.dismiss());header.addView(close);add(wrap,header,10);
+        ScrollView scroll=new ScrollView(getContext());LinearLayout values=column();scroll.addView(values);
+        for(int i=0;i<options.length();i++){
+            JSONObject item=options.optJSONObject(i);if(item==null)continue;
+            String value=item.optString("value"), name=item.optString("label");
+            TextView entry=text(name+(value.equals(choices.get(key))?"   ✓":""),15,INK,false);
+            entry.setPadding(dp(14),dp(14),dp(14),dp(14));entry.setBackground(outlined(CARD,11,EDGE));
+            entry.setOnClickListener(v->{choices.put(key,value);control.setText(name+"   ▾");choice.dismiss();});
+            entry.setFocusable(true);add(values,entry,7);
+        }
+        int maxHeight=Math.min(dp(500),getContext().getResources().getDisplayMetrics().heightPixels/2);
+        wrap.addView(scroll,new LinearLayout.LayoutParams(-1,maxHeight));
+        choice.setContentView(wrap);choice.show();
+        if(choice.getWindow()!=null){choice.getWindow().setLayout(-1,-2);choice.getWindow().setGravity(Gravity.BOTTOM);}
+    }
     private void draw(JSONObject s) {
-        edits.clear(); selects.clear(); optionValues.clear();
+        edits.clear(); choices.clear();
         if(s.optJSONObject("timeline") != null) {
+            calendarScreen=s;
             View calendar=new NativeStaffV3Calendar(getActivity(),s,this::action).build();
             dialog.setContentView(calendar);
             if(calendarPageDirection!=0) {
@@ -108,15 +171,16 @@ public final class NativeStaffPlugin extends Plugin {
             }
             return;
         }
-        LinearLayout root = column(); root.setBackgroundColor(PAPER);
+        boolean sheet="calendar-sheet".equals(s.optString("presentation"));
+        boolean english="en".equals(s.optString("language"));
+        accent=sheet?NAVY:"billing".equals(s.optString("theme"))?WINE:GREEN;
+        LinearLayout root = column(); root.setBackground(background(PAPER,sheet?24:0));
         root.setPadding(dp(14),dp(12),dp(14),dp(8));
         LinearLayout header = row();
-        weight(header, button("‹", "back", false));
-        TextView brand = text("A+ ESTHETIC",14,GREEN,true); brand.setGravity(Gravity.CENTER);
+        weight(header, button(sheet?"×":"‹", sheet?"calendar":"back", false));
+        TextView brand = text(sheet?(english?"CALENDAR":"KALENDER"):"A+ ESTHETIC",12,accent,true); brand.setLetterSpacing(.12f);brand.setGravity(Gravity.CENTER);
         header.addView(brand,new LinearLayout.LayoutParams(0,-2,3));
-        weight(header,button("⌂", "home", false)); add(root,header,12);
-        TextView title = text(s.optString("title"),32,INK,false); title.setTypeface(Typeface.SERIF);
-        add(root,title,5); add(root,text(s.optString("subtitle"),14,MUTED,false),12);
+        if(sheet)weight(header,new View(getContext()));else weight(header,button("⌂", "home", false)); add(root,header,12);
         JSONArray week = list(s,"week");
         if (week.length() > 0) {
             LinearLayout strip = new LinearLayout(getContext()) {
@@ -179,22 +243,42 @@ public final class NativeStaffPlugin extends Plugin {
         scroll.setFillViewport(true);
         LinearLayout body=column(); body.setPadding(0,0,0,dp(12)); scroll.addView(body);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        if(s.optBoolean("busy")) { ProgressBar progress=new ProgressBar(getContext()); add(body,progress,8); }
+        if(!s.optString("hero").isEmpty()){
+            LinearLayout hero=column();hero.setPadding(dp(22),dp(23),dp(22),dp(23));
+            GradientDrawable gradient=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{GREEN,Color.rgb(48,74,61)});
+            gradient.setCornerRadius(dp(23));hero.setBackground(gradient);
+            TextView overline=text(english?"A+ ESTHETIC · PRACTICE MANAGEMENT":"A+ ESTHETIC · PRAXISMANAGEMENT",10,GOLD,true);overline.setLetterSpacing(.1f);
+            add(hero,overline,12);TextView title=text(s.optString("hero"),33,Color.WHITE,false);title.setTypeface(Typeface.SERIF);add(hero,title,10);
+            add(hero,text(s.optString("subtitle"),14,Color.rgb(235,233,222),false),0);add(body,hero,12);
+        }else{
+            TextView title=text(s.optString("title"),sheet?27:32,INK,false);title.setTypeface(sheet?Typeface.DEFAULT:Typeface.SERIF);
+            add(body,title,5);if(!s.optString("subtitle").isEmpty())add(body,text(s.optString("subtitle"),14,MUTED,false),12);
+        }
+        if(s.optBoolean("busy")) { for(int i=0;i<3;i++){View skeleton=new View(getContext());skeleton.setBackground(background(EDGE,13));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(70));p.bottomMargin=dp(10);body.addView(skeleton,p);} }
+        grid(body,list(s,"metrics"),true);
+        JSONArray segments=list(s,"segments");
+        if(segments.length()>0){
+            HorizontalScrollView chips=new HorizontalScrollView(getContext());chips.setHorizontalScrollBarEnabled(false);LinearLayout strip=row();
+            for(int i=0;i<segments.length();i++){JSONObject item=segments.optJSONObject(i);if(item!=null){Button chip=button(item.optString("label"),item.optString("id"),item.optBoolean("selected"));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,-2);p.rightMargin=dp(6);strip.addView(chip,p);}}
+            chips.addView(strip);add(body,chips,10);
+        }
         if(!s.optString("message").isEmpty()) {
             TextView msg=text(s.optString("message"),15,INK,false); msg.setPadding(dp(14),dp(14),dp(14),dp(14));
-            msg.setBackground(background(CARD,12));add(body,msg,10);
+            msg.setBackground(outlined(CARD,14,EDGE));add(body,msg,10);
         }
         JSONArray fields=list(s,"fields");
         for(int i=0;i<fields.length();i++){
             JSONObject f=fields.optJSONObject(i);if(f==null)continue;
-            String key=f.optString("id"); LinearLayout container=column(); container.setPadding(dp(14),dp(10),dp(14),dp(10));container.setBackground(background(CARD,12));
-            add(container,text(f.optString("label"),13,INK,true),4);
+            String key=f.optString("id"); LinearLayout container=panel();
+            add(container,text(f.optString("label"),13,MUTED,true),7);
             JSONArray options=f.optJSONArray("options");
             if(options!=null&&options.length()>0){
-                String[] labels=new String[options.length()], vals=new String[options.length()];int choice=0;
-                for(int j=0;j<options.length();j++){JSONObject opt=options.optJSONObject(j);labels[j]=opt.optString("label");vals[j]=opt.optString("value");if(vals[j].equals(f.optString("value")))choice=j;}
-                Spinner picker=new Spinner(getContext()); ArrayAdapter<String> adapter=new ArrayAdapter<>(getContext(),android.R.layout.simple_spinner_dropdown_item,labels);
-                picker.setAdapter(adapter);picker.setSelection(choice); add(container,picker,0);selects.put(key,picker);optionValues.put(key,vals);
+                String selected=f.optString("value"), selectedLabel=english?"Select":"Auswählen";
+                for(int j=0;j<options.length();j++){JSONObject option=options.optJSONObject(j);if(option!=null&&option.optString("value").equals(selected))selectedLabel=option.optString("label");}
+                choices.put(key,selected);
+                TextView picker=text(selectedLabel+"   ▾",16,INK,false);picker.setMinHeight(dp(48));picker.setGravity(Gravity.CENTER_VERTICAL);
+                picker.setPadding(dp(12),dp(9),dp(12),dp(9));picker.setBackground(outlined(PAPER,11,EDGE));picker.setFocusable(true);
+                picker.setOnClickListener(v->choiceDialog(key,f.optString("label"),options,picker));add(container,picker,0);
             } else {
                 EditText input=new EditText(getContext());
                 String kind=f.optString("kind","text");
@@ -230,23 +314,58 @@ public final class NativeStaffPlugin extends Plugin {
                     input.setMinHeight(dp(48));
                 }
                 input.setText(f.optString("value"));input.setTextColor(INK);input.setTextSize(16);
-                input.setHint(f.optString("label"));add(container,input,0);edits.put(key,input);
+                input.setHint(f.optString("label"));input.setPadding(dp(12),dp(10),dp(12),dp(10));input.setBackground(outlined(PAPER,11,EDGE));add(container,input,0);edits.put(key,input);
             }
             add(body,container,10);
         }
-        JSONArray rows=list(s,"rows");
+        JSONArray shortcuts=list(s,"shortcuts");if(shortcuts.length()>0){label(body,english?"QUICK ACCESS":"SCHNELLZUGRIFF");grid(body,shortcuts,false);}
+        label(body,s.optString("sectionTitle"));JSONArray rows=list(s,"rows");
         for(int i=0;i<rows.length();i++){
             JSONObject item=rows.optJSONObject(i);if(item==null)continue;
-            LinearLayout box=column();box.setPadding(dp(16),dp(14),dp(16),dp(14));box.setBackground(background(CARD,14));
-            add(box,text(item.optString("label"),17,INK,true),4);add(box,text(item.optString("detail"),14,MUTED,false),0);
-            String id=item.optString("id");if(!id.isEmpty()){box.setOnClickListener(x->action(id));box.setFocusable(true);}
+            LinearLayout box=panel();LinearLayout content=row();String id=item.optString("id");
+            if(!id.isEmpty()){
+                TextView symbol=text(icon(id),22,accent,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(background(PAPER,12));
+                LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(43),dp(43));p.rightMargin=dp(12);content.addView(symbol,p);
+            }
+            LinearLayout copy=column();add(copy,text(item.optString("label"),16,INK,true),5);if(!item.optString("detail").isEmpty())add(copy,text(item.optString("detail"),13,MUTED,false),0);
+            if(!item.optString("badge").isEmpty())add(copy,text(item.optString("badge"),12,accent,true),0);
+            content.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
+            if(!id.isEmpty()){TextView more=text("›",21,MUTED,false);content.addView(more);box.setOnClickListener(x->action(id));box.setFocusable(true);}
+            add(box,content,0);
             add(body,box,10);
         }
+        if(rows.length()==0&&!s.optString("empty").isEmpty()){LinearLayout empty=panel();TextView message=text(s.optString("empty"),14,MUTED,false);message.setGravity(Gravity.CENTER);add(empty,message,0);add(body,empty,10);}
+        JSONArray secondary=list(s,"secondaryRows");if(secondary.length()>0){
+            label(body,s.optString("secondaryTitle"));
+            for(int i=0;i<secondary.length();i++){
+                JSONObject item=secondary.optJSONObject(i);if(item==null)continue;
+                LinearLayout box=panel();add(box,text(item.optString("label"),16,INK,true),5);add(box,text(item.optString("detail"),13,MUTED,false),0);
+                String id=item.optString("id");if(!id.isEmpty()){box.setOnClickListener(v->action(id));box.setFocusable(true);}add(body,box,9);
+            }
+        }
+        String image=s.optString("image");if(!image.isEmpty()&&image.length()<11000000){
+            try{byte[] bytes=Base64.decode(image,Base64.DEFAULT);Bitmap bitmap=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length);
+                if(bitmap!=null){ImageView photo=new ImageView(getContext());photo.setImageBitmap(bitmap);photo.setAdjustViewBounds(true);photo.setMaxHeight(dp(480));add(body,photo,10);}
+            }catch(IllegalArgumentException ignored){}
+        }
         JSONArray actions=list(s,"actions");
-        for(int i=0;i<actions.length();i++){JSONObject item=actions.optJSONObject(i);if(item!=null)add(body,button(item.optString("label"),item.optString("id"),true),10);}
+        for(int i=0;i<actions.length();i++){JSONObject item=actions.optJSONObject(i);if(item!=null)add(body,button(item.optString("label"),item.optString("id"),i==0),10);}
         JSONArray tabs=list(s,"tabs"); LinearLayout nav=row();
-        for(int i=0;i<tabs.length();i++){JSONObject item=tabs.optJSONObject(i);if(item!=null)weight(nav,button(item.optString("label"),item.optString("id"),item.optBoolean("selected")));}
-        add(root,nav,0);dialog.setContentView(root);
+        if(!sheet){
+            for(int i=0;i<tabs.length();i++){JSONObject item=tabs.optJSONObject(i);if(item!=null){String id=item.optString("id");boolean selected=item.optBoolean("selected");
+                LinearLayout tab=column();tab.setGravity(Gravity.CENTER);tab.setPadding(dp(1),dp(9),dp(1),dp(9));tab.setBackground(background(selected?accent:CARD,13));
+                TextView glyph=text(icon(id),20,selected?Color.WHITE:MUTED,true);glyph.setGravity(Gravity.CENTER);add(tab,glyph,3);
+                TextView caption=text(item.optString("label"),10,selected?Color.WHITE:MUTED,selected);caption.setGravity(Gravity.CENTER);caption.setMaxLines(1);add(tab,caption,0);
+                tab.setOnClickListener(v->action(id));tab.setFocusable(true);weight(nav,tab);
+            }}add(root,nav,0);
+        }
+        if(sheet&&calendarScreen!=null){
+            FrameLayout frame=new FrameLayout(getContext());
+            View calendar=new NativeStaffV3Calendar(getActivity(),calendarScreen,id->{}).build();frame.addView(calendar,new FrameLayout.LayoutParams(-1,-1));
+            View dim=new View(getContext());dim.setBackgroundColor(0x66000000);dim.setOnClickListener(v->action("calendar"));frame.addView(dim,new FrameLayout.LayoutParams(-1,-1));
+            int height=(int)(getContext().getResources().getDisplayMetrics().heightPixels*.86);
+            FrameLayout.LayoutParams sheetParams=new FrameLayout.LayoutParams(-1,height,Gravity.BOTTOM);frame.addView(root,sheetParams);dialog.setContentView(frame);
+        }else dialog.setContentView(root);
     }
     @PluginMethod public void probe(PluginCall call) {
         JSObject result=new JSObject();result.put("ok",true);result.put("native",true);
@@ -339,6 +458,6 @@ public final class NativeStaffPlugin extends Plugin {
         });
     }
     @PluginMethod public void dismiss(PluginCall call) {
-        getActivity().runOnUiThread(()->{edits.clear();selects.clear();optionValues.clear();if(dialog!=null){dialog.dismiss();dialog=null;}call.resolve();});
+        getActivity().runOnUiThread(()->{edits.clear();choices.clear();calendarScreen=null;if(dialog!=null){dialog.dismiss();dialog=null;}call.resolve();});
     }
 }

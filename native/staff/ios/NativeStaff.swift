@@ -7,6 +7,7 @@ import UIKit
 
 final class StaffScreenState: ObservableObject {
     @Published var screen: [String: Any] = [:]
+    @Published var calendarScreen: [String: Any] = [:]
     @Published var values: [String: String] = [:]
     var send: ((String, [String: String]) -> Void)?
     func replace(_ next: [String: Any]) {
@@ -15,16 +16,27 @@ final class StaffScreenState: ObservableObject {
             if let key = field["id"] as? String { values[key] = field["value"] as? String ?? "" }
         }
         screen = next
+        if next["timeline"] != nil { calendarScreen = next }
+        if next.isEmpty { calendarScreen = [:] }
     }
 }
 
 struct StaffNativeScreen: View {
     @ObservedObject var state: StaffScreenState
     @State private var privacyCover = false
-    private let paper = Color(red: 248/255, green: 246/255, blue: 241/255)
-    private let card = Color(red: 255/255, green: 253/255, blue: 250/255)
+    @State private var choosing: String? = nil
+    private let paper = Color(red: 247/255, green: 245/255, blue: 240/255)
+    private let card = Color(red: 255/255, green: 252/255, blue: 248/255)
     private let ink = Color(red: 23/255, green: 41/255, blue: 35/255)
-    private let green = Color(red: 35/255, green: 71/255, blue: 59/255)
+    private let green = Color(red: 19/255, green: 37/255, blue: 31/255)
+    private let muted = Color(red: 104/255, green: 115/255, blue: 108/255)
+    private let gold = Color(red: 204/255, green: 171/255, blue: 112/255)
+    private let edge = Color(red: 230/255, green: 223/255, blue: 211/255)
+    private var modal: Bool { text(state.screen, "presentation") == "calendar-sheet" }
+    private var billing: Bool { text(state.screen, "theme") == "billing" }
+    private var accent: Color { modal ? Color(red: 32/255,green: 43/255,blue: 61/255) : billing ? Color(red: 98/255,green: 12/255,blue: 14/255) : green }
+    private var english: Bool { text(state.screen, "language") == "en" }
+    private func t(_ de: String, _ en: String) -> String { english ? en : de }
     private func action(_ id: String) { state.send?(id, state.values) }
     private func items(_ key: String) -> [[String: Any]] { state.screen[key] as? [[String: Any]] ?? [] }
     private func text(_ item: [String: Any], _ key: String) -> String { item[key] as? String ?? "" }
@@ -33,105 +45,230 @@ struct StaffNativeScreen: View {
         Group {
             if let calendar = state.screen["timeline"] as? [String: Any] {
                 StaffSimplyBookV3(state: state, model: calendar)
+            } else if modal, let calendar = state.calendarScreen["timeline"] as? [String: Any] {
+                GeometryReader { geometry in
+                    ZStack(alignment: .bottom) {
+                        StaffSimplyBookV3(state: state, model: calendar).allowsHitTesting(false).accessibilityHidden(true)
+                        Color.black.opacity(0.36).ignoresSafeArea().onTapGesture { action("calendar") }
+                        surface(sheet: true)
+                            .frame(maxWidth: 740).frame(height: geometry.size.height * 0.90)
+                            .clipShape(RoundedRectangle(cornerRadius: 28))
+                            .shadow(color: .black.opacity(0.24), radius: 24, y: -8)
+                            .transition(.move(edge: .bottom))
+                    }
+                }
             } else {
-                VStack(spacing: 0) {
-            HStack {
-                Button { action("back") } label: {
-                    Image(systemName: "chevron.left").font(.headline).frame(width: 44, height: 44)
-                }.accessibilityLabel("Back")
-                Spacer()
-                Text("A+ ESTHETIC").font(.caption.weight(.semibold)).tracking(3)
-                Spacer()
-                Button { action("home") } label: {
-                    Image(systemName: "square.grid.2x2").font(.headline).frame(width: 44, height: 44)
-                }.accessibilityLabel("Home")
-            }.foregroundColor(green).padding(.horizontal, 10)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(text(state.screen, "title")).font(.system(size: 34, weight: .regular, design: .serif))
-                if !text(state.screen, "subtitle").isEmpty {
-                    Text(text(state.screen, "subtitle")).font(.subheadline).foregroundColor(.secondary)
-                }
-                if !items("week").isEmpty {
-                    HStack(spacing: 2) {
-                        ForEach(Array(items("week").enumerated()), id: \.offset) { _, item in
-                            Button { action(text(item, "id")) } label: {
-                                Text(text(item, "label")).font(.caption.weight(.semibold))
-                                    .multilineTextAlignment(.center).frame(maxWidth: .infinity).frame(minHeight: 48)
-                                    .background((item["selected"] as? Bool ?? false) ? green : card)
-                                    .foregroundColor((item["selected"] as? Bool ?? false) ? .white : ink)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }.buttonStyle(.plain)
-                        }
-                    }.gesture(DragGesture(minimumDistance: 25).onEnded { value in
-                        if abs(value.translation.width) > abs(value.translation.height) {
-                            action(value.translation.width < 0 ? "week-next" : "week-prev")
-                        }
-                    })
-                }
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(18).background(paper)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if state.screen["busy"] as? Bool == true {
-                        ProgressView().frame(maxWidth: .infinity).padding()
-                    }
-                    if !text(state.screen, "message").isEmpty {
-                        Text(text(state.screen, "message")).font(.subheadline)
-                            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(card).clipShape(RoundedRectangle(cornerRadius: 14))
-                    }
-                    ForEach(Array(items("fields").enumerated()), id: \.offset) { _, field in
-                        fieldView(field)
-                    }
-                    ForEach(Array(items("rows").enumerated()), id: \.offset) { _, row in
-                        Button { action(text(row, "id")) } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(text(row, "label")).foregroundColor(ink).font(.headline)
-                                    Text(text(row, "detail")).foregroundColor(.secondary).font(.subheadline)
-                                }
-                                Spacer()
-                                if !text(row, "id").isEmpty { Image(systemName: "chevron.right").foregroundColor(green) }
-                            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                                .background(card).clipShape(RoundedRectangle(cornerRadius: 14))
-                        }.disabled(text(row, "id").isEmpty).buttonStyle(.plain)
-                    }
-                    ForEach(Array(items("actions").enumerated()), id: \.offset) { _, item in
-                        Button { action(text(item, "id")) } label: {
-                            Text(text(item, "label")).font(.headline).frame(maxWidth: .infinity).frame(minHeight: 50)
-                                .background(green).foregroundColor(.white).clipShape(RoundedRectangle(cornerRadius: 12))
-                        }.buttonStyle(.plain)
-                    }
-                }.padding(.horizontal, 18).padding(.bottom, 24)
-            }.simultaneousGesture(
-                DragGesture(minimumDistance: 25).onEnded { swipe in
-                    guard !items("week").isEmpty else { return }
-                    let dx = swipe.translation.width
-                    let dy = swipe.translation.height
-                    if abs(dx) > 60 && abs(dx) > abs(dy) * 1.4 {
-                        action(dx < 0 ? "day-next" : "day-prev")
-                    }
-                }
-            )
-            HStack {
-                ForEach(Array(items("tabs").enumerated()), id: \.offset) { _, tab in
-                    Button { action(text(tab, "id")) } label: {
-                        VStack(spacing: 5) {
-                            Image(systemName: text(tab, "icon")).font(.system(size: 20))
-                            Text(text(tab, "label")).font(.caption2)
-                        }.frame(maxWidth: .infinity).frame(minHeight: 54)
-                    }
-                    .foregroundColor((tab["selected"] as? Bool ?? false) ? .white : green)
-                    .background((tab["selected"] as? Bool ?? false) ? green : card)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .accessibilityAddTraits((tab["selected"] as? Bool ?? false) ? .isSelected : [])
-                }
-            }.padding(.horizontal, 8).background(card)
-                }.foregroundColor(ink).background(paper.ignoresSafeArea()).preferredColorScheme(.light)
+                surface(sheet: modal)
             }
         }
+            .overlay { choiceOverlay }
             .overlay { if privacyCover { paper.ignoresSafeArea() } }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in privacyCover = true }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in privacyCover = false }
+    }
+
+    private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content().padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(card, in: RoundedRectangle(cornerRadius: 17))
+            .overlay { RoundedRectangle(cornerRadius: 17).strokeBorder(edge, lineWidth: 1) }
+    }
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title).font(.system(size: 12, weight: .semibold)).tracking(1.1)
+            .foregroundColor(muted).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 9)
+    }
+    private func icon(_ id: String) -> String {
+        if id.hasPrefix("patient:") { return "person.crop.circle" }
+        if id.hasPrefix("appointment:") { return "clock" }
+        if id.hasPrefix("record:") { return "doc.text" }
+        if id.contains("calendar") || id.contains("appointment") { return "calendar" }
+        if id.contains("billing") || id.contains("invoice") { return "doc.plaintext" }
+        if id.contains("intake") || id.contains("form") { return "checklist" }
+        if id.contains("patient") { return "person.2" }
+        return "arrow.up.right"
+    }
+    private func rowView(_ item: [String: Any]) -> some View {
+        let id = text(item, "id")
+        return Button { action(id) } label: {
+            panel {
+                HStack(alignment: .top, spacing: 13) {
+                    if !id.isEmpty {
+                        Image(systemName: icon(id)).font(.system(size: 18, weight: .medium))
+                            .foregroundColor(accent).frame(width: 43, height: 43)
+                            .background(accent.opacity(0.075), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(text(item, "label")).font(.system(size: 16, weight: .semibold)).foregroundColor(ink)
+                        if !text(item, "detail").isEmpty {
+                            Text(text(item, "detail")).font(.system(size: 13)).foregroundColor(muted).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    if !text(item, "badge").isEmpty {
+                        Text(text(item, "badge")).font(.caption2.weight(.semibold)).padding(6)
+                            .background(accent.opacity(0.08), in: Capsule()).foregroundColor(accent)
+                    }
+                    if !id.isEmpty { Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundColor(muted).padding(.top, 4) }
+                }
+            }
+        }.buttonStyle(.plain).disabled(id.isEmpty)
+    }
+    private func actionView(_ item: [String: Any], primary: Bool = false) -> some View {
+        let id = text(item, "id")
+        let destructive = id.contains("cancel-appointment") || id.contains("confirm-cancel") || id.contains("remove-block") || id.contains("delete-line")
+        let tone: Color = destructive ? .red : accent
+        return Button { action(id) } label: {
+            HStack {
+                if primary { Spacer(minLength: 0) }
+                Text(text(item, "label")).font(.system(size: 15, weight: .semibold)).multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+                if !primary { Image(systemName: "arrow.right").font(.caption.weight(.semibold)) }
+            }.padding(.horizontal, 15).frame(minHeight: 49)
+                .foregroundColor(primary && !destructive ? .white : tone)
+                .background(primary && !destructive ? tone : card, in: RoundedRectangle(cornerRadius: 13))
+                .overlay { RoundedRectangle(cornerRadius: 13).strokeBorder(tone.opacity(0.22),lineWidth: 1) }
+        }.buttonStyle(.plain)
+    }
+    @ViewBuilder private func surface(sheet: Bool) -> some View {
+        VStack(spacing: 0) {
+            if sheet {
+                Capsule().fill(muted.opacity(0.35)).frame(width: 38,height: 4).padding(.top, 9)
+            }
+            HStack(spacing: 10) {
+                Button { action(sheet ? "calendar" : "back") } label: {
+                    Image(systemName: sheet ? "xmark" : "chevron.left").font(.system(size: 17, weight: .semibold))
+                        .frame(width: 46, height: 46).background(card, in: RoundedRectangle(cornerRadius: 13))
+                }.accessibilityLabel(sheet ? t("Schließen","Close") : t("Zurück","Back"))
+                Spacer()
+                Text(sheet ? t("KALENDER","CALENDAR") : "A+ ESTHETIC").font(.system(size: 11,weight: .semibold)).tracking(2.2)
+                Spacer()
+                if !sheet {
+                    Button { action("home") } label: { Image(systemName: "square.grid.2x2").frame(width: 46,height: 46).background(card,in:RoundedRectangle(cornerRadius: 13)) }.accessibilityLabel(t("Übersicht","Home"))
+                } else { Color.clear.frame(width: 46,height: 46) }
+            }.foregroundColor(accent).padding(.horizontal, 18).padding(.vertical, 8)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 11) {
+                    if !text(state.screen, "hero").isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("A+ ESTHETIC · " + t("PRAXISMANAGEMENT","PRACTICE MANAGEMENT"))
+                                .font(.system(size: 10,weight: .semibold)).tracking(1.4).foregroundColor(gold)
+                            Text(text(state.screen,"hero")).font(.system(size: 34,weight: .regular,design: .serif)).foregroundColor(.white)
+                            Text(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(.white.opacity(0.78))
+                        }.padding(23).frame(maxWidth: .infinity,alignment: .leading)
+                            .background(LinearGradient(colors:[green,Color(red:0.19,green:0.29,blue:0.24)],startPoint:.topLeading,endPoint:.bottomTrailing),in:RoundedRectangle(cornerRadius: 23))
+                    } else {
+                        Text(text(state.screen,"title")).font(.system(size: sheet ? 27 : 34,weight: .regular,design: sheet ? .default : .serif))
+                        if !text(state.screen,"subtitle").isEmpty { Text(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(muted) }
+                    }
+                    if state.screen["busy"] as? Bool == true {
+                        VStack(spacing: 10) { ForEach(0..<3) { _ in RoundedRectangle(cornerRadius: 13).fill(edge.opacity(0.7)).frame(height: 70) } }
+                            .accessibilityLabel(t("Wird geladen","Loading"))
+                    }
+                    if !items("metrics").isEmpty {
+                        LazyVGrid(columns:[GridItem(.adaptive(minimum: 140),spacing: 10)],spacing: 10) {
+                            ForEach(Array(items("metrics").enumerated()),id:\.offset) { _, item in
+                                Button { action(text(item,"id")) } label: {
+                                    panel {
+                                        VStack(alignment:.leading,spacing: 8) {
+                                            Image(systemName: icon(text(item,"id"))).font(.body.weight(.medium)).foregroundColor(accent)
+                                            Text(text(item,"detail")).font(.system(size: 29,weight: .semibold,design: .rounded)).foregroundColor(ink)
+                                            Text(text(item,"label")).font(.caption.weight(.medium)).foregroundColor(muted)
+                                        }
+                                    }
+                                }.buttonStyle(.plain).disabled(text(item,"id").isEmpty)
+                            }
+                        }
+                    }
+                    if !items("segments").isEmpty {
+                        ScrollView(.horizontal,showsIndicators:false) {
+                            HStack(spacing:7) {
+                                ForEach(Array(items("segments").enumerated()),id:\.offset) { _, item in
+                                    Button { action(text(item,"id")) } label: {
+                                        Text(text(item,"label")).font(.subheadline.weight(.semibold)).padding(.horizontal,13).padding(.vertical,11)
+                                            .foregroundColor(item["selected"] as? Bool == true ? .white : accent)
+                                            .background(item["selected"] as? Bool == true ? accent : card,in:Capsule())
+                                    }.buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    if !text(state.screen,"message").isEmpty {
+                        panel { HStack(alignment:.top,spacing:10) {
+                            Image(systemName:"info.circle").foregroundColor(accent)
+                            Text(text(state.screen,"message")).font(.subheadline).foregroundColor(ink)
+                        } }
+                    }
+                    if !items("fields").isEmpty {
+                        panel { VStack(alignment:.leading,spacing: 17) {
+                            ForEach(Array(items("fields").enumerated()),id:\.offset) { _, field in fieldView(field) }
+                        } }
+                    }
+                    if !items("shortcuts").isEmpty {
+                        sectionTitle(t("SCHNELLZUGRIFF","QUICK ACCESS"))
+                        LazyVGrid(columns:[GridItem(.adaptive(minimum: 140),spacing: 9)],spacing:9) {
+                            ForEach(Array(items("shortcuts").enumerated()),id:\.offset) { _, item in
+                                actionView(item)
+                            }
+                        }
+                    }
+                    if !text(state.screen,"sectionTitle").isEmpty { sectionTitle(text(state.screen,"sectionTitle")) }
+                    ForEach(Array(items("rows").enumerated()),id:\.offset) { _, item in rowView(item) }
+                    if items("rows").isEmpty && !text(state.screen,"empty").isEmpty {
+                        panel { VStack(alignment:.center,spacing: 10) {
+                            Image(systemName:"tray").font(.system(size: 29)).foregroundColor(muted)
+                            Text(text(state.screen,"empty")).font(.subheadline).foregroundColor(muted).multilineTextAlignment(.center)
+                        }.frame(maxWidth:.infinity).padding(.vertical,12) }
+                    }
+                    if !items("secondaryRows").isEmpty {
+                        sectionTitle(text(state.screen,"secondaryTitle"))
+                        ForEach(Array(items("secondaryRows").enumerated()),id:\.offset) { _, item in rowView(item) }
+                    }
+                    if let data = Data(base64Encoded: text(state.screen,"image")), let image = UIImage(data: data) {
+                        panel { Image(uiImage:image).resizable().scaledToFit().frame(maxHeight:480).accessibilityLabel(t("Dokument","Document")) }
+                    }
+                    ForEach(Array(items("actions").enumerated()),id:\.offset) { index,item in actionView(item,primary:index == 0) }
+                }.padding(18).frame(maxWidth: 850).frame(maxWidth: .infinity)
+            }.scrollDismissesKeyboard(.interactively)
+            if !sheet {
+                HStack(spacing:3) {
+                    ForEach(Array(items("tabs").enumerated()),id:\.offset) { _, tab in
+                        let selected = tab["selected"] as? Bool == true
+                        Button { action(text(tab,"id")) } label: {
+                            VStack(spacing:5) {
+                                Image(systemName:text(tab,"icon")).font(.system(size:19,weight:selected ? .semibold:.regular))
+                                Text(text(tab,"label")).font(.system(size:10,weight:selected ? .semibold:.regular)).lineLimit(1).minimumScaleFactor(0.72)
+                            }.frame(maxWidth:.infinity).frame(minHeight:58)
+                                .foregroundColor(selected ? .white : muted)
+                                .background(selected ? accent : Color.clear,in:RoundedRectangle(cornerRadius:13))
+                        }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
+                    }
+                }.padding(8).background(card)
+            }
+        }.foregroundColor(ink).background(paper.ignoresSafeArea()).preferredColorScheme(.light)
+    }
+
+    @ViewBuilder private var choiceOverlay: some View {
+        if let key = choosing, let field = items("fields").first(where: { text($0,"id") == key }),
+           let options = field["options"] as? [[String: Any]] {
+            ZStack(alignment:.bottom) {
+                Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { choosing=nil }
+                VStack(alignment:.leading,spacing:10) {
+                    HStack { Text(text(field,"label")).font(.title2.weight(.semibold)); Spacer(); Button { choosing=nil } label: { Image(systemName:"xmark.circle.fill").font(.title2).foregroundColor(muted) } }
+                    ScrollView {
+                        VStack(spacing: 5) {
+                            ForEach(Array(options.enumerated()),id:\.offset) { _, option in
+                                Button { state.values[key]=text(option,"value"); choosing=nil } label: {
+                                    HStack {
+                                        Text(text(option,"label")).font(.body).foregroundColor(ink).multilineTextAlignment(.leading)
+                                        Spacer()
+                                        if state.values[key] == text(option,"value") { Image(systemName:"checkmark.circle.fill").foregroundColor(accent) }
+                                    }.padding(14).frame(maxWidth:.infinity,alignment:.leading)
+                                        .background(card,in:RoundedRectangle(cornerRadius:10))
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }.frame(maxHeight:430)
+                }.padding(20).frame(maxWidth:680).background(paper,in:RoundedRectangle(cornerRadius:24)).padding(.bottom,8)
+            }
+        }
     }
 
     private func keyboardType(_ kind: String) -> UIKeyboardType {
@@ -149,25 +286,29 @@ struct StaffNativeScreen: View {
         let kind = text(field, "kind")
         let binding = Binding(get: { state.values[key] ?? "" }, set: { state.values[key] = $0 })
         VStack(alignment: .leading, spacing: 7) {
-            Text(text(field, "label")).font(.subheadline.weight(.semibold))
+            Text(text(field, "label")).font(.system(size:13,weight:.semibold)).foregroundColor(muted)
             if let options = field["options"] as? [[String: Any]], !options.isEmpty {
-                Picker(text(field, "label"), selection: binding) {
-                    ForEach(Array(options.enumerated()), id: \.offset) { _, option in
-                        Text(text(option, "label")).tag(text(option, "value"))
-                    }
-                }.pickerStyle(.menu).frame(maxWidth: .infinity, alignment: .leading)
+                Button { choosing=key } label: {
+                    HStack {
+                        Text(options.first(where:{ text($0,"value")==binding.wrappedValue }).map{ text($0,"label") } ?? t("Auswählen","Select"))
+                            .foregroundColor(ink).multilineTextAlignment(.leading)
+                        Spacer(); Image(systemName:"chevron.up.chevron.down").font(.caption).foregroundColor(accent)
+                    }.padding(12).frame(minHeight:47).frame(maxWidth:.infinity,alignment:.leading)
+                }.buttonStyle(.plain)
             } else if kind == "multiline" {
                 TextEditor(text: binding)
-                    .font(.body).frame(minHeight: 100)
+                    .font(.body).frame(minHeight: 100).scrollContentBackground(.hidden).padding(8)
                     .accessibilityLabel(text(field, "label"))
             } else {
                 TextField(text(field, "label"), text: binding)
                     .keyboardType(keyboardType(kind))
                     .textInputAutocapitalization(kind == "email" ? .never : .sentences)
                     .autocorrectionDisabled(["integer", "decimal", "email", "phone"].contains(kind))
+                    .padding(12).frame(minHeight:47)
             }
-        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .background(card).clipShape(RoundedRectangle(cornerRadius: 12))
+        }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+            .background(paper.opacity(0.7),in:RoundedRectangle(cornerRadius:12))
+            .overlay { RoundedRectangle(cornerRadius:12).strokeBorder(edge,lineWidth:1) }
     }
 }
 

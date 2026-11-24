@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from platform_app.models import AuditLog, Invoice, InvoiceSettings, OfficePatientLink, OfficeIntakeReview, UserProfile
+from platform_app.models import AuditLog, Invoice, InvoiceSettings, OfficePatientLink, OfficeIntakeReview, OfficeIntakeSubmission, UserProfile
 
 
 @override_settings(STORAGES={
@@ -31,6 +31,19 @@ class NativeOfficeTests(TestCase):
              patch('p0_app.native_office._is_admin', return_value=True), \
              patch('p0_app.native_office.read_book', return_value=remote):
             return self.client.post(self.path + operation + '/', payload, content_type='application/json')
+
+    def test_submitted_forms_are_private_paginated_and_minimal(self):
+        form=OfficeIntakeSubmission.objects.create(identity={'first_name':'Synthetic','last_name':'Patient','email':'sample@example.test'},
+            answers={'allergies':'Test only'},signature_png='data:image/png;base64,synthetic',sync_status='review')
+        with patch('p0_app.native_office._auth',return_value=(self.admin,None)), patch('p0_app.native_office._is_admin',return_value=True):
+            result=self.client.get(self.path+'submissions/?q=Synthetic&status=review').json()
+            self.assertEqual(len(result['items']),1)
+            self.assertNotIn('signature_png',result['items'][0])
+            self.assertNotIn('answers',result['items'][0])
+            self.assertEqual(self.client.get(self.path+f'submission/{form.pk}/').json()['submission']['answers']['allergies'],'Test only')
+        with patch('p0_app.native_office._auth',return_value=(self.patient,None)), patch('p0_app.native_office._is_admin',return_value=False):
+            self.assertEqual(self.client.get(self.path+'submissions/').status_code,403)
+            self.assertEqual(self.client.get(self.path+f'submission/{form.pk}/').status_code,403)
 
 
     def test_native_financial_settings_are_admin_only_revision_safe_and_audited(self):
