@@ -78,7 +78,7 @@ jobs:
           app="$RUNNER_TEMP/admin-v4/Build/Products/Debug-iphonesimulator/App.app"
           test -s "$app/App"
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")" = "1.0.54"
-          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 59
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 60
           test ! -e "$app/App.debug.dylib"
           grep -F 'VISIBLE_START_HOUR = 10' "$app/public/mobile/native-calendar-layout.mjs"
           grep -F 'calendar-sheet' "$app/public/mobile/native-workspace.mjs"
