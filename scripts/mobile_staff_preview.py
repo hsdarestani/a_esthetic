@@ -180,8 +180,9 @@ def child(argv):
     setup()
     role = os.environ['PREVIEW_ROLE']
     if role == 'app':
-        from platform_app import account_onboarding
+        from platform_app import account_onboarding, public_intake
         account_onboarding.MAIL_RELAY_URL = BOOK_URL + '/api/internal/app-mail/'
+        public_intake.BOOK_INTAKE_URL = BOOK_URL + '/api/internal/patient-intake/ingest/'
     if argv[0] == 'seed':
         (app_seed if role == 'app' else book_seed)()
     else:

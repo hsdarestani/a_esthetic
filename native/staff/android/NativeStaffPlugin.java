@@ -26,6 +26,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.widget.*;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -81,6 +83,7 @@ public final class NativeStaffPlugin extends Plugin {
         int tone=danger?Color.rgb(158,45,45):accent;
         v.setTextColor(primary&&!danger ? Color.WHITE : tone); v.setMinHeight(dp(49)); v.setMinimumHeight(dp(49));
         v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);v.setTextSize(14);v.setPadding(dp(12),dp(9),dp(12),dp(9));
+        v.setMinWidth(0);v.setMinimumWidth(0);v.setStateListAnimator(null);v.setElevation(0);
         v.setBackground(primary&&!danger?background(tone,13):outlined(CARD,13,EDGE)); v.setOnClickListener(x -> action(id)); return v;
     }
     private void action(String id) {
@@ -101,6 +104,38 @@ public final class NativeStaffPlugin extends Plugin {
     }
     private void weight(LinearLayout layout, View view) {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0,-2,1); p.setMargins(dp(2),0,dp(2),0); layout.addView(view,p);
+    }
+    private void spacer(LinearLayout layout) {
+        layout.addView(new View(getContext()),new LinearLayout.LayoutParams(0,dp(1),1));
+    }
+    private void contentView(View content) {
+        // Android 15+ draws dialogs edge-to-edge even when the Activity
+        // already handles its own insets. Give all native screens a private
+        // safe rectangle; do not place controls beneath system bars/IME.
+        FrameLayout safe=new FrameLayout(getContext());safe.setBackgroundColor(PAPER);
+        safe.addView(content,new FrameLayout.LayoutParams(-1,-1));
+        safe.setOnApplyWindowInsetsListener((view,insets)->{
+            if(android.os.Build.VERSION.SDK_INT>=30){
+                android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
+                android.graphics.Insets ime=insets.getInsets(WindowInsets.Type.ime());
+                view.setPadding(bars.left,bars.top,bars.right,Math.max(bars.bottom,ime.bottom));
+                return WindowInsets.CONSUMED;
+            }
+            view.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
+            return insets.consumeSystemWindowInsets();
+        });
+        dialog.setContentView(safe);
+        Window window=dialog.getWindow();
+        if(window!=null){
+            window.setStatusBarColor(PAPER);window.setNavigationBarColor(PAPER);
+            if(android.os.Build.VERSION.SDK_INT>=30){
+                window.setDecorFitsSystemWindows(false);
+                WindowInsetsController controller=window.getInsetsController();
+                if(controller!=null)controller.setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+            }else window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        }
+        safe.requestApplyInsets();
     }
     private JSONArray list(JSONObject s, String key) {
         JSONArray a = s.optJSONArray(key); return a == null ? new JSONArray() : a;
@@ -125,7 +160,7 @@ public final class NativeStaffPlugin extends Plugin {
             LinearLayout line=row();line.setGravity(Gravity.TOP);
             for(int k=0;k<count;k++){
                 JSONObject item=items.optJSONObject(i+k);
-                if(item==null){weight(line,new View(getContext()));continue;}
+                if(item==null){spacer(line);continue;}
                 String id=item.optString("id");
                 if(metrics){
                     LinearLayout box=panel();add(box,text(icon(id),21,accent,true),6);
@@ -165,7 +200,7 @@ public final class NativeStaffPlugin extends Plugin {
         if(s.optJSONObject("timeline") != null) {
             calendarScreen=s;
             View calendar=new NativeStaffV3Calendar(getActivity(),s,this::action).build();
-            dialog.setContentView(calendar);
+            contentView(calendar);
             if(calendarPageDirection!=0) {
                 int width=getContext().getResources().getDisplayMetrics().widthPixels;
                 calendar.setTranslationX(calendarPageDirection*width*.42f);
@@ -181,10 +216,11 @@ public final class NativeStaffPlugin extends Plugin {
         LinearLayout root = column(); root.setBackground(background(PAPER,sheet?24:0));
         root.setPadding(dp(14),dp(12),dp(14),dp(8));
         LinearLayout header = row();
-        weight(header, button(sheet?"×":"‹", sheet?"calendar":"back", false));
+        Button back=button(sheet?"×":"‹",sheet?"calendar":"back",false);header.addView(back,new LinearLayout.LayoutParams(dp(46),dp(46)));
         TextView brand = text(sheet?(english?"CALENDAR":"KALENDER"):"A+ ESTHETIC",12,accent,true); brand.setLetterSpacing(.12f);brand.setGravity(Gravity.CENTER);
-        header.addView(brand,new LinearLayout.LayoutParams(0,-2,3));
-        if(sheet)weight(header,new View(getContext()));else weight(header,button("⌂", "home", false)); add(root,header,12);
+        header.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
+        if(sheet)header.addView(new View(getContext()),new LinearLayout.LayoutParams(dp(46),dp(1)));
+        else header.addView(button("⌂","home",false),new LinearLayout.LayoutParams(dp(46),dp(46)));add(root,header,12);
         JSONArray week = list(s,"week");
         if (week.length() > 0) {
             LinearLayout strip = new LinearLayout(getContext()) {
@@ -245,6 +281,7 @@ public final class NativeStaffPlugin extends Plugin {
             }
         };
         scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
         LinearLayout body=column(); body.setPadding(0,0,0,dp(12)); scroll.addView(body);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if(!s.optString("hero").isEmpty()){
@@ -286,7 +323,7 @@ public final class NativeStaffPlugin extends Plugin {
                         LinearLayout pair=row();
                         for(int k=0;k<2;k++){
                             JSONObject item=options.optJSONObject(j+k);
-                            if(item==null){weight(pair,new View(getContext()));continue;}
+                            if(item==null){spacer(pair);continue;}
                             String keyValue=item.optString("value");
                             Button tile=button(item.optString("label"),"",keyValue.equals(selected));
                             tiles.put(keyValue,tile);
@@ -388,9 +425,9 @@ public final class NativeStaffPlugin extends Plugin {
             FrameLayout frame=new FrameLayout(getContext());
             View calendar=new NativeStaffV3Calendar(getActivity(),calendarScreen,id->{}).build();frame.addView(calendar,new FrameLayout.LayoutParams(-1,-1));
             View dim=new View(getContext());dim.setBackgroundColor(0x66000000);dim.setOnClickListener(v->action("calendar"));frame.addView(dim,new FrameLayout.LayoutParams(-1,-1));
-            int height=(int)(getContext().getResources().getDisplayMetrics().heightPixels*.86);
-            FrameLayout.LayoutParams sheetParams=new FrameLayout.LayoutParams(-1,height,Gravity.BOTTOM);frame.addView(root,sheetParams);dialog.setContentView(frame);
-        }else dialog.setContentView(root);
+            FrameLayout.LayoutParams sheetParams=new FrameLayout.LayoutParams(-1,-1,Gravity.BOTTOM);
+            sheetParams.topMargin=dp(100);frame.addView(root,sheetParams);contentView(frame);
+        }else contentView(root);
     }
     @Override public void load() {
         super.load();
