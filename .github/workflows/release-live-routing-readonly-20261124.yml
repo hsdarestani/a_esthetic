@@ -24,6 +24,20 @@ jobs:
               echo "FILE $f"
               awk '/server_name|^[[:space:]]*location[[:space:]]|^[[:space:]]*proxy_pass[[:space:]]|^[[:space:]]*root[[:space:]]|^[[:space:]]*alias[[:space:]]/{print}' "/etc/nginx/sites-enabled/$f"
             done
+            echo 'PERSISTENT_DATA_PATHS'
+            for d in /opt/a-esthetic-mobile /opt/a-esthetic-mobile/releases/patient-labels-32a02a2ca4884a1b648e8b97f5ce61ea42c82ee2 /opt/aesthetic-book/app; do
+              echo "PERSISTENT_ROOT $d"
+              for name in db.sqlite3 private_media media staticfiles; do
+                if test -e "$d/$name"; then echo "PATH $name $(readlink -f "$d/$name")"; fi
+              done
+              for f in "$d/production_native_settings.py" "$d/production_settings.py"; do
+                if test -f "$f"; then grep -E '^DATABASES|^MEDIA_ROOT|^STATIC_ROOT|^PATIENT_FILES_ROOT|^from config.settings import' "$f" || true; fi
+              done
+            done
+            systemctl show aesthetic-native-patients-32a02a2ca4.service -p EnvironmentFiles --no-pager
+            echo 'IMPORT_ENTRYPOINT_PATHS'
+            systemctl show aesthetic-simplybook-sync.service -p ExecStart --value | grep -oE '/(opt|etc|usr/local)/(aesthetic[^ ;{}"]*|[A-Za-z0-9._/-]*simplybook[A-Za-z0-9._/-]*)' | sort -u || true
+            find /etc -maxdepth 2 -type f -iname '*simplybook*' -printf '%p\n' 2>/dev/null | head -n 20
             echo 'SIMPLYBOOK_IMPORT_UNIT_METADATA'
             systemctl list-unit-files --no-legend | grep -Ei 'simplybook|aesthetic.*sync|aesthetic.*import' || true
             for unit in $(systemctl list-unit-files --no-legend | awk 'tolower($1) ~ /simplybook|aesthetic.*sync|aesthetic.*import/ && $1 ~ /\.service$/ {print $1}'); do
