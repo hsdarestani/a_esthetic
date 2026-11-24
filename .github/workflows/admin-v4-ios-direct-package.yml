@@ -1,0 +1,51 @@
+name: V4 exact iOS direct Appetize package (no store submission)
+on:
+  push:
+    branches: ['ops/admin-v4-production-preflight-20261124']
+    paths: ['.github/workflows/admin-v4-ios-direct-package.yml']
+permissions: {contents: read}
+jobs:
+  package:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ee73d00bd85cbc09520a46e1eead44fb319c2b9c
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile exact V4 simulator package
+        run: |
+          set -euo pipefail
+          npm pkg delete scripts.capacitor:sync:after
+          npm install --no-audit --no-fund
+          npx cap add ios
+          python3 scripts/configure_native_camera_permissions.py
+          python3 scripts/install_native_staff.py
+          if [[ -d ios/App/App.xcworkspace ]]; then app=(-workspace ios/App/App.xcworkspace); else app=(-project ios/App/App.xcodeproj); fi
+          xcodebuild -quiet "${app[@]}" -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/v4" CODE_SIGNING_ALLOWED=NO MARKETING_VERSION=1.0.49 CURRENT_PROJECT_VERSION=55 build > "$RUNNER_TEMP/ios.log" 2>&1 || { grep -nE 'error:|failed' "$RUNNER_TEMP/ios.log" | head -60 || true; tail -n 100 "$RUNNER_TEMP/ios.log"; exit 1; }
+      - name: Produce direct Appetize ZIP
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          app="$RUNNER_TEMP/v4/Build/Products/Debug-iphonesimulator/App.app"
+          test -s "$app/App"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")" = 1.0.49
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 55
+          grep -F 'calendar-sheet' "$app/public/mobile/native-workspace.mjs"
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-V4-1.0.49-B55-Appetize.zip
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('artifacts/APlus-Esthetic-V4-1.0.49-B55-Appetize.zip') as z:
+              assert 'App.app/App' in z.namelist()
+              assert 'App.app/Info.plist' in z.namelist()
+              assert not z.testzip()
+          PY
+          git rev-parse HEAD > artifacts/source-commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-Esthetic-V4-1.0.49-B55-Appetize
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 30
