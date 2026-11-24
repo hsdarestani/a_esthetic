@@ -1,0 +1,52 @@
+name: V4 B56 exact direct Appetize package
+on:
+  push:
+    branches: ['ops/admin-v4-production-preflight-20261124']
+    paths: ['.github/workflows/admin-v4-b56-ios-direct.yml']
+permissions: {contents: read}
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: be46bbfaefba4abe258b19b10b4d70739e4d367e
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build exact simulator package without debug dylib
+        run: |
+          set -euo pipefail
+          npm pkg delete scripts.capacitor:sync:after
+          npm install --no-audit --no-fund
+          npx cap add ios
+          python3 scripts/configure_native_camera_permissions.py
+          python3 scripts/install_native_staff.py
+          if [[ -d ios/App/App.xcworkspace ]]; then app=(-workspace ios/App/App.xcworkspace); else app=(-project ios/App/App.xcodeproj); fi
+          xcodebuild -quiet "${app[@]}" -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/b56" ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO ENABLE_DEBUG_DYLIB=NO CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=18.0 MARKETING_VERSION=1.0.50 CURRENT_PROJECT_VERSION=56 build > "$RUNNER_TEMP/build.log" 2>&1 || { grep -nE 'error:|fatal error:|unable to type-check' "$RUNNER_TEMP/build.log" | head -60 || true; tail -80 "$RUNNER_TEMP/build.log"; exit 1; }
+      - name: Package and validate direct upload ZIP
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/b56/Build/Products/Debug-iphonesimulator/App.app"
+          test -s "$app/App"
+          test ! -e "$app/App.debug.dylib"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 56
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")" = 1.0.50
+          mkdir -p artifacts
+          lipo -info "$app/App"
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-V4-1.0.50-B56-Appetize.zip
+          git rev-parse HEAD > artifacts/source-commit.txt
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('artifacts/APlus-Esthetic-V4-1.0.50-B56-Appetize.zip') as z:
+              assert 'App.app/App' in z.namelist()
+              assert 'App.app/Info.plist' in z.namelist()
+              assert 'App.app/App.debug.dylib' not in z.namelist()
+              assert not z.testzip()
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-Esthetic-V4-1.0.50-B56-Appetize
+          path: artifacts
+          if-no-files-found: error
