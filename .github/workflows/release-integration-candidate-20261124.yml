@@ -52,6 +52,13 @@ jobs:
           new="        user,match_status=_match_or_create(identity)\n        if user is None and match_status == 'review':\n            from .intake_identity import queue_review\n            queue_review(identity)\n"
           assert data.count(old)==1
           p.write_text(data.replace(old,new))
+          # The fixture is pinned to 23 November; freeze only the test clock.
+          p=Path('scripts/test_native_staff_controller.mjs')
+          data=p.read_text()
+          old="import assert from 'node:assert/strict';"
+          new=old+"\nimport { mock } from 'node:test';\nmock.timers.enable({apis:['Date'], now: new Date('2026-11-23T12:00:00+01:00')});"
+          assert data.count(old)==1
+          p.write_text(data.replace(old,new))
           subprocess.run(['git','add','-A'],check=True)
           assert not subprocess.check_output(['git','diff','--name-only','--diff-filter=U'],text=True)
           print('CANDIDATE_CONFLICTS_RESOLVED')
