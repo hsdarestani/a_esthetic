@@ -127,12 +127,8 @@ struct StaffNativeScreen: View {
                 .overlay { RoundedRectangle(cornerRadius: 13).strokeBorder(tone.opacity(0.22),lineWidth: 1) }
         }.buttonStyle(.plain)
     }
-    @ViewBuilder private func surface(sheet: Bool) -> some View {
-        VStack(spacing: 0) {
-            if sheet {
-                Capsule().fill(muted.opacity(0.35)).frame(width: 38,height: 4).padding(.top, 9)
-            }
-            HStack(spacing: 10) {
+    private func surfaceHeader(sheet: Bool) -> some View {
+        HStack(spacing: 10) {
                 Button { action(sheet ? "calendar" : "back") } label: {
                     Image(systemName: sheet ? "xmark" : "chevron.left").font(.system(size: 17, weight: .semibold))
                         .frame(width: 46, height: 46).background(card, in: RoundedRectangle(cornerRadius: 13))
@@ -143,92 +139,95 @@ struct StaffNativeScreen: View {
                 if !sheet {
                     Button { action("home") } label: { Image(systemName: "square.grid.2x2").frame(width: 46,height: 46).background(card,in:RoundedRectangle(cornerRadius: 13)) }.accessibilityLabel(t("Übersicht","Home"))
                 } else { Color.clear.frame(width: 46,height: 46) }
-            }.foregroundColor(accent).padding(.horizontal, 18).padding(.vertical, 8)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 11) {
-                    if !text(state.screen, "hero").isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("A+ ESTHETIC · " + t("PRAXISMANAGEMENT","PRACTICE MANAGEMENT"))
-                                .font(.system(size: 10,weight: .semibold)).tracking(1.4).foregroundColor(gold)
-                            Text(text(state.screen,"hero")).font(.system(size: 34,weight: .regular,design: .serif)).foregroundColor(.white)
-                            Text(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(.white.opacity(0.78))
-                        }.padding(23).frame(maxWidth: .infinity,alignment: .leading)
-                            .background(LinearGradient(colors:[green,Color(red:0.19,green:0.29,blue:0.24)],startPoint:.topLeading,endPoint:.bottomTrailing),in:RoundedRectangle(cornerRadius: 23))
-                    } else {
-                        Text(text(state.screen,"title")).font(.system(size: sheet ? 27 : 34,weight: .regular,design: sheet ? .default : .serif))
-                        if !text(state.screen,"subtitle").isEmpty { Text(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(muted) }
-                    }
-                    if state.screen["busy"] as? Bool == true {
-                        VStack(spacing: 10) { ForEach(0..<3) { _ in RoundedRectangle(cornerRadius: 13).fill(edge.opacity(0.7)).frame(height: 70) } }
-                            .accessibilityLabel(t("Wird geladen","Loading"))
-                    }
-                    if !items("metrics").isEmpty {
-                        LazyVGrid(columns:[GridItem(.adaptive(minimum: 140),spacing: 10)],spacing: 10) {
-                            ForEach(Array(items("metrics").enumerated()),id:\.offset) { _, item in
-                                Button { action(text(item,"id")) } label: {
-                                    panel {
-                                        VStack(alignment:.leading,spacing: 8) {
-                                            Image(systemName: icon(text(item,"id"))).font(.body.weight(.medium)).foregroundColor(accent)
-                                            Text(text(item,"detail")).font(.system(size: 29,weight: .semibold,design: .rounded)).foregroundColor(ink)
-                                            Text(text(item,"label")).font(.caption.weight(.medium)).foregroundColor(muted)
-                                        }
-                                    }
-                                }.buttonStyle(.plain).disabled(text(item,"id").isEmpty)
+        }.foregroundColor(accent).padding(.horizontal, 18).padding(.vertical, 8)
+    }
+    @ViewBuilder private func surfaceTitle(sheet: Bool) -> some View {
+        if !text(state.screen,"hero").isEmpty {
+            VStack(alignment:.leading,spacing:12) {
+                Text("A+ ESTHETIC · " + t("PRAXISMANAGEMENT","PRACTICE MANAGEMENT"))
+                    .font(.system(size:10,weight:.semibold)).tracking(1.4).foregroundColor(gold)
+                Text(text(state.screen,"hero")).font(.system(size:34,weight:.regular,design:.serif)).foregroundColor(.white)
+                Text(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(.white.opacity(0.78))
+            }.padding(23).frame(maxWidth:.infinity,alignment:.leading)
+                .background(LinearGradient(colors:[green,Color(red:0.19,green:0.29,blue:0.24)],startPoint:.topLeading,endPoint:.bottomTrailing))
+                .clipShape(RoundedRectangle(cornerRadius:23))
+        } else {
+            Text(text(state.screen,"title")).font(.system(size:sheet ? 27 : 34,weight:.regular,design:sheet ? .default : .serif))
+            if !text(state.screen,"subtitle").isEmpty { Text(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(muted) }
+        }
+    }
+    @ViewBuilder private var metricsView: some View {
+        if !items("metrics").isEmpty {
+            LazyVGrid(columns:[GridItem(.adaptive(minimum:140),spacing:10)],spacing:10) {
+                ForEach(Array(items("metrics").enumerated()),id:\.offset) { _, item in
+                    Button { action(text(item,"id")) } label: {
+                        panel {
+                            VStack(alignment:.leading,spacing:8) {
+                                Image(systemName:icon(text(item,"id"))).font(.body.weight(.medium)).foregroundColor(accent)
+                                Text(text(item,"detail")).font(.system(size:29,weight:.semibold,design:.rounded)).foregroundColor(ink).minimumScaleFactor(0.6).lineLimit(1)
+                                Text(text(item,"label")).font(.caption.weight(.medium)).foregroundColor(muted)
                             }
                         }
+                    }.buttonStyle(.plain).disabled(text(item,"id").isEmpty)
+                }
+            }
+        }
+    }
+    @ViewBuilder private var segmentsView: some View {
+        if !items("segments").isEmpty {
+            ScrollView(.horizontal,showsIndicators:false) {
+                HStack(spacing:7) {
+                    ForEach(Array(items("segments").enumerated()),id:\.offset) { _, item in
+                        let selected = item["selected"] as? Bool == true
+                        Button { action(text(item,"id")) } label: {
+                            Text(text(item,"label")).font(.subheadline.weight(.semibold)).padding(.horizontal,13).padding(.vertical,11)
+                                .foregroundColor(selected ? .white : accent).background(selected ? accent : card,in:Capsule())
+                        }.buttonStyle(.plain)
                     }
-                    if !items("segments").isEmpty {
-                        ScrollView(.horizontal,showsIndicators:false) {
-                            HStack(spacing:7) {
-                                ForEach(Array(items("segments").enumerated()),id:\.offset) { _, item in
-                                    Button { action(text(item,"id")) } label: {
-                                        Text(text(item,"label")).font(.subheadline.weight(.semibold)).padding(.horizontal,13).padding(.vertical,11)
-                                            .foregroundColor(item["selected"] as? Bool == true ? .white : accent)
-                                            .background(item["selected"] as? Bool == true ? accent : card,in:Capsule())
-                                    }.buttonStyle(.plain)
-                                }
-                            }
-                        }
-                    }
-                    if !text(state.screen,"message").isEmpty {
-                        panel { HStack(alignment:.top,spacing:10) {
-                            Image(systemName:"info.circle").foregroundColor(accent)
-                            Text(text(state.screen,"message")).font(.subheadline).foregroundColor(ink)
-                        } }
-                    }
-                    if !items("fields").isEmpty {
-                        panel { VStack(alignment:.leading,spacing: 17) {
-                            ForEach(Array(items("fields").enumerated()),id:\.offset) { _, field in fieldView(field) }
-                        } }
-                    }
-                    if !items("shortcuts").isEmpty {
-                        sectionTitle(t("SCHNELLZUGRIFF","QUICK ACCESS"))
-                        LazyVGrid(columns:[GridItem(.adaptive(minimum: 140),spacing: 9)],spacing:9) {
-                            ForEach(Array(items("shortcuts").enumerated()),id:\.offset) { _, item in
-                                actionView(item)
-                            }
-                        }
-                    }
-                    if !text(state.screen,"sectionTitle").isEmpty { sectionTitle(text(state.screen,"sectionTitle")) }
-                    ForEach(Array(items("rows").enumerated()),id:\.offset) { _, item in rowView(item) }
-                    if items("rows").isEmpty && !text(state.screen,"empty").isEmpty {
-                        panel { VStack(alignment:.center,spacing: 10) {
-                            Image(systemName:"tray").font(.system(size: 29)).foregroundColor(muted)
-                            Text(text(state.screen,"empty")).font(.subheadline).foregroundColor(muted).multilineTextAlignment(.center)
-                        }.frame(maxWidth:.infinity).padding(.vertical,12) }
-                    }
-                    if !items("secondaryRows").isEmpty {
-                        sectionTitle(text(state.screen,"secondaryTitle"))
-                        ForEach(Array(items("secondaryRows").enumerated()),id:\.offset) { _, item in rowView(item) }
-                    }
-                    if let data = Data(base64Encoded: text(state.screen,"image")), let image = UIImage(data: data) {
-                        panel { Image(uiImage:image).resizable().scaledToFit().frame(maxHeight:480).accessibilityLabel(t("Dokument","Document")) }
-                    }
-                    ForEach(Array(items("actions").enumerated()),id:\.offset) { index,item in actionView(item,primary:index == 0) }
-                }.padding(18).frame(maxWidth: 850).frame(maxWidth: .infinity)
-            }.scrollDismissesKeyboard(.interactively)
-            if !sheet {
-                HStack(spacing:3) {
+                }
+            }
+        }
+    }
+    @ViewBuilder private var formView: some View {
+        if !text(state.screen,"message").isEmpty {
+            panel { HStack(alignment:.top,spacing:10) {
+                Image(systemName:"info.circle").foregroundColor(accent)
+                Text(text(state.screen,"message")).font(.subheadline).foregroundColor(ink)
+            } }
+        }
+        if !items("fields").isEmpty {
+            panel { VStack(alignment:.leading,spacing:17) {
+                ForEach(Array(items("fields").enumerated()),id:\.offset) { _, field in fieldView(field) }
+            } }
+        }
+    }
+    @ViewBuilder private var shortcutsView: some View {
+        if !items("shortcuts").isEmpty {
+            sectionTitle(t("SCHNELLZUGRIFF","QUICK ACCESS"))
+            LazyVGrid(columns:[GridItem(.adaptive(minimum:140),spacing:9)],spacing:9) {
+                ForEach(Array(items("shortcuts").enumerated()),id:\.offset) { _, item in actionView(item) }
+            }
+        }
+    }
+    @ViewBuilder private var recordsView: some View {
+        if !text(state.screen,"sectionTitle").isEmpty { sectionTitle(text(state.screen,"sectionTitle")) }
+        ForEach(Array(items("rows").enumerated()),id:\.offset) { _, item in rowView(item) }
+        if items("rows").isEmpty && !text(state.screen,"empty").isEmpty {
+            panel { VStack(alignment:.center,spacing:10) {
+                Image(systemName:"tray").font(.system(size:29)).foregroundColor(muted)
+                Text(text(state.screen,"empty")).font(.subheadline).foregroundColor(muted).multilineTextAlignment(.center)
+            }.frame(maxWidth:.infinity).padding(.vertical,12) }
+        }
+        if !items("secondaryRows").isEmpty {
+            sectionTitle(text(state.screen,"secondaryTitle"))
+            ForEach(Array(items("secondaryRows").enumerated()),id:\.offset) { _, item in rowView(item) }
+        }
+        if let data=Data(base64Encoded:text(state.screen,"image")),let image=UIImage(data:data) {
+            panel { Image(uiImage:image).resizable().scaledToFit().frame(maxHeight:480).accessibilityLabel(t("Dokument","Document")) }
+        }
+    }
+    private var navigationView: some View {
+        HStack(spacing:3) {
                     ForEach(Array(items("tabs").enumerated()),id:\.offset) { _, tab in
                         let selected = tab["selected"] as? Bool == true
                         Button { action(text(tab,"id")) } label: {
@@ -240,8 +239,28 @@ struct StaffNativeScreen: View {
                                 .background(selected ? accent : Color.clear,in:RoundedRectangle(cornerRadius:13))
                         }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
                     }
-                }.padding(8).background(card)
+        }.padding(8).background(card)
+    }
+    private func surface(sheet: Bool) -> some View {
+        VStack(spacing:0) {
+            if sheet { Capsule().fill(muted.opacity(0.35)).frame(width:38,height:4).padding(.top,9) }
+            surfaceHeader(sheet:sheet)
+            ScrollView {
+                VStack(alignment:.leading,spacing:11) {
+                    surfaceTitle(sheet:sheet)
+                    if state.screen["busy"] as? Bool == true {
+                        VStack(spacing:10) { ForEach(0..<3) { _ in RoundedRectangle(cornerRadius:13).fill(edge.opacity(0.7)).frame(height:70) } }
+                            .accessibilityLabel(t("Wird geladen","Loading"))
+                    }
+                    metricsView
+                    segmentsView
+                    formView
+                    shortcutsView
+                    recordsView
+                    ForEach(Array(items("actions").enumerated()),id:\.offset) { index,item in actionView(item,primary:index == 0) }
+                }.padding(18).frame(maxWidth:850).frame(maxWidth:.infinity)
             }
+            if !sheet { navigationView }
         }.foregroundColor(ink).background(paper.ignoresSafeArea()).preferredColorScheme(.light)
     }
 
@@ -312,7 +331,7 @@ struct StaffNativeScreen: View {
                 }
             } else if kind == "multiline" {
                 TextEditor(text: binding)
-                    .font(.body).frame(minHeight: 100).scrollContentBackground(.hidden).padding(8)
+                    .font(.body).frame(minHeight: 100).padding(8)
                     .accessibilityLabel(text(field, "label"))
             } else {
                 TextField(text(field, "label"), text: binding)
@@ -328,7 +347,7 @@ struct StaffNativeScreen: View {
 }
 
 @objc(NativeStaffPlugin)
-public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelegate {
+public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     public let identifier = "NativeStaffPlugin"
     public let jsName = "NativeStaff"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -337,6 +356,8 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
         CAPPluginMethod(name: "dismiss", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "previewPDF", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pickPDF", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pickPhoto", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "takePhoto", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "probe", returnType: CAPPluginReturnPromise)
     ]
     // Non-sensitive native bridge health check. No patient data or credentials.
@@ -344,6 +365,7 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
         call.resolve(["ok": true, "native": true, "bridge": "NativeStaff"])
     }
     private var pickCall: CAPPluginCall?
+    private var photoCall: CAPPluginCall?
     private var state: StaffScreenState?
     private var host: UIHostingController<StaffNativeScreen>?
 
@@ -383,6 +405,38 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
             self.pickCall = call
             host.present(picker, animated: true)
         }
+    }
+    @objc func pickPhoto(_ call: CAPPluginCall) { openPhoto(call,source:.photoLibrary) }
+    @objc func takePhoto(_ call: CAPPluginCall) { openPhoto(call,source:.camera) }
+    private func openPhoto(_ call: CAPPluginCall,source:UIImagePickerController.SourceType) {
+        DispatchQueue.main.async {
+            guard self.pickCall == nil, self.photoCall == nil, let host=self.host,
+                  UIImagePickerController.isSourceTypeAvailable(source) else { call.reject("Photo source unavailable");return }
+            let picker=UIImagePickerController()
+            picker.sourceType=source
+            picker.mediaTypes=[UTType.image.identifier]
+            picker.delegate=self
+            picker.allowsEditing=false
+            picker.modalPresentationStyle = .fullScreen
+            self.photoCall=call
+            host.present(picker,animated:true)
+        }
+    }
+    public func imagePickerControllerDidCancel(_ picker:UIImagePickerController) {
+        picker.dismiss(animated:true)
+        photoCall?.resolve(["cancelled":true]);photoCall=nil
+    }
+    public func imagePickerController(_ picker:UIImagePickerController,didFinishPickingMediaWithInfo info:[UIImagePickerController.InfoKey:Any]) {
+        guard let call=photoCall else { picker.dismiss(animated:true);return }
+        photoCall=nil
+        picker.dismiss(animated:true)
+        guard let image=info[.originalImage] as? UIImage else { call.reject("Image unavailable");return }
+        let ratio=min(1,2400/max(image.size.width,image.size.height))
+        let format=UIGraphicsImageRendererFormat();format.scale=1;format.opaque=true
+        let size=CGSize(width:max(1,image.size.width*ratio),height:max(1,image.size.height*ratio))
+        let normalized=UIGraphicsImageRenderer(size:size,format:format).image { _ in image.draw(in:CGRect(origin:.zero,size:size)) }
+        guard let data=normalized.jpegData(compressionQuality:0.85),data.count<=6*1024*1024 else { call.reject("Image exceeds 6 MB");return }
+        call.resolve(["filename":"patient-photo.jpg","base64":data.base64EncodedString()])
     }
     public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         pickCall?.resolve(["cancelled": true]); pickCall = nil

@@ -203,6 +203,12 @@ def office(request, operation, ident=None):
                 users = users.filter(Q(first_name__icontains=term) | Q(last_name__icontains=term) | Q(email__icontains=term))
             users = users.select_related('profile').order_by('last_name', 'first_name', 'pk')[:30]
             return JsonResponse({'ok': True, 'items': [person(user) for user in users]})
+        if operation == 'patient-account' and ident is not None:
+            # Never infer cross-system financial identity from matching names
+            # or email. Use the explicit, physician-reviewed Book link.
+            link = OfficePatientLink.objects.filter(book_customer_id=ident).first()
+            user = customer(link.user_id) if link else None
+            return JsonResponse({'ok': True, 'customer_id':user.pk if user else None})
         if operation == 'invoices' and ident is not None:
             if not customer(ident):
                 return error('not_found', 404)

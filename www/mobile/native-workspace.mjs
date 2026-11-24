@@ -77,8 +77,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     ...(admin ? [{...row('office','Office'),icon:'doc.text'}] : []),
     {...row('settings',tr('Einstellungen','Settings')),icon:'gearshape'},
   ];
-  async function request(path, data) {
-    const response = await fetch(origin+'/api/mobile/staff/'+path,{
+  async function request(path, data, prefix='/api/mobile/staff/') {
+    const response = await fetch(origin+prefix+path,{
       method:data ? 'POST':'GET', headers:{Authorization:'Bearer '+token,Accept:'application/json','Content-Type':'application/json'},
       cache:'no-store', ...(data?{body:JSON.stringify(data)}:{}),
     });
@@ -241,7 +241,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
 
   async function showPatient(id,{reset=true}={}) {
     activeTab='patients';
-    if(reset){patientSection='overview';recordPage=1;}
+    if(reset){patientSection='overview';recordPage=1;currentPatientAccount=null;selectedRecord=null;}
     patient=await book('patient/'+id+'/?page='+recordPage);
     rememberAppointments(patient.appointments);
     if(stack.at(-1)!=='patient:'+id)stack.push('patient:'+id);
@@ -249,10 +249,33 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   }
   async function renderPatient(){
     const p=patient.patient;
-    const sections=[['overview',tr('Übersicht','Overview')],['appointments',tr('Termine','Appointments')],['records',tr('Patientenakte','Records')],['contact',tr('Kontakt','Contact')]];
+    const sections=[['overview',tr('Übersicht','Overview')],['appointments',tr('Termine','Appointments')],['records',tr('Patientenakte','Records')],['contact',tr('Kontakt','Contact')],
+      ...(admin?[['account',tr('Kundenkonto','Customer account')]]:[])];
     const appointments=patient.appointments||[], records=patient.records||[];
     const timeline=appointments.map(a=>({...row('appointment:'+a.id,a.date+' · '+a.start,[a.service_name,a.staff_name].filter(Boolean).join(' · ')),badge:a.status}));
-    const recordRows=records.map(r=>({...row(r.has_file?'record:'+r.id:'',r.title,[r.date?.slice(0,10),r.note,r.filename].filter(Boolean).join(' · ')),badge:r.kind||''}));
+    const recordRows=records.map(r=>({...row('record-detail:'+r.id,r.title,[r.date?.slice(0,10),r.note,r.filename].filter(Boolean).join(' · ')),badge:r.kind||''}));
+    let accountContent={};
+    if(patientSection==='account'&&admin){
+      const linked=await office('patient-account/'+p.id+'/');
+      if(!linked.customer_id){
+        currentPatientAccount=null;
+        accountContent={message:tr('Das A+ Kundenkonto ist noch nicht eindeutig mit der Patientenakte verknüpft.','The A+ customer account is not yet linked to this patient record.'),
+          actions:[row('patient-link-account',tr('Konto suchen und Identität prüfen','Find account and verify identity'))]};
+      }else{
+        const detail=await request('customers/'+linked.customer_id+'/',undefined,'/api/mobile/admin/');
+        const list=await office('invoices/'+linked.customer_id+'/');
+        currentPatientAccount=detail.customer;
+        accountContent={
+          metrics:[row('',tr('A+ Punkte','A+ points'),String(detail.customer.coins)),row('',tr('Guthaben','Credit'),(detail.customer.credit_cents/100).toFixed(2)+' EUR')],
+          shortcuts:[row('patient-adjust-points',tr('Punkte korrigieren','Adjust points')),row('patient-wallet-history',tr('Wallet-Verlauf','Wallet history'))],
+          sectionTitle:tr('PAKETE','PACKAGES'),
+          rows:(detail.packages||[]).map(x=>({...row('',x.name,String(x.remaining_sessions)+' '+tr('Sitzungen · bis','sessions · until')+' '+x.expires_at),badge:x.status})),
+          empty:tr('Keine Pakete.','No packages.'),
+          secondaryTitle:tr('GOÄ RECHNUNGEN','GOÄ INVOICES'),
+          secondaryRows:(list.items||[]).map(x=>row(x.status==='draft'?'invoice-pdf:'+x.id:'',(x.number||tr('Entwurf','Draft'))+' · '+x.service_date,(x.total_cents/100).toFixed(2)+' EUR · '+x.status)),
+        };
+      }
+    }
     return render(view(p.name,{subtitle:[p.email,p.phone].filter(Boolean).join(' · '),
       segments:sections.map(([id,label])=>({...row('patient-section:'+id,label),selected:patientSection===id})),
       ...(patientSection==='overview'?{metrics:[row('patient-section:appointments',tr('Termine (Auszug)','Appointments (shown)'),String(appointments.length)),row('patient-section:records',tr('Akteneinträge (Auszug)','Records (shown)'),String(records.length))],
@@ -260,8 +283,10 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         sectionTitle:tr('LETZTE TERMINE','RECENT APPOINTMENTS'),rows:timeline.slice(0,3),empty:tr('Keine Termine.','No appointments.')}:
       patientSection==='appointments'?{rows:timeline,empty:tr('Keine Termine.','No appointments.'),actions:[row('new-patient-appointment',tr('Termin hinzufügen','Book appointment'))]}:
       patientSection==='records'?{sectionTitle:tr('DIGITALE AKTE','DIGITAL RECORD')+' · '+tr('Seite','Page')+' '+recordPage,rows:recordRows,empty:tr('Noch keine Akteneinträge.','No records yet.'),
-        shortcuts:[row('note',tr('Notiz hinzufügen','Add note')),row('upload-pdf',tr('PDF hinzufügen','Add PDF'))],
+        shortcuts:[row('note',tr('Notiz hinzufügen','Add note')),row('upload-pdf',tr('PDF hinzufügen','Add PDF')),
+          row('take-photo',tr('Kamera','Camera')),row('upload-photo',tr('Foto auswählen','Choose photo'))],
         actions:[...(patient.has_more?[row('record-page-next',tr('Nächste Seite','Next page'))]:[]),...(recordPage>1?[row('record-page-prev',tr('Vorherige Seite','Previous page'))]:[])]}:
+      patientSection==='account'?accountContent:
       {rows:[row('',tr('Name','Name'),p.name),row('','E-Mail',p.email||'—'),row('',tr('Telefon','Phone'),p.phone||'—'),
           ...(p.date_of_birth?[row('',tr('Geburtsdatum','Date of birth'),p.date_of_birth)]:[])]})}));
   }
@@ -326,7 +351,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     return render(view(edit?tr('Termin bearbeiten','Edit appointment'):tr('Neuer Termin','New appointment'),
       {fields,actions:[row(edit?'save-edit':'save-new',tr('Speichern','Save'))]}));
   }
-  let currentBlock, currentService, pendingUpload;
+  let currentBlock, currentService, pendingUpload, selectedRecord;
   async function blockForm(edit){
     catalog=catalog||await book('catalog/');
     return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Sperrzeit / Notiz','Block / note'),{fields:[
@@ -366,7 +391,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       value('end_2',tr('Zweites Ende (optional)','Second end (optional)'),ranges[1]?.end||''),
     ],actions:[row('load-availability',tr('Behandler / Datum laden','Load provider / date')),row('save-availability',tr('Speichern','Save'))]}));
   }
-  let billingUser, billingVisits, reviewPair, intakeRecord, invoiceLines=[], invoiceMeta={}, editingInvoice=null, selectedInvoice=null, tariffCatalog=null, officeSettingsRevision=null;
+  let billingUser, billingVisits, reviewPair, intakeRecord, invoiceLines=[], invoiceMeta={}, editingInvoice=null, selectedInvoice=null, tariffCatalog=null, officeSettingsRevision=null, currentPatientAccount;
   async function showBilling(id) {
     const r=await office('customers/?q='+encodeURIComponent(search));
     billingUser=r.items.find(u=>u.id===id);
@@ -537,6 +562,24 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id==='search'||id==='billing-query'){search=fields.query||'';patientPage=1;return await screen(id==='search'?'patients':'billing-search',{push:false});}
       if(id==='patient-page-next'||id==='patient-page-prev'){patientPage=Math.max(1,patientPage+(id.endsWith('next')?1:-1));return await screen('patients',{push:false});}
       if(id.startsWith('patient-section:')&&patient){patientSection=id.slice('patient-section:'.length);return await renderPatient();}
+      if(admin&&id==='patient-link-account'&&patient){search=patient.patient.name||'';return await screen('billing-search');}
+      if(admin&&id==='patient-adjust-points'&&currentPatientAccount){
+        return await render(view(tr('Punkte korrigieren','Adjust points'),{subtitle:currentPatientAccount.name,
+          fields:[value('coin_delta',tr('Änderung (+/- Punkte)','Adjustment (+/- points)')),value('confirm',tr('Konto und Änderung geprüft?','Account and adjustment checked?'),'no',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))])],
+          actions:[row('patient-save-points',tr('Korrektur bestätigen','Confirm adjustment')),row('patient-section:account',tr('Abbrechen','Cancel'))]}));
+      }
+      if(admin&&id==='patient-save-points'&&currentPatientAccount){
+        const delta=Number(fields.coin_delta);
+        if(fields.confirm!=='yes'||!Number.isInteger(delta)||delta===0||Math.abs(delta)>100000)throw new Error(tr('Gültige Änderung bestätigen.','Confirm a valid adjustment.'));
+        await command('points/'+currentPatientAccount.id+'/',{coin_delta:delta});
+        return await renderPatient();
+      }
+      if(admin&&id==='patient-wallet-history'&&currentPatientAccount){
+        const result=await request('customers/'+currentPatientAccount.id+'/wallet-history/',undefined,'/api/mobile/admin/');
+        return await render(view(tr('Wallet-Verlauf','Wallet history'),{subtitle:currentPatientAccount.name,
+          rows:(result.transactions||[]).map(x=>row('',x.description||x.kind_label,[x.created_at?.slice(0,10),x.direction_label,x.coin_amount?String(x.coin_amount)+' '+tr('Punkte','points'):(x.amount_cents/100).toFixed(2)+' EUR'].filter(Boolean).join(' · '))),
+          empty:tr('Keine Transaktionen.','No transactions.'),actions:[row('patient-section:account',tr('Zurück zum Konto','Back to account'))]}));
+      }
       if((id==='record-page-next'||id==='record-page-prev')&&patient){recordPage=Math.max(1,recordPage+(id.endsWith('next')?1:-1));return await showPatient(patient.patient.id,{reset:false});}
       if(admin&&id==='filter-intakes'){intakeSearch=fields.query||'';intakeStatus=fields.status||'';intakeFrom=fields.from||'';intakeTo=fields.to||'';intakePage=1;return await screen('intakes',{push:false});}
       if(admin&&(id==='intake-next'||id==='intake-prev')){intakePage=Math.max(1,intakePage+(id.endsWith('next')?1:-1));return await screen('intakes',{push:false});}
@@ -657,6 +700,26 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       }
       if(id==='new-appointment'){search='';return await appendForm(false);}
       if(id==='new-patient-appointment')return await appendForm(false,patient.patient);
+      if(id.startsWith('record-detail:')&&patient){
+        selectedRecord=patient.records.find(r=>r.id===id.slice('record-detail:'.length));
+        if(!selectedRecord)throw new Error(tr('Akteneintrag nicht verfügbar.','Record unavailable.'));
+        return await render(view(selectedRecord.title,{subtitle:patient.patient.name,
+          rows:[row('',tr('Erfasst','Recorded'),selectedRecord.date?.slice(0,10)||''),row('',tr('Notiz','Note'),selectedRecord.note||'—'),
+            ...(selectedRecord.filename?[row('',tr('Datei','File'),selectedRecord.filename)]:[])],
+          actions:[...(selectedRecord.has_file?[row('record-open',tr('Datei öffnen','Open file'))]:[]),
+            ...(selectedRecord.editable?[row('record-edit',tr('Notiz korrigieren','Correct note'))]:[]),row('patient-section:records',tr('Zur Patientenakte','Back to record'))]}));
+      }
+      if(id==='record-open'&&selectedRecord&&patient)return await showPDF('book/patient/'+patient.patient.id+'/records/'+selectedRecord.id+'/',selectedRecord.title,true);
+      if(id==='record-edit'&&selectedRecord?.editable&&patient){
+        return await render(view(tr('Notiz korrigieren','Correct note'),{subtitle:patient.patient.name,
+          message:tr('Die ursprüngliche Fassung bleibt in der Änderungshistorie erhalten.','The original version is retained in the revision history.'),
+          fields:[value('title',tr('Titel','Title'),selectedRecord.title),value('note',tr('Notiz','Note'),selectedRecord.note)],
+          actions:[row('record-save-edit',tr('Korrektur speichern','Save correction')),row('patient-section:records',tr('Abbrechen','Cancel'))]}));
+      }
+      if(id==='record-save-edit'&&selectedRecord?.editable&&patient){
+        await command('book/record-edit/',{customer_id:patient.patient.id,record_id:selectedRecord.id,revision:selectedRecord.revision,title:fields.title,note:fields.note});
+        patientSection='records';return await showPatient(patient.patient.id,{reset:false});
+      }
       if(id.startsWith('record:'))return await showPDF('book/patient/'+patient.patient.id+'/records/'+id.slice(7)+'/',tr('Patientendokument','Patient document'),true);
       if(admin&&id.startsWith('invoice-pdf:'))return await showPDF('office/pdf/'+Number(id.slice(12))+'/',tr('GOÄ Entwurf','GOÄ draft'));
       if(id==='edit-appointment')return await appendForm(true);
@@ -677,8 +740,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id==='cancel-appointment')return await render(view(tr('Absage bestätigen','Confirm cancellation'),{
         subtitle:appointment.customer_name,actions:[row('confirm-cancel',tr('Termin absagen','Cancel appointment'))]}));
       if(id==='confirm-cancel'){await command('book/appointment/',{operation:'cancel',id:appointment.id,revision:appointment.revision});appointmentsById.clear();return await screen('calendar');}
-      if(id==='upload-pdf'){
-        const chosen=await plugin.pickPDF();
+      if(['upload-pdf','upload-photo','take-photo'].includes(id)){
+        const chosen=await (id==='upload-pdf'?plugin.pickPDF():id==='take-photo'?plugin.takePhoto():plugin.pickPhoto());
         if(chosen.cancelled)return;
         // Never upload until the clinician confirms the exact patient and file.
         pendingUpload={...chosen,customer_id:patient.patient.id};

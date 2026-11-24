@@ -45,6 +45,14 @@ class NativeOfficeTests(TestCase):
             self.assertEqual(self.client.get(self.path+'submissions/').status_code,403)
             self.assertEqual(self.client.get(self.path+f'submission/{form.pk}/').status_code,403)
 
+    def test_patient_account_resolution_requires_explicit_verified_link(self):
+        with patch('p0_app.native_office._auth',return_value=(self.admin,None)), patch('p0_app.native_office._is_admin',return_value=True):
+            self.assertIsNone(self.client.get(self.path+'patient-account/54/').json()['customer_id'])
+            OfficePatientLink.objects.create(user=self.patient,book_customer_id=54,verified_by=self.admin)
+            self.assertEqual(self.client.get(self.path+'patient-account/54/').json()['customer_id'],self.patient.pk)
+        with patch('p0_app.native_office._auth',return_value=(self.patient,None)), patch('p0_app.native_office._is_admin',return_value=False):
+            self.assertEqual(self.client.get(self.path+'patient-account/54/').status_code,403)
+
 
     def test_native_financial_settings_are_admin_only_revision_safe_and_audited(self):
         with patch('p0_app.native_office._auth', return_value=(self.patient, None)), \

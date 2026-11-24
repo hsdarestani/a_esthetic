@@ -65,6 +65,13 @@ def android():
     (main.parent / 'NativeStaffPlugin.java').write_text(native.replace('NATIVE_STAFF_PACKAGE', package[1]))
     calendar = (ROOT / 'native/staff/android/NativeStaffV3Calendar.java').read_text()
     (main.parent / 'NativeStaffV3Calendar.java').write_text(calendar.replace('NATIVE_STAFF_PACKAGE', package[1]))
+    paths = ROOT / 'android/app/src/main/res/xml/file_paths.xml'
+    if not paths.is_file():
+        raise RuntimeError('Missing Capacitor FileProvider paths for private staff camera photos')
+    xml = ET.parse(paths)
+    if not any(el.get('name') == 'staff_photos' for el in xml.getroot()):
+        ET.SubElement(xml.getroot(), 'cache-path', {'name':'staff_photos','path':'staff-photos/'})
+        xml.write(paths, encoding='utf-8', xml_declaration=True)
     if 'new NativeStaffV3Calendar(' not in native:
         raise RuntimeError('Android V3 calendar source is not wired to NativeStaff renderer')
     register = 'registerPlugin(NativeStaffPlugin.class);'

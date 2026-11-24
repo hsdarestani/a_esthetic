@@ -19,6 +19,7 @@ globalThis.Capacitor={Plugins:{NativeStaff:{
   async present({screen}){current=screen;},
   async render({screen}){current=screen;if(screen.timeline)lastTimelineScreen=screen;},
   async dismiss(){closed=true;},
+  async pickPhoto(){return {filename:'synthetic-photo.jpg',base64:'AA=='};},
   async addListener(name,fn){assert.equal(name,'action');onAction=fn;return{remove(){onAction=null;}};},
 }}};
 let lastCalendar, lastFinancialUpdate, officeRevision='v1', sourceEditEnabled=false;
@@ -29,7 +30,8 @@ globalThis.fetch=async(url,opts)=>{
   assert.match(opts.headers.Authorization,/^Bearer synthetic-test-token$/);
   const path=new URL(url).pathname;
   let result;
-  if(path.endsWith('/overview/'))result={today:0,upcoming:[]};
+  if(path.endsWith('/overview/'))result={today:3,upcoming_count:14,patient_count:37,provider_count:2,intake_review_count:1,
+    provider_today:[{id:1,name:'Demo clinician',count:3}],upcoming:[{id:44,customer_name:'Synthetic patient',date:'2026-11-23',start:'10:00',staff_name:'Demo clinician',service_name:'Consult',status:'confirmed'}]};
   else if(path.endsWith('/catalog/'))result={
     providers:[{id:1,name:'Demo clinician'},{id:2,name:'A+ Esthetic (SimplyBook #7)',source_managed:true}],
     services:[{id:1,name:'Consult',active:true},{id:2,name:'Imported',slug:'simplybook-event-7',active:true,source_managed:true}],
@@ -51,6 +53,9 @@ globalThis.fetch=async(url,opts)=>{
   else if(path.endsWith('/patients/'))result={items:[{id:23,name:'Demo patient',email:'demo@example.test'}],has_more:new URL(url).searchParams.get('page')==='1'};
   else if(path.endsWith('/patient/23/'))result={patient:{id:23,name:'Demo patient',email:'demo@example.test',phone:'069000000'},appointments:[{id:46,public_id:'00000000-0000-4000-8000-000000000046',date:'2026-11-20',start:'11:30',service_name:'Consult',staff_name:'Demo clinician',status:'completed'}],records:[{id:'00000000-0000-4000-8000-000000000099',title:'Synthetic clinical note',date:'2026-11-20',note:'Synthetic record for UI testing',kind:'note',has_file:false}]};
   else if(path.endsWith('/customers/'))result={items:[{id:25,name:'Demo patient',email:'demo@example.test',book_customer_id:23,address:{street:'Testweg 1',postal_code:'60313',city:'Frankfurt'}}]};
+  else if(path.endsWith('/patient-account/23/'))result={customer_id:25};
+  else if(path.endsWith('/customers/25/'))result={customer:{id:25,name:'Demo patient',coins:240,credit_cents:1500},packages:[{id:1,name:'Synthetic package',remaining_sessions:2,expires_at:'2027-01-01',status:'active'}]};
+  else if(path.endsWith('/record-upload/'))result={ok:true,id:100};
   else if(path.endsWith('/invoices/25/'))result={items:[]};
   else if(path.endsWith('/tariff-catalog/'))result={items:[{number:'1',de:'Beratung',en:'Consultation',points:80}],treatments:{},synthetic_reference_available:false};
   else if(path.endsWith('/quote/'))result={subtotal_cents:1072,tax_cents:204,total_cents:1276,items:[{goae_number:'1',description:'Consultation',quantity:'1',factor:'2.30',gross_cents:1276}]};
@@ -69,7 +74,7 @@ let native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{ro
   origin:'https://example.test',logout:()=>{}});
 assert.equal(current.title,'Welcome');
 assert.equal(current.hero,'Practice overview');
-assert.equal(current.metrics[0].detail,'0');
+assert.equal(current.metrics[0].detail,'3');
 capture('01-dashboard');
 assert.equal(current.tabs.filter(t=>t.selected).length,1);
 assert.equal(current.tabs.find(t=>t.selected).id,'home');
@@ -199,6 +204,17 @@ assert.equal(current.tabs.find(t=>t.selected).id,'patients');
 await click('patient-section:records');
 capture('14-patient-records');
 assert.equal(current.segments.find(x=>x.selected).id,'patient-section:records');
+await click('record-detail:00000000-0000-4000-8000-000000000099');
+assert.equal(current.title,'Synthetic clinical note');
+capture('15-record-detail');
+await click('patient-section:account');
+assert.equal(current.metrics[0].detail,'240');
+capture('16-patient-account');
+await click('patient-section:records');
+await click('upload-photo');
+assert.ok(current.actions.some(x=>x.id==='confirm-upload'));
+await click('discard-upload');
+await click('patient-section:records');
 await click('note');
 assert.equal(current.title,'New note');
 assert.equal(current.fields.find(x=>x.id==='note').kind,'multiline');

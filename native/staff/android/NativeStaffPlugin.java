@@ -8,6 +8,9 @@ import android.database.Cursor;
 import android.provider.OpenableColumns;
 import androidx.activity.result.ActivityResult;
 import com.getcapacitor.annotation.ActivityCallback;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+import com.getcapacitor.PermissionState;
 import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import android.graphics.Color;
@@ -34,7 +37,7 @@ import org.json.JSONObject;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-@CapacitorPlugin(name = "NativeStaff")
+@CapacitorPlugin(name = "NativeStaff",permissions={@Permission(alias="camera",strings={android.Manifest.permission.CAMERA})})
 public final class NativeStaffPlugin extends Plugin {
     private static final int PAPER = Color.rgb(247,245,240);
     private static final int CARD = Color.rgb(255,252,248);
@@ -47,6 +50,7 @@ public final class NativeStaffPlugin extends Plugin {
     private static final int WINE = Color.rgb(98,12,14);
     private int accent=GREEN;
     private JSONObject calendarScreen;
+    private File cameraFile;
     private Dialog dialog;
     // Keeps direction across the asynchronous native -> Book -> native render.
     private int calendarPageDirection = 0;
@@ -397,7 +401,7 @@ public final class NativeStaffPlugin extends Plugin {
         if(!android.os.Build.FINGERPRINT.contains("generic")&&!android.os.Build.HARDWARE.contains("ranchu"))return;
         String payload=activity.getIntent().getStringExtra("APLUS_NATIVE_QA_FIXTURE");
         if(payload==null||payload.length()>160000)return;
-        activity.runOnUiThread(()->{
+        activity.getWindow().getDecorView().postDelayed(()->{
             try{
                 JSONObject fixture=new JSONObject(new String(Base64.decode(payload,Base64.DEFAULT),java.nio.charset.StandardCharsets.UTF_8));
                 JSONObject screen=fixture.getJSONObject("screen");
@@ -406,7 +410,7 @@ public final class NativeStaffPlugin extends Plugin {
                 dialog.setCancelable(false);
                 draw(screen);dialog.show();if(dialog.getWindow()!=null)dialog.getWindow().setLayout(-1,-1);
             }catch(Exception ignored){if(dialog!=null)dialog.dismiss();dialog=null;}
-        });
+        },700);
     }
     @PluginMethod public void probe(PluginCall call) {
         JSObject result=new JSObject();result.put("ok",true);result.put("native",true);
@@ -433,6 +437,75 @@ public final class NativeStaffPlugin extends Plugin {
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             startActivityForResult(call,intent,"pickPDFResult");
         });
+    }
+    @PluginMethod public void pickPhoto(PluginCall call) {
+        getActivity().runOnUiThread(()->{
+            Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.setType("image/*");intent.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(call,intent,"pickPhotoResult");
+        });
+    }
+    @PluginMethod public void takePhoto(PluginCall call) {
+        if(getPermissionState("camera")!=PermissionState.GRANTED){requestPermissionForAlias("camera",call,"cameraPermissionResult");return;}
+        launchCamera(call);
+    }
+    @PermissionCallback private void cameraPermissionResult(PluginCall call) {
+        if(getPermissionState("camera")==PermissionState.GRANTED)launchCamera(call);else call.reject("Camera permission denied");
+    }
+    private void launchCamera(PluginCall call) {
+        getActivity().runOnUiThread(()->{
+            if(cameraFile!=null){call.reject("Camera already active");return;}
+            try{
+                File folder=new File(getContext().getCacheDir(),"staff-photos");
+                if(!folder.exists()&&!folder.mkdirs())throw new java.io.IOException("Unable to prepare photo");
+                cameraFile=File.createTempFile("staff-",".jpg",folder);
+                android.net.Uri uri=androidx.core.content.FileProvider.getUriForFile(getContext(),getContext().getPackageName()+".fileprovider",cameraFile);
+                Intent capture=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+                capture.putExtra(android.provider.MediaStore.EXTRA_OUTPUT,uri);
+                capture.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivityForResult(call,capture,"cameraResult");
+            }catch(Exception e){if(cameraFile!=null)cameraFile.delete();cameraFile=null;call.reject("Camera unavailable");}
+        });
+    }
+    @ActivityCallback private void pickPhotoResult(PluginCall call,ActivityResult result) {
+        if(call==null)return;
+        if(result.getResultCode()!=Activity.RESULT_OK||result.getData()==null||result.getData().getData()==null){JSObject cancelled=new JSObject();cancelled.put("cancelled",true);call.resolve(cancelled);return;}
+        final android.net.Uri uri=result.getData().getData();
+        new Thread(()->{
+            try(InputStream in=getContext().getContentResolver().openInputStream(uri)){
+                if(in==null)throw new java.io.IOException("No photo");
+                resolvePhoto(call,in);
+            }catch(Exception e){call.reject("Unable to read photo");}
+        }).start();
+    }
+    @ActivityCallback private void cameraResult(PluginCall call,ActivityResult result) {
+        File photo=cameraFile;cameraFile=null;
+        if(call==null){if(photo!=null)photo.delete();return;}
+        if(result.getResultCode()!=Activity.RESULT_OK||photo==null){if(photo!=null)photo.delete();JSObject cancelled=new JSObject();cancelled.put("cancelled",true);call.resolve(cancelled);return;}
+        new Thread(()->{
+            try(InputStream in=new java.io.FileInputStream(photo)){resolvePhoto(call,in);}
+            catch(Exception e){call.reject("Unable to read photo");}finally{photo.delete();}
+        }).start();
+    }
+    private void resolvePhoto(PluginCall call,InputStream in) throws java.io.IOException {
+        ByteArrayOutputStream original=new ByteArrayOutputStream();byte[] buffer=new byte[16384];int count;
+        while((count=in.read(buffer))!=-1){if(original.size()+count>32*1024*1024)throw new java.io.IOException("Image too large");original.write(buffer,0,count);}
+        byte[] raw=original.toByteArray();
+        android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;
+        android.graphics.BitmapFactory.decodeByteArray(raw,0,raw.length,bounds);
+        if(bounds.outWidth<=0||bounds.outHeight<=0||Math.max(bounds.outWidth,bounds.outHeight)>15000)throw new java.io.IOException("Invalid image");
+        android.graphics.BitmapFactory.Options opts=new android.graphics.BitmapFactory.Options();opts.inSampleSize=1;
+        while(Math.max(bounds.outWidth,bounds.outHeight)/opts.inSampleSize>3000)opts.inSampleSize*=2;
+        Bitmap bitmap=android.graphics.BitmapFactory.decodeByteArray(raw,0,raw.length,opts);
+        if(bitmap==null)throw new java.io.IOException("Invalid image");
+        try{
+            int orientation=new android.media.ExifInterface(new java.io.ByteArrayInputStream(raw)).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION,1);
+            android.graphics.Matrix matrix=new android.graphics.Matrix();
+            if(orientation==6)matrix.postRotate(90);else if(orientation==3)matrix.postRotate(180);else if(orientation==8)matrix.postRotate(270);
+            if(!matrix.isIdentity()){Bitmap rotated=Bitmap.createBitmap(bitmap,0,0,bitmap.getWidth(),bitmap.getHeight(),matrix,true);if(rotated!=bitmap)bitmap.recycle();bitmap=rotated;}
+        }catch(Exception ignored){}
+        ByteArrayOutputStream output=new ByteArrayOutputStream();bitmap.compress(Bitmap.CompressFormat.JPEG,86,output);bitmap.recycle();
+        if(output.size()>6*1024*1024)throw new java.io.IOException("Image too large");
+        JSObject response=new JSObject();response.put("filename","patient-photo.jpg");response.put("base64",Base64.encodeToString(output.toByteArray(),Base64.NO_WRAP));call.resolve(response);
     }
     @ActivityCallback private void pickPDFResult(PluginCall call, ActivityResult result) {
         if(call==null)return;
