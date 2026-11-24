@@ -84,7 +84,7 @@ struct StaffSimplyBookV3: View {
         input.dateFormat = "yyyy-MM-dd"
         guard let date = input.date(from: raw) else { return raw }
         let output = DateFormatter()
-        output.locale = Locale(identifier: english ? "en_GB" : "de_DE")
+        output.locale = Locale(identifier: "de_DE")
         output.timeZone = input.timeZone
         output.dateFormat = pattern
         return output.string(from: date)
@@ -147,11 +147,20 @@ struct StaffSimplyBookV3: View {
                 .padding(.trailing, 18)
                 .padding(.bottom, 22)
             }
-            .confirmationDialog(t("Hinzufügen", "Add"), isPresented: $showActions, titleVisibility: .visible) {
-                Button(t("Termin buchen", "Add booking")) { fire("new-appointment") }
-                Button(t("Notiz / Sperrzeit", "Note / Block")) { fire("new-block") }
-                Button(t("Arbeitszeiten", "Availability")) { fire("availability") }
-                Button(t("Abbrechen", "Cancel"), role: .cancel) { }
+            .overlay(alignment: .bottomTrailing) {
+                if showActions {
+                    Color.black.opacity(0.24).ignoresSafeArea().onTapGesture { showActions=false }
+                    VStack(alignment:.leading,spacing:0) {
+                        HStack { Text(t("Hinzufügen","Add")).font(.headline); Spacer(); Button { showActions=false } label: { Image(systemName:"xmark").frame(width:44,height:44) } }
+                            .foregroundColor(.white).padding(.leading,16).background(navy)
+                        createAction("calendar.badge.plus",t("Termin buchen","Add booking"),t("Neue Buchung erstellen","Create a booking"),pink,"new-appointment")
+                        Divider()
+                        createAction("note.text",t("Notiz / Sperrzeit","Note / block"),t("Kalenderzeit reservieren","Reserve calendar time"),blue,"new-block")
+                        Divider()
+                        createAction("clock",t("Arbeitszeiten","Working hours"),t("Verfügbarkeit bearbeiten","Edit availability"),navy,"availability")
+                    }.background(Color.white).clipShape(RoundedRectangle(cornerRadius:16)).shadow(color:.black.opacity(0.18),radius:15,y:6)
+                        .frame(maxWidth:360).padding(16).transition(.move(edge:.bottom).combined(with:.opacity))
+                }
             }
             .confirmationDialog(t("Kalenderansicht", "Calendar view"), isPresented: $showViewModes, titleVisibility: .visible) {
                 Button(t("Tagesansicht", "Day view")) { fire("cal-mode:day") }
@@ -164,6 +173,16 @@ struct StaffSimplyBookV3: View {
             .sheet(isPresented: $showNavigation) { navigationSheet }
             .preferredColorScheme(.light)
         }
+    }
+
+    private func createAction(_ icon: String,_ title: String,_ detail: String,_ color: Color,_ id: String) -> some View {
+        Button { showActions=false; fire(id) } label: {
+            HStack(spacing:14) {
+                Image(systemName:icon).font(.system(size:20,weight:.medium)).foregroundColor(.white).frame(width:42,height:42).background(color,in:RoundedRectangle(cornerRadius:10))
+                VStack(alignment:.leading,spacing:4) { Text(title).font(.system(size:16,weight:.semibold)).foregroundColor(ink); Text(detail).font(.caption).foregroundColor(.gray) }
+                Spacer(); Image(systemName:"chevron.right").font(.caption.weight(.semibold)).foregroundColor(.gray)
+            }.padding(14).contentShape(Rectangle())
+        }.buttonStyle(.plain)
     }
 
     private var topBar: some View {
@@ -292,10 +311,10 @@ struct StaffSimplyBookV3: View {
 
     private func columnHeading(_ column: [String: Any]) -> String {
         if mode == "week" {
-            return formatDate(text(column, "date"), "dd-MM-yyyy")
+            return formatDate(text(column, "date"), "dd.MM.yyyy")
         }
         if mode == "day" {
-            return formatDate(selectedDate, "EEEE, dd-MM-yyyy")
+            return formatDate(selectedDate, "EEEE, dd.MM.yyyy")
         }
         return text(column, "title")
     }

@@ -48,6 +48,8 @@ public final class NativeStaffPlugin extends Plugin {
     private static final int MUTED = Color.rgb(104,115,108);
     private static final int GOLD = Color.rgb(204,171,112);
     private static final int EDGE = Color.rgb(230,223,211);
+    private static final int BRONZE = Color.rgb(151,111,58);
+    private static final int SAND = Color.rgb(241,229,204);
     private static final int NAVY = Color.rgb(32,43,61);
     private static final int WINE = Color.rgb(98,12,14);
     private int accent=GREEN;
@@ -84,7 +86,7 @@ public final class NativeStaffPlugin extends Plugin {
         v.setTextColor(primary&&!danger ? Color.WHITE : tone); v.setMinHeight(dp(49)); v.setMinimumHeight(dp(49));
         v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);v.setTextSize(14);v.setPadding(dp(12),dp(9),dp(12),dp(9));
         v.setMinWidth(0);v.setMinimumWidth(0);v.setStateListAnimator(null);v.setElevation(0);
-        v.setBackground(primary&&!danger?background(tone,13):outlined(CARD,13,EDGE)); v.setOnClickListener(x -> action(id)); return v;
+        v.setBackground(primary&&!danger?background(tone,13):outlined(accent==NAVY?Color.WHITE:Color.rgb(249,243,231),13,EDGE)); v.setOnClickListener(x -> action(id)); return v;
     }
     private void action(String id) {
         if (id.isEmpty()) return;
@@ -141,18 +143,18 @@ public final class NativeStaffPlugin extends Plugin {
         JSONArray a = s.optJSONArray(key); return a == null ? new JSONArray() : a;
     }
     private String icon(String id) {
-        if(id.startsWith("appointment:")||id.contains("calendar"))return "◷";
+        if(id.startsWith("appointment:")||id.contains("calendar")||id.contains("appointment"))return "◷";
         if(id.startsWith("patient:")||id.contains("patient"))return "♙";
         if(id.contains("billing")||id.contains("invoice")||id.contains("record")||id.contains("intake"))return "▤";
         if(id.equals("settings"))return "⚙";
         return "↗";
     }
     private LinearLayout panel() {
-        LinearLayout box=column();box.setPadding(dp(16),dp(14),dp(16),dp(14));box.setBackground(outlined(CARD,17,EDGE));return box;
+        LinearLayout box=column();box.setPadding(dp(16),dp(14),dp(16),dp(14));box.setBackground(outlined(accent==NAVY?Color.WHITE:CARD,17,EDGE));if(accent!=NAVY)box.setElevation(dp(2));return box;
     }
     private void label(LinearLayout parent,String title) {
         if(title.isEmpty())return;
-        TextView t=text(title,11,MUTED,true); t.setLetterSpacing(.09f);add(parent,t,9);
+        TextView t=text(title,11,accent==NAVY?MUTED:BRONZE,true); t.setLetterSpacing(.09f);add(parent,t,9);
     }
     private void grid(LinearLayout parent,JSONArray items,boolean metrics) {
         int count=getContext().getResources().getConfiguration().screenWidthDp>=700?3:2;
@@ -163,12 +165,16 @@ public final class NativeStaffPlugin extends Plugin {
                 if(item==null){spacer(line);continue;}
                 String id=item.optString("id");
                 if(metrics){
-                    LinearLayout box=panel();add(box,text(icon(id),21,accent,true),6);
-                    add(box,text(item.optString("detail"),29,INK,true),4);
-                    add(box,text(item.optString("label"),12,MUTED,true),0);
+                    LinearLayout box=panel();LinearLayout top=row();TextView badge=text(icon(id),21,BRONZE,true);badge.setGravity(Gravity.CENTER);badge.setBackground(background(SAND,10));top.addView(badge,new LinearLayout.LayoutParams(dp(35),dp(35)));spacer(top);top.addView(text("›",19,BRONZE,false));add(box,top,8);
+                    TextView caption=text(item.optString("label").toUpperCase(java.util.Locale.GERMANY),10,BRONZE,true);caption.setLetterSpacing(.035f);add(box,caption,4);
+                    TextView number=text(item.optString("detail"),31,INK,true);number.setTypeface(Typeface.SERIF,Typeface.BOLD);add(box,number,0);
                     if(!id.isEmpty()){box.setOnClickListener(v->action(id));box.setFocusable(true);}
                     weight(line,box);
-                }else weight(line,button(item.optString("label"),id,false));
+                }else {
+                    LinearLayout shortcut=row();shortcut.setPadding(dp(10),dp(11),dp(10),dp(11));shortcut.setBackground(outlined(Color.rgb(249,243,231),13,EDGE));
+                    TextView glyph=text(icon(id),17,BRONZE,true);glyph.setGravity(Gravity.CENTER);glyph.setBackground(background(SAND,9));shortcut.addView(glyph,new LinearLayout.LayoutParams(dp(31),dp(31)));
+                    TextView title=text(item.optString("label"),13,INK,true);title.setPadding(dp(8),0,dp(4),0);shortcut.addView(title,new LinearLayout.LayoutParams(0,-2,1));shortcut.addView(text("›",18,BRONZE,false));shortcut.setOnClickListener(v->action(id));shortcut.setFocusable(true);weight(line,shortcut);
+                }
             }add(parent,line,9);
         }
     }
@@ -288,7 +294,7 @@ public final class NativeStaffPlugin extends Plugin {
             LinearLayout hero=column();hero.setPadding(dp(22),dp(23),dp(22),dp(23));
             GradientDrawable gradient=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{GREEN,Color.rgb(48,74,61)});
             gradient.setCornerRadius(dp(23));hero.setBackground(gradient);
-            TextView overline=text(english?"A+ ESTHETIC · PRACTICE MANAGEMENT":"A+ ESTHETIC · PRAXISMANAGEMENT",10,GOLD,true);overline.setLetterSpacing(.1f);
+            hero.setElevation(dp(5));TextView overline=text("A+ ESTHETIC · "+s.optString("heroLabel",english?"PRACTICE MANAGEMENT":"PRAXISMANAGEMENT"),10,GOLD,true);overline.setLetterSpacing(.1f);
             add(hero,overline,12);TextView title=text(s.optString("hero"),33,Color.WHITE,false);title.setTypeface(Typeface.SERIF);add(hero,title,10);
             add(hero,text(s.optString("subtitle"),14,Color.rgb(235,233,222),false),0);add(body,hero,12);
         }else{
@@ -386,11 +392,11 @@ public final class NativeStaffPlugin extends Plugin {
             JSONObject item=rows.optJSONObject(i);if(item==null)continue;
             LinearLayout box=panel();LinearLayout content=row();String id=item.optString("id");
             if(!id.isEmpty()){
-                TextView symbol=text(icon(id),22,accent,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(background(PAPER,12));
+                TextView symbol=text(icon(id),22,accent==NAVY?NAVY:BRONZE,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(background(accent==NAVY?PAPER:SAND,12));
                 LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(43),dp(43));p.rightMargin=dp(12);content.addView(symbol,p);
             }
             LinearLayout copy=column();add(copy,text(item.optString("label"),16,INK,true),5);if(!item.optString("detail").isEmpty())add(copy,text(item.optString("detail"),13,MUTED,false),0);
-            if(!item.optString("badge").isEmpty())add(copy,text(item.optString("badge"),12,accent,true),0);
+            if(!item.optString("badge").isEmpty()){TextView status=text(item.optString("badge"),12,accent==NAVY?NAVY:BRONZE,true);status.setPadding(dp(8),dp(4),dp(8),dp(4));status.setBackground(background(accent==NAVY?PAPER:SAND,8));copy.addView(status,new LinearLayout.LayoutParams(-2,-2));}
             content.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
             if(!id.isEmpty()){TextView more=text("›",21,MUTED,false);content.addView(more);box.setOnClickListener(x->action(id));box.setFocusable(true);}
             add(box,content,0);

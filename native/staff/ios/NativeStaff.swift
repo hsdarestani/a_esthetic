@@ -32,6 +32,8 @@ struct StaffNativeScreen: View {
     private let muted = Color(red: 104/255, green: 115/255, blue: 108/255)
     private let gold = Color(red: 204/255, green: 171/255, blue: 112/255)
     private let edge = Color(red: 230/255, green: 223/255, blue: 211/255)
+    private let bronze = Color(red: 151/255, green: 111/255, blue: 58/255)
+    private let sand = Color(red: 241/255, green: 229/255, blue: 204/255)
     private var modal: Bool { text(state.screen, "presentation") == "calendar-sheet" }
     private var billing: Bool { text(state.screen, "theme") == "billing" }
     private var accent: Color { modal ? Color(red: 32/255,green: 43/255,blue: 61/255) : billing ? Color(red: 98/255,green: 12/255,blue: 14/255) : green }
@@ -69,12 +71,13 @@ struct StaffNativeScreen: View {
 
     private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content().padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            .background(card, in: RoundedRectangle(cornerRadius: 17))
+            .background(modal ? Color.white : card, in: RoundedRectangle(cornerRadius: 17))
             .overlay { RoundedRectangle(cornerRadius: 17).strokeBorder(edge, lineWidth: 1) }
+            .shadow(color:green.opacity(modal ? 0 : 0.055),radius:7,y:3)
     }
     private func sectionTitle(_ title: String) -> some View {
         Text(title).font(.system(size: 12, weight: .semibold)).tracking(1.1)
-            .foregroundColor(muted).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 9)
+            .foregroundColor(modal ? muted : bronze).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 9)
     }
     private func icon(_ id: String) -> String {
         if id.hasPrefix("patient:") { return "person.crop.circle" }
@@ -93,8 +96,8 @@ struct StaffNativeScreen: View {
                 HStack(alignment: .top, spacing: 13) {
                     if !id.isEmpty {
                         Image(systemName: icon(id)).font(.system(size: 18, weight: .medium))
-                            .foregroundColor(accent).frame(width: 43, height: 43)
-                            .background(accent.opacity(0.075), in: RoundedRectangle(cornerRadius: 12))
+                            .foregroundColor(modal ? accent : bronze).frame(width: 43, height: 43)
+                            .background(modal ? accent.opacity(0.075) : sand, in: RoundedRectangle(cornerRadius: 12))
                     }
                     VStack(alignment: .leading, spacing: 5) {
                         Text(text(item, "label")).font(.system(size: 16, weight: .semibold)).foregroundColor(ink)
@@ -104,7 +107,7 @@ struct StaffNativeScreen: View {
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     if !text(item, "badge").isEmpty {
                         Text(text(item, "badge")).font(.caption2.weight(.semibold)).padding(6)
-                            .background(accent.opacity(0.08), in: Capsule()).foregroundColor(accent)
+                            .background(modal ? accent.opacity(0.08) : sand, in: Capsule()).foregroundColor(modal ? accent : bronze)
                     }
                     if !id.isEmpty { Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundColor(muted).padding(.top, 4) }
                 }
@@ -120,10 +123,10 @@ struct StaffNativeScreen: View {
                 if primary { Spacer(minLength: 0) }
                 Text(text(item, "label")).font(.system(size: 15, weight: .semibold)).multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
-                if !primary { Image(systemName: "arrow.right").font(.caption.weight(.semibold)) }
+                if !primary { Image(systemName: "arrow.right").font(.caption.weight(.semibold)).foregroundColor(modal ? tone : bronze) }
             }.padding(.horizontal, 15).frame(minHeight: 49)
                 .foregroundColor(primary && !destructive ? .white : tone)
-                .background(primary && !destructive ? tone : card, in: RoundedRectangle(cornerRadius: 13))
+                .background(primary && !destructive ? tone : modal ? Color.white : sand.opacity(0.45), in: RoundedRectangle(cornerRadius: 13))
                 .overlay { RoundedRectangle(cornerRadius: 13).strokeBorder(tone.opacity(0.22),lineWidth: 1) }
         }.buttonStyle(.plain)
     }
@@ -144,13 +147,20 @@ struct StaffNativeScreen: View {
     @ViewBuilder private func surfaceTitle(sheet: Bool) -> some View {
         if !text(state.screen,"hero").isEmpty {
             VStack(alignment:.leading,spacing:12) {
-                Text("A+ ESTHETIC · " + t("PRAXISMANAGEMENT","PRACTICE MANAGEMENT"))
+                Text("A+ ESTHETIC · " + (text(state.screen,"heroLabel").isEmpty ? t("PRAXISMANAGEMENT","PRACTICE MANAGEMENT") : text(state.screen,"heroLabel")))
                     .font(.system(size:10,weight:.semibold)).tracking(1.4).foregroundColor(gold)
                 Text(text(state.screen,"hero")).font(.system(size:34,weight:.regular,design:.serif)).foregroundColor(.white)
                 Text(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(.white.opacity(0.78))
             }.padding(23).frame(maxWidth:.infinity,alignment:.leading)
                 .background(LinearGradient(colors:[green,Color(red:0.19,green:0.29,blue:0.24)],startPoint:.topLeading,endPoint:.bottomTrailing))
+                .overlay(alignment:.trailing) {
+                    ZStack {
+                        Circle().stroke(gold.opacity(0.14),lineWidth:28).frame(width:190,height:190)
+                        Circle().stroke(gold.opacity(0.18),lineWidth:1).frame(width:140,height:140).offset(x:20,y:40)
+                    }.offset(x:87,y:-45).allowsHitTesting(false).accessibilityHidden(true)
+                }
                 .clipShape(RoundedRectangle(cornerRadius:23))
+                .shadow(color:green.opacity(0.18),radius:12,y:5)
         } else {
             Text(text(state.screen,"title")).font(.system(size:sheet ? 27 : 34,weight:.regular,design:sheet ? .default : .serif))
             if !text(state.screen,"subtitle").isEmpty { Text(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(muted) }
@@ -163,9 +173,9 @@ struct StaffNativeScreen: View {
                     Button { action(text(item,"id")) } label: {
                         panel {
                             VStack(alignment:.leading,spacing:8) {
-                                Image(systemName:icon(text(item,"id"))).font(.body.weight(.medium)).foregroundColor(accent)
-                                Text(text(item,"detail")).font(.system(size:29,weight:.semibold,design:.rounded)).foregroundColor(ink).minimumScaleFactor(0.6).lineLimit(1)
-                                Text(text(item,"label")).font(.caption.weight(.medium)).foregroundColor(muted)
+                                HStack { Image(systemName:icon(text(item,"id"))).font(.body.weight(.medium)).foregroundColor(bronze).frame(width:35,height:35).background(sand,in:RoundedRectangle(cornerRadius:10)); Spacer(); Image(systemName:"chevron.right").font(.caption2.weight(.semibold)).foregroundColor(bronze) }
+                                Text(text(item,"label").uppercased()).font(.system(size:10,weight:.semibold)).tracking(0.5).foregroundColor(bronze).lineLimit(2)
+                                Text(text(item,"detail")).font(.system(size:31,weight:.semibold,design:.serif)).foregroundColor(ink).minimumScaleFactor(0.6).lineLimit(1)
                             }
                         }
                     }.buttonStyle(.plain).disabled(text(item,"id").isEmpty)
@@ -181,7 +191,8 @@ struct StaffNativeScreen: View {
                         let selected = item["selected"] as? Bool == true
                         Button { action(text(item,"id")) } label: {
                             Text(text(item,"label")).font(.subheadline.weight(.semibold)).padding(.horizontal,13).padding(.vertical,11)
-                                .foregroundColor(selected ? .white : accent).background(selected ? accent : card,in:Capsule())
+                                .foregroundColor(selected ? green : accent).background(selected ? sand : card,in:Capsule())
+                                .overlay { Capsule().strokeBorder(selected ? gold : edge,lineWidth:1) }
                         }.buttonStyle(.plain)
                     }
                 }
@@ -205,7 +216,16 @@ struct StaffNativeScreen: View {
         if !items("shortcuts").isEmpty {
             sectionTitle(t("SCHNELLZUGRIFF","QUICK ACCESS"))
             LazyVGrid(columns:[GridItem(.adaptive(minimum:140),spacing:9)],spacing:9) {
-                ForEach(Array(items("shortcuts").enumerated()),id:\.offset) { _, item in actionView(item) }
+                ForEach(Array(items("shortcuts").enumerated()),id:\.offset) { _, item in
+                    Button { action(text(item,"id")) } label: {
+                        HStack(spacing:8) {
+                            Image(systemName:icon(text(item,"id"))).font(.system(size:13,weight:.semibold)).foregroundColor(bronze).frame(width:30,height:30).background(sand,in:RoundedRectangle(cornerRadius:9))
+                            Text(text(item,"label")).font(.system(size:13,weight:.semibold)).foregroundColor(ink).multilineTextAlignment(.leading)
+                            Spacer(minLength:0); Image(systemName:"chevron.right").font(.caption2.weight(.semibold)).foregroundColor(bronze)
+                        }.padding(10).frame(minHeight:60).frame(maxWidth:.infinity,alignment:.leading)
+                            .background(sand.opacity(0.33),in:RoundedRectangle(cornerRadius:13)).overlay { RoundedRectangle(cornerRadius:13).strokeBorder(edge,lineWidth:1) }
+                    }.buttonStyle(.plain)
+                }
             }
         }
     }

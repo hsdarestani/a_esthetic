@@ -144,7 +144,7 @@
   }
 
   async function showPatientIntake(node,email){
-    const en=(localStorage.getItem('aplus_language')||navigator.language||'de').startsWith('en');
+    const en=localStorage.getItem('aplus_language')==='en';
     const tr=(de,english)=>en?english:de;
     const card=node.querySelector('.settings-card');
     const head=title=>`<div class="settings-head"><h2>${esc(title)}</h2><button type="button" class="core-icon-btn" data-close aria-label="${esc(tr('Zurück','Back'))}">×</button></div>`;

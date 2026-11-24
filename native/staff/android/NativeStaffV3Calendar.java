@@ -3,6 +3,7 @@ package NATIVE_STAFF_PACKAGE;
 // A+ Esthetic V3 native calendar for Android. Mirrors the iOS SimplyBook-style
 // staff timeline, without a WebView and without copying patient data locally.
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -10,10 +11,12 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.ColorDrawable;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
@@ -125,7 +128,7 @@ final class NativeStaffV3Calendar {
             SimpleDateFormat parser=new SimpleDateFormat("yyyy-MM-dd",Locale.ROOT);
             parser.setLenient(false);parser.setTimeZone(TimeZone.getTimeZone("Europe/Berlin"));
             Date date=parser.parse(iso);
-            SimpleDateFormat printer=new SimpleDateFormat(pattern,english?Locale.UK:Locale.GERMANY);
+            SimpleDateFormat printer=new SimpleDateFormat(pattern,Locale.GERMANY);
             printer.setTimeZone(TimeZone.getTimeZone("Europe/Berlin"));
             return printer.format(date);
         }catch(Exception ignored){return iso;}
@@ -250,7 +253,7 @@ final class NativeStaffV3Calendar {
         for(int i=0;i<cols.length();i++){
             JSONObject col=at(cols,i);
             String label="week".equals(mode())?formatted(str(col,"date"),"EEE dd.MM")
-                : "day".equals(mode())?formatted(selectedDate(),"EEEE dd-MM-yyyy")
+                : "day".equals(mode())?formatted(selectedDate(),"EEEE dd.MM.yyyy")
                 :str(col,"title");
             TextView v=text(label,12,INK,true);
             v.setGravity(Gravity.CENTER);
@@ -317,9 +320,21 @@ final class NativeStaffV3Calendar {
         String[] names={t("Termin buchen","Add booking"),t("Notiz / Sperrzeit","Note / Block"),
             t("Arbeitszeiten","Availability")};
         String[] ids={"new-appointment","new-block","availability"};
-        new AlertDialog.Builder(ctx).setTitle(t("Hinzufügen","Add"))
-            .setItems(names,(dialog,index)->fire(ids[index]))
-            .setNegativeButton(t("Abbrechen","Cancel"),null).show();
+        String[] descriptions={t("Neue Buchung erstellen","Create a booking"),t("Kalenderzeit reservieren","Reserve calendar time"),t("Verfügbarkeit bearbeiten","Edit availability")};
+        String[] glyphs={"+","▤","◷"}; int[] colors={PINK,BLUE,NAVY};
+        Dialog menu=new Dialog(ctx);menu.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        LinearLayout panel=new LinearLayout(ctx);panel.setOrientation(LinearLayout.VERTICAL);panel.setBackgroundColor(Color.WHITE);
+        LinearLayout header=new LinearLayout(ctx);header.setGravity(Gravity.CENTER_VERTICAL);header.setBackgroundColor(NAVY);header.setPadding(d(16),0,d(8),0);
+        TextView title=text(t("Hinzufügen","Add"),17,Color.WHITE,true);header.addView(title,new LinearLayout.LayoutParams(0,d(50),1));title.setGravity(Gravity.CENTER_VERTICAL);
+        TextView close=text("×",25,Color.WHITE,false);close.setGravity(Gravity.CENTER);close.setContentDescription(t("Schließen","Close"));close.setOnClickListener(v->menu.dismiss());header.addView(close,lp(d(44),d(50)));panel.addView(header);
+        for(int i=0;i<ids.length;i++){
+            final String id=ids[i];LinearLayout entry=new LinearLayout(ctx);entry.setGravity(Gravity.CENTER_VERTICAL);entry.setPadding(d(14),d(12),d(14),d(12));
+            TextView glyph=text(glyphs[i],23,Color.WHITE,true);glyph.setGravity(Gravity.CENTER);GradientDrawable tile=new GradientDrawable();tile.setColor(colors[i]);tile.setCornerRadius(d(9));glyph.setBackground(tile);entry.addView(glyph,lp(d(42),d(42)));
+            LinearLayout copy=new LinearLayout(ctx);copy.setOrientation(LinearLayout.VERTICAL);copy.setPadding(d(14),0,d(8),0);copy.addView(text(names[i],16,INK,true));copy.addView(text(descriptions[i],12,MUTED,false));entry.addView(copy,new LinearLayout.LayoutParams(0,-2,1));entry.addView(text("›",22,MUTED,false));
+            entry.setOnClickListener(v->{menu.dismiss();fire(id);});entry.setFocusable(true);panel.addView(entry,lp(-1,-2));
+            if(i<ids.length-1){View line=new View(ctx);line.setBackgroundColor(LINES);panel.addView(line,lp(-1,d(1)));}
+        }
+        menu.setContentView(panel);menu.show();Window window=menu.getWindow();if(window!=null){window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));window.setLayout(Math.min(d(360),ctx.getResources().getDisplayMetrics().widthPixels-d(32)),-2);window.setGravity(Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);android.view.WindowManager.LayoutParams attrs=window.getAttributes();attrs.y=d(18);window.setAttributes(attrs);}
     }
 
     private final class RulerView extends View {

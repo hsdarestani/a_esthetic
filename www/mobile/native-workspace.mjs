@@ -12,13 +12,24 @@ const inputKind = id => {
   if (id === 'phone') return 'phone';
   return 'text';
 };
+const dateFields = new Set(['date','from','to','service_date','date_of_birth']);
+export const germanDate = value => String(value ?? '').replace(/\b(\d{4})-(\d{2})-(\d{2})(?=\b|T)/g,'$3.$2.$1');
+export function canonicalDate(value) {
+  const raw=String(value??'').trim();
+  if(!raw)return '';
+  const match=raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  const iso=match?`${match[3]}-${match[2].padStart(2,'0')}-${match[1].padStart(2,'0')}`:raw;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(iso))return null;
+  const parsed=new Date(iso+'T12:00:00Z');
+  return !Number.isNaN(parsed.getTime())&&parsed.toISOString().slice(0,10)===iso?iso:null;
+}
 const value = (id, label, initial = '', options) => ({
-  id,label,value:String(initial ?? ''),kind:options?'select':inputKind(id),
+  id,label:dateFields.has(id)&&!options?label.replace(/\s*\((?:JJJJ-MM-TT|YYYY-MM-DD)\)/,'')+' · TT.MM.JJJJ':label,value:dateFields.has(id)&&!options?germanDate(initial):String(initial ?? ''),kind:options?'select':inputKind(id),
   ...(options ? {options} : {}),
 });
-const row = (id,label,detail='') => ({id,label,detail});
-const option = (value,label) => ({value:String(value),label:String(label)});
-const dateLabel = (date, locale, options) => new Date(date+'T12:00:00Z').toLocaleDateString(locale,{...options,timeZone:'UTC'});
+const row = (id,label,detail='') => ({id,label:germanDate(label),detail:germanDate(detail)});
+const option = (value,label) => ({value:String(value),label:germanDate(label)});
+const dateLabel = (date, locale, options) => new Date(date+'T12:00:00Z').toLocaleDateString('de-DE',{...options,timeZone:'UTC'});
 const optionFor = (list) => list.map(x=>option(x.id,x.name));
 const sourceOfBlock = block => block?.source_managed || /\u2063[\u200b\u200c]+\u2063/.test(block?.text||'')
   ? 'SimplyBook' : 'Book';
@@ -30,7 +41,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   const plugin = globalThis.APlusNativeStaff || globalThis.Capacitor?.Plugins?.NativeStaff;
   if (!plugin) throw new Error('Native staff renderer unavailable');
   const admin = identity.role === 'admin';
-  let language = (localStorage.getItem('aplus_language') || navigator.language || 'de').startsWith('en') ? 'en' : 'de';
+  let language = localStorage.getItem('aplus_language') === 'en' ? 'en' : 'de';
   const tr = (de,en) => language === 'en' ? en : de;
   let locale = language === 'en' ? 'en-GB' : 'de-DE';
   const stack = [];
@@ -96,9 +107,12 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   }
   const book = (path,data) => request('book/'+path,data);
   const office = (path,data) => request('office/'+path,data);
-  const view = (title, content={}) => ({title,language,
+  const localizedStatus = status => language==='de'?({confirmed:'Bestätigt',pending:'Ausstehend',cancelled:'Abgesagt',canceled:'Abgesagt',completed:'Abgeschlossen',no_show:'Nicht erschienen',linked:'Zugeordnet',review:'Zu prüfen',draft:'Entwurf',issued:'Ausgestellt',paid:'Bezahlt',active:'Aktiv',expired:'Abgelaufen',note:'Notiz',block:'Sperrzeit'}[status]||status):status;
+  const view = (title, content={}) => ({title:germanDate(title),language,
     ...(activeTab==='calendar'&&!content.timeline?{presentation:'calendar-sheet'}:{}),
-    tabs:tabs().map(tab=>({...tab,selected:tab.id===activeTab})), ...content});
+    tabs:tabs().map(tab=>({...tab,selected:tab.id===activeTab})), ...content,
+    ...(content.subtitle?{subtitle:germanDate(content.subtitle)}:{}),
+    ...Object.fromEntries(['rows','secondaryRows'].filter(key=>content[key]).map(key=>[key,content[key].map(item=>({...item,...(item.badge?{badge:localizedStatus(item.badge)}:{})}))]))});
   async function render(screen) { if(!active)return; current=screen; await plugin.render({screen}); }
   async function screen(name, {push=true}={}) {
     if(['home','calendar','patients','office','settings'].includes(name))activeTab=name;
@@ -276,7 +290,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         };
       }
     }
-    return render(view(p.name,{subtitle:[p.email,p.phone].filter(Boolean).join(' · '),
+    return render(view(p.name,{hero:p.name,heroLabel:tr('PATIENTENAKTE','PATIENT RECORD'),subtitle:[p.email,p.phone].filter(Boolean).join(' · '),
       segments:sections.map(([id,label])=>({...row('patient-section:'+id,label),selected:patientSection===id})),
       ...(patientSection==='overview'?{metrics:[row('patient-section:appointments',tr('Termine (Auszug)','Appointments (shown)'),String(appointments.length)),row('patient-section:records',tr('Akteneinträge (Auszug)','Records (shown)'),String(records.length))],
         shortcuts:[row('new-patient-appointment',tr('Termin hinzufügen','Book appointment')),row('note',tr('Notiz hinzufügen','Add note')),row('upload-pdf',tr('PDF hinzufügen','Add PDF'))],
@@ -511,9 +525,14 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   }
   async function handle(event) {
     if(!active || busy) return;
-    const id=event.id, fields=event.values||{};
+    const id=event.id, fields={...(event.values||{})};
     busy=true;
     try {
+      for(const key of Object.keys(fields).filter(key=>dateFields.has(key))){
+        const canonical=canonicalDate(fields[key]);
+        if(canonical!==null)fields[key]=canonical;
+        else if(/^(save-|load-availability|filter-intakes|invoice-)/.test(id))throw new Error(tr('Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben.','Enter a valid date in DD.MM.YYYY format.'));
+      }
       if(id==='logout'){await destroy();logout();return;}
       if(id==='retry-initial')return await screen('home',{push:false});
       if(id==='back'){
