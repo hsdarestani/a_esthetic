@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_ORIGIN = 'https://app.a-esthetic.de';
+  const APP_ORIGIN = window.APlusRuntime.origin;
   const API = `${APP_ORIGIN}/api/mobile`;
   const LEGAL = {
     privacy: `${APP_ORIGIN}/datenschutz/`,
@@ -97,7 +97,7 @@
     document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());
     const node=document.createElement('div');node.className='settings-overlay';
     node.innerHTML=`<div class="settings-card"><div class="settings-head"><h2>Einstellungen & Recht</h2><button class="core-icon-btn" data-close>×</button></div>
-      <div class="settings-user"><strong>${esc(state.me?.member?.name||'A+ Kunde')}</strong><span>${esc(email)}</span></div>
+      <div class="settings-user"><strong>${esc(state.me?.member?.name||'A+ Patient')}</strong><span>${esc(email)}</span></div>
       <form data-profile-salutation class="a39-profile-choice">
         <label for="a39-salutation">Anrede für dein Startseitenbild</label>
         <div class="a39-profile-choice-controls">
@@ -111,6 +111,7 @@
         </div>
         <p data-profile-salutation-message aria-live="polite">Damit das passende Startseitenbild angezeigt wird.</p>
       </form>
+      <button type="button" class="settings-link" data-intake>Aufnahmebogen & Rechnungsadresse <span>›</span></button>
       <a class="settings-link" href="${LEGAL.privacy}">Datenschutz <span>›</span></a>
       <a class="settings-link" href="${LEGAL.terms}">Nutzungsbedingungen <span>›</span></a>
       <a class="settings-link" href="${LEGAL.imprint}">Impressum <span>›</span></a>
@@ -120,6 +121,7 @@
     const close=()=>{node.classList.add('is-closing');setTimeout(()=>node.remove(),120);};
     node.addEventListener('click',e=>{if(e.target===node)close();});node.querySelector('[data-close]').onclick=close;
     node.querySelector('[data-logout]').onclick=()=>{node.remove();requestAnimationFrame(()=>logout());};
+    node.querySelector('[data-intake]').onclick=()=>showPatientIntake(node,email);
     node.querySelector('[data-profile-salutation]')?.addEventListener('submit',async event=>{
       event.preventDefault();
       const form=event.currentTarget;
@@ -141,7 +143,50 @@
     });
   }
 
-  function logout(render=true){document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
+  async function showPatientIntake(node,email){
+    const en=(localStorage.getItem('aplus_language')||navigator.language||'de').startsWith('en');
+    const tr=(de,english)=>en?english:de;
+    const card=node.querySelector('.settings-card');
+    const head=title=>`<div class="settings-head"><h2>${esc(title)}</h2><button type="button" class="core-icon-btn" data-close aria-label="${esc(tr('Zurück','Back'))}">×</button></div>`;
+    const back=()=>showSettings(email);
+    card.innerHTML=head(tr('Aufnahmebogen','Intake form'))+loader();
+    card.querySelector('[data-close]').onclick=back;
+    try {
+      const result=await request('/staff/office/intake/');
+      if(!node.isConnected)return;
+      const p=result.patient, address=p.address||{};
+      const field=(name,label,value,type='text',autocomplete='off',max='')=>`<label class="ma-field"><span>${esc(label)}</span><span class="ma-input"><input type="${type}" name="${name}" value="${esc(value)}" autocomplete="${autocomplete}" ${max?'maxlength="'+max+'"':''} required></span></label>`;
+      card.innerHTML=head(tr('Aufnahmebogen','Intake form'))+
+        `<div class="settings-user"><strong>${esc(p.name)}</strong><span>${esc(p.email)}</span></div>
+        <form data-intake-form class="ma-form">
+          <p class="ma-description">${esc(tr('Deine vorhandenen Angaben werden übernommen. Die Adresse kann für spätere Rechnungen verwendet werden.','Your saved information is prefilled. Your address can be used for later invoices.'))}</p>
+          ${field('date_of_birth',tr('Geburtsdatum','Date of birth'),p.date_of_birth,'date','bday')}
+          ${field('street',tr('Straße und Hausnummer','Street and house number'),address.street,'text','street-address',180)}
+          ${field('postal_code',tr('Postleitzahl','Postal code'),address.postal_code,'text','postal-code',20)}
+          ${field('city',tr('Ort','City'),address.city,'text','address-level2',120)}
+          <p role="status" aria-live="polite" data-intake-message></p>
+          <button type="submit" class="ma-primary">${esc(tr('Speichern','Save'))}</button>
+        </form>`;
+      card.querySelector('[data-close]').onclick=back;
+      card.querySelector('[data-intake-form]').onsubmit=async event=>{
+        event.preventDefault();
+        const form=event.currentTarget, button=form.querySelector('button'), msg=form.querySelector('[data-intake-message]');
+        button.disabled=true;
+        try {
+          await request('/staff/office/intake/',{method:'POST',json:Object.fromEntries(new FormData(form))});
+          msg.textContent=tr('Angaben gespeichert.','Information saved.');
+        } catch(error) {
+          msg.textContent=error.code==='identity_verification_required'?tr('Geburtsdatum muss von der Praxis geprüft werden.','The clinic must verify a change to your date of birth.'):tr('Angaben konnten nicht gespeichert werden.','Unable to save your details.');
+        } finally {button.disabled=false;}
+      };
+    } catch(error) {
+      if(!node.isConnected)return;
+      card.innerHTML=head(tr('Aufnahmebogen','Intake form'))+errorBox(new Error(tr('Aufnahmebogen konnte nicht geladen werden.','Unable to load intake form.')));
+      card.querySelector('[data-close]').onclick=back;
+    }
+  }
+
+  function logout(render=true){bootGeneration++;lastStaffRole=null;window.APlusAdminMode?.unmount();document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
 
   function showContactPicker(){
     document.querySelectorAll('.contact-overlay').forEach(node=>node.remove());
@@ -158,31 +203,51 @@
     node.querySelector('[data-contact-close]')?.addEventListener('click',close);
   }
 
-  function showLogin(message=''){
-    // A production login must never prefill a stored test account.
+  function showLogin(message = '') {
     localStorage.removeItem('aplus_login_email');
-    root.innerHTML=`<div class="login-shell login-shell-auth"><form class="login-card" data-login><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div><div class="login-kicker">A+ ESTHETIC</div><h1>Anmelden</h1><p>Termine, Patientenakte und A+ Punkte an einem Ort.</p>${message?`<div class="notice error">${esc(message)}</div>`:''}<label class="field"><span>E-Mail</span><input name="email" type="email" autocomplete="off" autocapitalize="none" spellcheck="false" required></label><label class="field"><span>Passwort</span><input name="password" type="password" autocomplete="current-password" required></label><a class="login-password-reset" data-forgot-password href="${APP_ORIGIN}/accounts/password/reset/">Passwort vergessen?</a><button class="primary wide" type="submit">Anmelden</button></form></div>`;
-    root.querySelector('[data-forgot-password]')?.addEventListener('click',async event=>{
-      const browser=window.Capacitor?.Plugins?.Browser;
-      if (!browser?.open) return;
-      event.preventDefault();
-      try { await browser.open({url:event.currentTarget.href}); }
-      catch (_) { window.location.assign(event.currentTarget.href); }
+    window.APlusAuth.login({
+      message,
+      authenticate: async (email, password) => {
+        const data = await request('/login/', {method: 'POST', json: {email, password}, aplusSilent: true});
+        if (!data.token) throw new Error('invalid_response');
+        localStorage.setItem('aplus_token', data.token);
+        await boot(data.account_type ? {role: data.account_type, ...data.admin_profile} : null);
+      },
+      signup: back => window.APlusOnboarding.signup(back),
     });
-    root.querySelector('[data-login]').addEventListener('submit',async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button');btn.disabled=true;btn.textContent='Anmeldung …';try{const fd=new FormData(e.currentTarget);const data=await request('/login/',{method:'POST',json:{email:fd.get('email'),password:fd.get('password')}});state.token=data.token;localStorage.setItem('aplus_token',state.token);await boot();}catch(err){
-      const invalid=err?.code==='invalid_credentials'||err?.code==='authentication_required';
-      const hint=invalid
-        ? 'Die E-Mail-Adresse oder das Passwort ist falsch. Bitte überprüfe deine Eingaben und versuche es erneut.'
-        : 'Die Anmeldung ist gerade nicht möglich. Bitte prüfe deine Verbindung und versuche es erneut.';
-      showLogin(hint);
-    }});
   }
 
-  function showReconnect(message='Verbindung wird wiederhergestellt …'){
-    root.innerHTML=`<div class="login-shell login-shell-auth"><section class="login-card"><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div><h1>Willkommen zurück</h1><p>${esc(message)}</p><div class="spinner"></div><button class="secondary wide" type="button" data-reconnect>Erneut verbinden</button></section></div>`;
-    root.querySelector('[data-reconnect]')?.addEventListener('click',boot);
+  let lastStaffRole = null;
+  function showReconnect(message='Verbindung wird wiederhergestellt …', {failed=false, stage='', code=''}={}){
+    // Never present a permanent loading spinner as an error. Keep an explicit
+    // sign-out path and a safe diagnostic stage for iOS Simulator QA.
+    const detail = failed ? `<p role="alert" class="notice error" data-staff-error>${esc(message)}</p>
+      <small data-staff-stage style="display:block;margin:8px 0;color:#465a51">Diagnose: ${esc(stage||'Unbekannt')}${code?' · '+esc(code):''}</small>`
+      : `<p>${esc(message)}</p><div class="spinner" role="status" aria-label="Verbindung wird geprüft"></div>`;
+    root.innerHTML=`<div class="login-shell login-shell-auth"><section class="login-card">
+      <div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div>
+      <h1>${failed?'Verbindung prüfen':'Willkommen zurück'}</h1>${detail}
+      <button class="secondary wide" type="button" data-reconnect>${failed?'Erneut versuchen':'Erneut verbinden'}</button>
+      ${failed && stage==='native-staff-mount' ? '<button class="secondary wide" type="button" data-staff-web-fallback>Vorübergehend Webverwaltung öffnen</button>' : ''}
+      <button class="text-btn wide" type="button" data-reconnect-logout>Abmelden und neu anmelden</button>
+    </section></div>`;
+    root.querySelector('[data-reconnect]')?.addEventListener('click',()=>void boot());
+    root.querySelector('[data-reconnect-logout]')?.addEventListener('click',()=>logout());
+    root.querySelector('[data-staff-web-fallback]')?.addEventListener('click', async event=>{
+      const button=event.currentTarget;
+      if(!lastStaffRole || !state.token)return;
+      button.disabled=true;
+      button.textContent='Webverwaltung wird geöffnet …';
+      try {
+        await window.APlusAdminMode.mount(root,state.token,lastStaffRole,()=>logout(),{forceWeb:true});
+      } catch(error) {
+        showReconnect('Auch die Webverwaltung konnte nicht geöffnet werden.',
+          {failed:true,stage:'staff-web-fallback',code:String(error?.name||'ERROR').slice(0,40)});
+      }
+    });
   }
   let bootGeneration = 0;
+  let booting = false;
   async function readAuthProfile(){
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
@@ -199,32 +264,53 @@
       clearTimeout(timeout);
     }
   }
-  async function boot(){
+  async function boot(identity = null){
+    if (booting) return;
+    identity = identity?.role ? identity : null;
     const generation = ++bootGeneration;
     state.token = localStorage.getItem('aplus_token') || '';
     if(!state.token) return showLogin();
-    // Always render a recoverable screen before awaiting the network. On iOS
-    // a paused WebView fetch must never leave #app completely blank.
+    booting = true;
+    let stage = 'staff-session';
     showReconnect('Anmeldung wird überprüft …');
     try {
+      const role = identity || await window.APlusAdminMode.resolve(state.token);
+      if (generation !== bootGeneration) return;
+      lastStaffRole = role && (role.role==='admin'||role.role==='doctor') ? role : null;
+      if (role.role === 'admin' || role.role === 'doctor') {
+        stage = 'native-staff-mount';
+        await window.APlusAdminMode.mount(root, state.token, role, () => logout());
+        return;
+      }
+      stage = 'patient-profile';
       const profile = await readAuthProfile();
       if(generation !== bootGeneration) return;
       state.me = profile;
       if(profile?.account?.locked){
+        stage = 'patient-onboarding';
         if(window.APlusOnboarding?.start) await window.APlusOnboarding.start();
         else showReconnect('Die Registrierung wird geladen …');
         return;
       }
+      stage = 'patient-dashboard';
       await go(new URLSearchParams(window.location.search).get('bereich')==='termine'?'appointments':'dashboard',{resetHistory:true});
     } catch(err) {
       if(generation !== bootGeneration) return;
+      if(err?.code === 'staff_session_expired'){ logout(); return; }
       if(err?.code === 'profile_completion_required'){
         if(window.APlusOnboarding?.start) await window.APlusOnboarding.start();
         else showReconnect('Die Registrierung wird geladen …');
         return;
       }
-      if(state.token) showReconnect('Die Verbindung ist gerade nicht verfügbar. Ihre Anmeldung bleibt gespeichert.');
-      else showLogin('Bitte melden Sie sich erneut an.');
+      if(state.token){
+        const safeCode = [err?.code,err?.name].filter(x=>typeof x==='string' && /^[\w.-]{1,45}$/.test(x)).join(' / ');
+        const safeMessage = err?.message && typeof err.message==='string'
+          ? err.message.slice(0,160) : 'Die Anmeldung konnte nicht abgeschlossen werden.';
+        // Diagnostic details stay on device; never print bearer tokens or patient data.
+        showReconnect(safeMessage,{failed:true,stage,code:safeCode});
+      } else showLogin('Bitte melden Sie sich erneut an.');
+    } finally {
+      booting = false;
     }
   }
   // The SMS verification flow can refresh the verified session in-place,
@@ -232,6 +318,9 @@
   window.APlusRefreshAuth = boot;
   function recoverBlankNativeView(){
     if(!state.token || document.visibilityState === 'hidden') return;
+    // Do not auto-retry an already reported native-bootstrap error. On iOS,
+    // repeated appStateChange/pageshow notifications previously hid the cause.
+    if(root?.querySelector?.('[data-staff-error]')) return;
     const noScreen = !root?.firstElementChild;
     const reconnect = Boolean(root?.querySelector?.('[data-reconnect]'));
     if(noScreen || reconnect) boot();
@@ -264,6 +353,9 @@
   }
 
   function handleNativeBack(){
+    if (window.APlusAdminMode?.back()) return;
+    const authBack = document.querySelector('[data-ma-back]');
+    if (authBack) { authBack.click(); return; }
     const settings=document.querySelector('.settings-overlay');
     if(settings){const close=settings.querySelector('[data-close]');if(close)close.click();else settings.remove();return;}
     const contact=document.querySelector('.contact-overlay');

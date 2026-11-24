@@ -1,0 +1,223 @@
+:root {
+  --am-paper: #f8f6f1;
+  --am-white: #fffdfa;
+  --am-ink: #172923;
+  --am-muted: #545e55;
+  --am-line: #deded4;
+  --am-green: #23473b;
+  --am-sage: #e4ede6;
+  --am-ochre: #87652f;
+  --am-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --am-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.ma-auth, .mw {
+  box-sizing: border-box;
+  color: var(--am-ink);
+  background: var(--am-paper);
+  font: 16px/1.45 var(--am-sans);
+  isolation: isolate;
+}
+.ma-auth *, .mw * {box-sizing: border-box}
+.ma-auth [hidden], .mw [hidden] {display: none !important}
+.ma-auth :is(button, input, select), .mw :is(button, input, select, textarea) {font: inherit}
+.ma-auth :focus-visible, .mw :focus-visible {outline: 3px solid #946523; outline-offset: 3px}
+.ma-auth {
+  min-height: 100dvh;
+  display: grid;
+  align-content: start;
+  padding: env(safe-area-inset-top) 0 max(24px, env(safe-area-inset-bottom));
+}
+.ma-photo {height: clamp(148px, 24svh, 260px); overflow: hidden; background: #392f23}
+.ma-photo img {width: 100%; height: 100%; display: block; object-fit: cover; object-position: center 49%; filter: saturate(.77)}
+.ma-panel {width: min(100%, 470px); margin: 0 auto; padding: 26px clamp(20px, 6vw, 34px) 16px}
+.ma-identity {display: flex; align-items: center; gap: 10px; margin-bottom: 22px; font-weight: 680; font-size: .75rem; letter-spacing: .16em}
+.ma-identity img {width: 39px; height: 39px; object-fit: contain}
+.ma-identity small {display: block; margin-top: 2px; color: var(--am-muted); font-weight: 450; font-size: .71rem; letter-spacing: .01em}
+.ma-auth h1, .mw h1 {font: 500 clamp(2.05rem, 8.5vw, 2.7rem)/1.05 var(--am-serif); letter-spacing: -.04em; margin: 0; color: var(--am-ink)}
+.ma-description {margin: 9px 0 22px; color: var(--am-muted); font-size: .92rem}
+.ma-form {display: grid; align-items: start; gap: 12px}
+.ma-form [data-signup-step] {display: grid; gap: 12px}
+.ma-field {min-width: 0; display: grid; gap: 5px}
+.ma-field label {font-size: .82rem; font-weight: 650}
+.ma-input {display: flex; background: var(--am-white); border: 1px solid #cdcec3; border-radius: 10px; min-height: 49px}
+.ma-input:focus-within {border-color: var(--am-green)}
+.ma-input input, .ma-input select {appearance: auto; min-width: 0; width: 100%; padding: 0 12px; border: 0; color: var(--am-ink); border-radius: inherit; outline-offset: -2px; background: transparent}
+.ma-input input[aria-invalid=true] {box-shadow: inset 0 0 0 1px #9c3833}
+.ma-reveal {background: transparent; padding: 0; min-width: 46px; border: 0; color: var(--am-green)}
+.ma-reveal svg {height: 22px; width: 22px; vertical-align: middle; fill: none; stroke: currentColor; stroke-width: 1.5}
+.ma-primary, .mw-primary {background: var(--am-green); min-height: 49px; border: 1px solid transparent; border-radius: 10px; padding: 10px 15px; color: #fff; font-weight: 650 !important; cursor: pointer}
+.ma-primary:active, .mw-primary:active {background: #142f26}
+.ma-primary:disabled, .mw button:disabled {opacity: .55; cursor: wait}
+.ma-link, .ma-back {background: transparent; border: 0; color: var(--am-green); cursor: pointer; min-height: 44px; padding: 0; text-decoration: underline; text-underline-offset: 3px; font-size: .88rem !important; font-weight: 620 !important}
+.ma-back {margin: -4px 0 12px; text-decoration: none}
+.ma-forgot {justify-self: end; margin: -7px 0 -7px}
+.ma-signup-link {text-align: center; margin: 0; font-size: .89rem; color: var(--am-muted)}
+.ma-signup-link button {margin-left: 3px}
+.ma-field-error, .ma-alert {color: #842e2a; font-size: .84rem}
+.ma-alert {background: #f9e9e4; border-radius: 8px; padding: 10px 12px}
+.ma-pair {display: grid; grid-template-columns: 1fr 1fr; gap: 10px}
+.ma-hint {color: var(--am-muted); font-size: .8rem; margin: -7px 0 0}
+.ma-optional summary {color: var(--am-green); min-height: 44px; padding-top: 11px; cursor: pointer; font-size: .9rem}
+.ma-steps {display: flex; gap: 5px; margin-bottom: 5px}
+.ma-steps i {width: 28px; height: 3px; background: var(--am-line); border-radius: 5px}
+.ma-steps i:first-child, .ma-steps.ma-step-two i {background: var(--am-green)}
+.ma-social:empty {display: none}
+.ma-social .login-divider {text-align: center; font-size: .8rem; color: var(--am-muted); margin: 1px 0 10px}
+.ma-social .native-social-grid, .ma-social .official-social-grid {display: grid; gap: 8px}
+.ma-social .native-provider-button {min-height: 46px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--am-white); color: var(--am-ink); border: 1px solid #cdcec3; border-radius: 9px}
+.ma-social .native-provider-button img {width: 18px; height: 18px}
+.ma-social .native-apple-button {background: #1c2421; color: #fff}
+.ma-auth .onboarding-card h1 {margin: 10px 0}
+.ma-auth .onboarding-card form {display: grid; gap: 10px; margin: 18px 0}
+.ma-auth .onboarding-card .verification-card {border-top: 1px solid var(--am-line); padding: 14px 0}
+
+@media(min-width: 760px) {
+  .ma-auth-hero {grid-template-columns: 1fr 1fr; align-content: stretch; align-items: center; padding: 0}
+  .ma-photo {height: 100%; min-height: 100dvh}
+  .ma-panel {padding: 36px}
+}
+@media(prefers-reduced-motion: no-preference) {
+  .ma-panel, .mw-page {animation: am-in .2s ease-out}
+  @keyframes am-in {from{opacity:.55; transform:translateY(5px)} to{opacity:1;transform:none}}
+}
+
+.mw {
+  --mw-ruler: 53px;
+  min-height: 100dvh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0,1fr) auto;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  overflow: hidden;
+}
+.mw-header, .mw-nav {
+  display: flex;
+  background: var(--am-white);
+  padding-inline: max(15px, env(safe-area-inset-left)) max(15px, env(safe-area-inset-right));
+}
+.mw-header {align-items: center; justify-content: space-between; border-bottom: 1px solid var(--am-line); height: 58px}
+.mw-brand {display: flex; align-items: center; gap: 9px; font-weight: 720; letter-spacing: .17em; font-size: .77rem}
+.mw-brand img {width: 34px; height: 34px; object-fit: contain}
+.mw-role {color: var(--am-green); background: var(--am-sage); border-radius: 20px; padding: 5px 10px; font-size: .77rem; font-weight: 650}
+.mw-nav {border-top: 1px solid var(--am-line); justify-content: space-around; padding-block: 6px; gap: 2px}
+.mw-nav button {background: transparent; border: 0; color: var(--am-muted); display: grid; gap: 3px; justify-items: center; align-content: center; min-width: 44px; min-height: 49px; padding: 4px 2px; font-size: .7rem; cursor: pointer; flex: 1}
+.mw-nav button[aria-current=page] {color: var(--am-green); background: var(--am-sage); border-radius: 10px; font-weight: 715}
+.mw-nav svg {width: 21px; height: 21px}
+.mw-main {min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain}
+.mw-main:has(.mw-calendar) {overflow: hidden}
+.mw-page {max-width: 760px; margin: 0 auto; padding: 24px clamp(16px, 5vw, 32px)}
+.mw-meta {color: var(--am-muted); margin: 0 0 8px; font-size: .87rem}
+.mw-page h1 + .mw-meta {margin-top: 10px}
+.mw h2 {font: 500 1.55rem/1.12 var(--am-serif); color: var(--am-ink); margin: 0 0 8px}
+.mw h3 {margin: 12px 0 5px; font-size: 1.01rem}
+.mw-feature {background: var(--am-green); color: #fff; border: 0; border-radius: 15px; display: flex; justify-content: space-between; align-items: end; text-align: left; width: 100%; padding: 19px; margin: 24px 0 24px; cursor: pointer}
+.mw-feature small {display: block; color: #e1e9e3; font-size: .86rem}
+.mw-feature strong {display: block; font: 500 3.1rem/1 var(--am-serif); margin-top: 4px}
+.mw-feature > span + span {border-bottom: 1px solid #b3c5b9; font-size: .83rem; padding-bottom: 4px}
+.mw-feature b {padding-left: 3px}
+.mw-list {margin-top: 12px}
+.mw-row, .mw-static-row {display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; width: 100%; padding: 12px 0; min-height: 52px; background: transparent; color: var(--am-ink); border: 0; border-bottom: 1px solid var(--am-line)}
+.mw-row {cursor: pointer}
+.mw-row:active {background: var(--am-sage)}
+.mw-row span:first-child {min-width: 0}
+.mw-row strong, .mw-static-row strong {font-weight: 650; font-size: .92rem; overflow-wrap: anywhere}
+.mw-row small, .mw-static-row small {display: block; color: var(--am-muted); font-size: .8rem; line-height: 1.35; overflow-wrap: anywhere}
+.mw-row-end {display: flex; align-items: center; gap: 8px; flex-shrink: 0; max-width: 37%; text-align: right}
+.mw-row-end span {font-size: 1.22rem; color: var(--am-green)}
+.mw-static-row {display: block}
+.mw-static-row p,.mw-detail p {margin: 4px 0 8px; overflow-wrap: anywhere}
+.mw-empty,.mw-loading {color: var(--am-muted); font-size: .92rem; margin: 12px 0}
+.mw-main > .mw-loading {padding: 16px}
+.mw-secondary, .mw-danger, .mw-search button {
+  background: var(--am-white); border: 1px solid var(--am-line); color: var(--am-green);
+  border-radius: 9px; min-height: 44px; padding: 8px 12px; cursor: pointer; font-size: .88rem !important; font-weight: 645 !important;
+}
+.mw-danger {color: #842e2a}
+.mw-page > .mw-secondary:first-child {margin-bottom: 12px}
+.mw-search {display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; margin: 14px 0}
+.mw :is(.mw-search input,.mw-field input,.mw-field select,.mw-field textarea) {
+  width: 100%; min-width: 0; min-height: 45px; border: 1px solid #cdcec3; color: var(--am-ink);
+  padding: 5px 9px; background: var(--am-white); border-radius: 8px;
+}
+.mw-sheet {
+  color: var(--am-ink); width: min(100%,520px); max-width: 100%; max-height: 90dvh; background: var(--am-white);
+  border: 0; border-radius: 19px 19px 0 0; position: fixed; inset: auto 0 0; margin: 0 auto; padding: 0;
+}
+.mw-sheet::backdrop {background: #15252379}
+.mw-sheet-inner {padding: 12px 18px max(20px,env(safe-area-inset-bottom)); overflow-wrap: anywhere}
+.mw-sheet header {display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--am-line); margin-bottom: 14px}
+.mw-sheet header h2 {margin: 0}
+.mw-sheet header button {background: transparent; border: 0; width: 44px; height: 44px; cursor: pointer; color: var(--am-ink); font-size: 1.6rem}
+.mw-sheet [data-sheet-body] > :first-child {margin-top: 0}
+.mw-form,.mw-field,.mw-detail {display: grid; gap: 10px}
+.mw-field {gap: 4px; font-size: .84rem; font-weight: 650; min-width: 0}
+.mw-check {display: flex; gap: 8px; align-items: center; min-height: 44px}
+.mw-check input {width: 20px; height: 20px; accent-color: var(--am-green)}
+.mw-pair {display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px}
+.mw-form-error {color: #842e2a; background: #f9e9e4; padding: 8px; border-radius: 7px; margin: 0}
+.mw-tag {background: var(--am-sage); width: fit-content; padding: 3px 8px; border-radius: 5px; font-size: .85rem}
+.mw-toast {position: fixed; right: 12px; bottom: calc(67px + env(safe-area-inset-bottom)); background: var(--am-ink); padding: 9px 14px; color: white; border-radius: 9px; z-index: 4; max-width: calc(100% - 24px); font-size: .85rem}
+.mw-calendar {display: grid; height: 100%; grid-template-rows: auto auto auto minmax(0,1fr); position: relative; background: var(--am-white)}
+.mw-cal-top {padding: 10px 10px 7px; background: var(--am-paper); border-bottom: 1px solid var(--am-line)}
+.mw-cal-month,.mw-cal-filters {display: flex; align-items: center; gap: 6px}
+.mw-cal-month > div {flex: 1}
+.mw-cal-month h1 {font-size: 1.95rem}
+.mw-cal-month p {margin: 1px 0 0; color: var(--am-muted); font-size: .82rem}
+.mw-cal-top :is(button,select,.mw-date-button) {background: var(--am-white); color: var(--am-green); border: 1px solid var(--am-line); border-radius: 8px; min-height: 44px; padding: 5px 8px; font-size: .83rem; cursor: pointer}
+.mw-cal-top button[data-cal-shift],.mw-date-button {min-width: 44px; font-size: 1.1rem}
+.mw-date-button {position: relative; display: grid; place-items: center}
+.mw-date-button input {cursor: pointer; width: 100%; height: 100%; position: absolute; inset: 0; opacity: 0}
+.mw-date-button:focus-within {outline: 3px solid #946523}
+.mw-date-button input::-webkit-calendar-picker-indicator {position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer}
+.mw-week-picker {display: grid; grid-template-columns: 32px minmax(0,1fr) 32px; gap: 1px; margin: 7px 0}
+.mw-week-picker > button[data-cal-shift] {min-width: 30px; border-color: transparent; background: transparent; padding: 0}
+.mw-week-days {display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 1px}
+.mw-week-days button {min-width: 0; border-color: transparent; background: transparent; padding: 3px 0; display: grid; gap: 1px; justify-items: center}
+.mw-week-days button span {color: var(--am-muted); font-size: .7rem}
+.mw-week-days button[aria-pressed=true] {background: var(--am-green); color: #fff}
+.mw-week-days button[aria-pressed=true] span {color: #eef6f0}
+.mw-cal-filters select {min-width: 0}
+.mw-cal-filters select[data-cal-filter] {flex: 1}
+.mw-cal-state {grid-row: 2; font-size: .83rem; color: var(--am-muted); margin: 0; padding: 4px 12px; background: #f6eddd}
+.mw-cal-state button {margin-left: 6px; min-height: 38px; border: 0; background: transparent; color: var(--am-green); text-decoration: underline; cursor: pointer}
+.mw-cal-grid-header {grid-row: 3; display: grid; grid-template-columns: var(--mw-ruler) minmax(0,1fr); min-height: 33px; border-bottom: 1px solid var(--am-line); color: var(--am-muted); background: #faf9f5}
+.mw-cal-grid-header > div {display: grid; grid-template-columns: repeat(var(--mw-cols,1), minmax(var(--mw-col-min,0px),1fr)); overflow: hidden}
+.mw-cal-grid-header span {overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; font-size: .72rem; padding: 7px 4px}
+.mw-cal-scroll {grid-row: 4; display: grid; grid-template-columns: var(--mw-ruler) minmax(0,1fr); overflow: auto; overscroll-behavior: contain; touch-action: pan-y; scroll-anchor: none; overflow-anchor: none}
+.mw-cal-scroll:has(.mw-cal-track[style*="120px"]) {touch-action: auto}
+.mw-cal-ruler {position: sticky; left: 0; z-index: 2; height: 1785.6px; background: #faf9f5; border-right: 1px solid var(--am-line)}
+.mw-cal-ruler span {position: absolute; right: 6px; padding-top: 3px; font-size: .69rem; opacity: .8}
+.mw-cal-track {display: grid; grid-template-columns: repeat(var(--mw-cols,1),minmax(var(--mw-col-min,0px),1fr)); height: var(--mw-timeline,1785.6px)}
+.mw-cal-column {position: relative; border-right: 1px solid #e0e3da; background: #f2f2ec}
+.mw-cal-column::after {content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(to bottom,#c6cec276 0 1px,transparent 1px var(--mw-hour)); pointer-events: none}
+.mw-working {position: absolute; inset-inline: 0; background: #fcfcf8}
+.mw-cal-event {position: absolute; z-index: 1; text-align: start; overflow: hidden; padding: 2px 3px 3px 5px; border: 1px solid #becdc0; border-inline-start: 3px solid #557b66; border-radius: 5px; background: #e0ece1; color: #193e2d; cursor: pointer; display: block; line-height: 1.13 !important}
+.mw-cal-event strong,.mw-cal-event small {display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .68rem}
+.mw-cal-event strong {font-size: .78rem}
+.mw-cal-block {background: #f2e3c6; border-color: #ddc599; border-inline-start-color: #92713c; color: #523b13}
+.mw-cal-note {background: #e8e5f1; border-color: #d5cce7; border-inline-start-color: #7962a0; color: #3b2c50}
+.mw-fab {width: 49px; height: 49px; border-radius: 50%; background: var(--am-green); border: 0; color: #fff; position: absolute; bottom: 12px; right: 14px; z-index: 3; box-shadow: 0 6px 14px #1e33283b; font-size: 1.9rem !important; cursor: pointer}
+@media(max-width: 350px) {
+  .mw {--mw-ruler: 43px}
+  .mw-cal-top {padding-inline: 6px}
+  .mw-cal-filters {gap: 4px}
+  .mw-cal-top button[data-cal-shift] {min-width: 38px}
+  .mw-week-picker > button[data-cal-shift] {min-width: 28px}
+  .mw-nav {padding-inline: 5px}
+}
+@media(min-width: 740px) {
+  .mw-cal-top {padding-inline: 24px}
+  .mw-nav button {flex: 0 1 180px}
+}
+
+/* Keep signup field geometry stable when one field reports an error. */
+.ma-auth .ma-pair { align-items: start; }
+.ma-auth .ma-pair > .ma-field { align-content: start; grid-template-rows: auto minmax(49px,auto) auto; }
+.ma-auth .ma-pair .ma-input { min-height: 49px; }
+.ma-auth .ma-pair .ma-field-error { display:block; min-height:1.25em; line-height:1.25; overflow-wrap:anywhere; }
+.ma-auth .ma-pair .ma-field-error[hidden] { display:block !important; visibility:hidden; }
+.ma-auth .ma-field-error:not([hidden]) { display:block; line-height:1.35; margin-top:2px; overflow-wrap:anywhere; }
+@media(max-width:370px) {
+  .ma-auth .ma-pair { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap:8px; }
+  .ma-auth .ma-panel { padding-inline:18px; }
+}

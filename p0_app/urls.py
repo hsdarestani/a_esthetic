@@ -1,3 +1,7 @@
+from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import csrf_exempt
+from platform_app.password_reset import MobilePasswordResetView
+from . import mobile_staff_views, native_office
 from django.urls import path
 
 from . import (
@@ -26,6 +30,7 @@ urlpatterns = [
     path("api/mobile/club/", referral_views.mobile_club, name="p0_mobile_club"),
     path("api/mobile/reviews/", review_views.mobile_reviews, name="p0_mobile_reviews"),
     path("api/mobile/package-booking/", package_bridge_views.mobile_package_booking, name="p0_mobile_package_booking"),
+    path("api/mobile/internal/staff-cancel-package/", package_bridge_views.internal_staff_cancel_package, name="internal_staff_cancel_package"),
     path("api/mobile/internal/book-package-release/", package_bridge_views.internal_book_package_release, name="p0_internal_book_package_release"),
     path("api/mobile/wallet/", views.mobile_wallet, name="p0_mobile_wallet"),
     path("api/mobile/wallet/reward/<int:reward_id>/", reward_views.mobile_redeem_reward, name="p0_mobile_redeem_reward"),
@@ -37,6 +42,12 @@ urlpatterns = [
     path("api/mobile/internal/booking-notifications/", notification_views.internal_booking_notification, name="p0_internal_booking_notification"),
     path("api/mobile/internal/referral-booking/", notification_views.internal_referral_booking, name="p0_internal_referral_booking"),
     path("api/mobile/admin/", admin_mobile_views.mobile_admin_overview, name="p0_mobile_admin_overview"),
+    path("api/mobile/staff/office/<slug:operation>/", native_office.office, name="native_office"),
+    path("api/mobile/staff/office/<slug:operation>/<int:ident>/", native_office.office, name="native_office_detail"),
+    path("api/mobile/staff/session/", mobile_staff_views.session, name="mobile_staff_session"),
+    path("api/mobile/staff/points/<int:customer_id>/", mobile_staff_views.points, name="mobile_staff_points"),
+    path("api/mobile/staff/book/<path:operation>/", mobile_staff_views.book, name="mobile_staff_book"),
+    path("api/mobile/password-recovery/", never_cache(csrf_exempt(MobilePasswordResetView.as_view())), name="mobile_password_recovery"),
     path("api/mobile/doctor/", doctor_views.doctor_identity, name="p0_mobile_doctor_identity"),
     path("api/mobile/admin/customers/", admin_mobile_views.mobile_admin_customers, name="p0_mobile_admin_customers"),
     path("api/mobile/admin/customers/<int:customer_id>/", admin_mobile_views.mobile_admin_customer, name="p0_mobile_admin_customer"),

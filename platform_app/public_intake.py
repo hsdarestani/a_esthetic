@@ -127,7 +127,10 @@ def create_signed_submission(identity,answers,signature):
     with transaction.atomic():
         OfficeIntakeLock.objects.get_or_create(pk=1)
         OfficeIntakeLock.objects.select_for_update().get(pk=1)
-        user,_=_match_or_create(identity)
+        user,match_status=_match_or_create(identity)
+        if user is None and match_status == 'review':
+            from .intake_identity import queue_review
+            queue_review(identity)
         row=OfficeIntakeSubmission.objects.create(
             user=user,identity=identity,answers=answers,signature_png=signature)
     sync_submission(row)

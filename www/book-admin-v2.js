@@ -51,7 +51,7 @@
   function tabs() {
     const items = [
       ['dashboard','Übersicht'], ['calendar','Kalender'], ['bookings','Buchungen'],
-      ['customers','Kunden'], ['services','Behandlungen'], ['settings','Einstellungen']
+      ['customers','Patienten'], ['services','Behandlungen'], ['settings','Einstellungen']
     ];
     return `<div class="ba-tabs">${items.map(([key,label]) =>
       `<button type="button" class="ba-tab ${state.tab === key ? 'active' : ''}" data-ba-tab="${key}">${label}</button>`
@@ -61,7 +61,7 @@
   function shell() {
     return `<div class="book-admin-v2">
       <header class="ba-head">
-        <div><small>A+ ESTHETIC · BOOK</small><h1>Verwaltung</h1><p>Termine, Kalender, Kunden und Verfügbarkeit direkt in der App.</p></div>
+        <div><small>A+ ESTHETIC · BOOK</small><h1>Verwaltung</h1><p>Termine, Kalender, Patienten und Verfügbarkeit direkt in der App.</p></div>
         <button type="button" class="ba-back" data-ba-back>← App Admin</button>
       </header>
       ${tabs()}
@@ -79,7 +79,7 @@
   function bookingCard(item) {
     const status = item.status || 'new';
     return `<button type="button" class="ba-booking" data-ba-appointment="${esc(item.id)}">
-      <div class="ba-booking-top"><strong>${esc(item.date || '')} · ${esc(item.start || '')}<br>${esc(item.customer_name || 'Kunde')}</strong><span class="ba-badge ${esc(status)}">${esc(statusLabel(status))}</span></div>
+      <div class="ba-booking-top"><strong>${esc(item.date || '')} · ${esc(item.start || '')}<br>${esc(item.customer_name || 'Patient')}</strong><span class="ba-badge ${esc(status)}">${esc(statusLabel(status))}</span></div>
       <small>${esc(item.service_name || 'Behandlung')} · ${esc(item.staff_name || 'Behandler')}</small>
       ${item.customer_phone || item.customer_email ? `<small>${esc(item.customer_phone || item.customer_email)}</small>` : ''}
     </button>`;
@@ -90,11 +90,11 @@
       <div class="ba-sheet-card">
         <div class="ba-sheet-head"><button type="button" data-ba-close>‹</button><b>Termin bearbeiten</b><button type="button" data-ba-close>×</button></div>
         <form class="ba-sheet-body" data-ba-appointment-form="${esc(item.id)}">
-          <div class="ba-card"><h3>${esc(item.customer_name || 'Kunde')}</h3><div class="ba-muted">${esc(item.service_name || '')} · ${esc(item.staff_name || '')}</div>${item.customer_phone ? `<div class="ba-muted">${esc(item.customer_phone)}</div>` : ''}</div>
+          <div class="ba-card"><h3>${esc(item.customer_name || 'Patient')}</h3><div class="ba-muted">${esc(item.service_name || '')} · ${esc(item.staff_name || '')}</div>${item.customer_phone ? `<div class="ba-muted">${esc(item.customer_phone)}</div>` : ''}</div>
           <div class="ba-form-row"><label>Datum</label><input type="date" name="date" required value="${esc(item.date || state.date)}"></div>
           <div class="ba-form-row"><label>Uhrzeit</label><input type="time" step="900" name="time" required value="${esc(item.start || '')}"></div>
           <div class="ba-form-row"><label>Status</label><select name="status">${['new','confirmed','completed','no_show','cancelled'].map(s => `<option value="${s}" ${s === item.status ? 'selected' : ''}>${esc(statusLabel(s))}</option>`).join('')}</select></div>
-          ${item.notes_customer ? `<div class="ba-card"><h3>Kundennotiz</h3><div class="ba-muted">${esc(item.notes_customer)}</div></div>` : ''}
+          ${item.notes_customer ? `<div class="ba-card"><h3>Patientennotiz</h3><div class="ba-muted">${esc(item.notes_customer)}</div></div>` : ''}
           <button class="ba-sheet-save" type="submit">Änderungen speichern</button>
           <button class="ba-btn danger" type="button" data-ba-delete-appointment="${esc(item.id)}">Termin löschen</button>
         </form>
@@ -118,7 +118,7 @@
       target.innerHTML = `<div class="ba-stats">
         <div class="ba-stat"><b>${Number(stats.today || 0)}</b><span>Termine heute</span></div>
         <div class="ba-stat"><b>${Number(stats.new_today || 0)}</b><span>Neue Termine</span></div>
-        <div class="ba-stat"><b>${Number(stats.customers || 0)}</b><span>Kunden</span></div>
+        <div class="ba-stat"><b>${Number(stats.customers || 0)}</b><span>Patienten</span></div>
         <div class="ba-stat"><b>${Number(stats.active_services || 0)}</b><span>Behandlungen</span></div>
       </div>
       <section class="ba-card"><h2>Nächste Termine</h2><div class="ba-list">${upcoming.length ? upcoming.map(bookingCard).join('') : '<div class="ba-empty">Keine kommenden Termine.</div>'}</div></section>`;
@@ -219,7 +219,7 @@
     try {
       const data = await api(`/customers/${q ? `?q=${encodeURIComponent(q)}` : ''}`);
       const customers = list(data.customers, data.results);
-      target.innerHTML = `<section class="ba-card"><form class="ba-search" data-ba-customer-search><input name="q" value="${esc(q)}" placeholder="Name, E-Mail oder Telefon"><button class="ba-btn" type="submit">Suchen</button></form></section><div class="ba-list">${customers.length ? customers.map(c => `<button type="button" class="ba-customer" data-ba-customer="${esc(c.id)}"><span class="ba-avatar">${esc(initials(c.name))}</span><span><strong>${esc(c.name || 'Kunde')}</strong><small>${esc(c.email || c.phone || '')}</small><small>${Number(c.appointments || 0)} Termine · ${Number(c.patient_records || 0)} Akteneinträge</small></span><b>›</b></button>`).join('') : '<div class="ba-empty">Keine Kunden gefunden.</div>'}</div>`;
+      target.innerHTML = `<section class="ba-card"><form class="ba-search" data-ba-customer-search><input name="q" value="${esc(q)}" placeholder="Name, E-Mail oder Telefon"><button class="ba-btn" type="submit">Suchen</button></form></section><div class="ba-list">${customers.length ? customers.map(c => `<button type="button" class="ba-customer" data-ba-customer="${esc(c.id)}"><span class="ba-avatar">${esc(initials(c.name))}</span><span><strong>${esc(c.name || 'Patient')}</strong><small>${esc(c.email || c.phone || '')}</small><small>${Number(c.appointments || 0)} Termine · ${Number(c.patient_records || 0)} Akteneinträge</small></span><b>›</b></button>`).join('') : '<div class="ba-empty">Keine Patienten gefunden.</div>'}</div>`;
     } catch (error) { target.innerHTML = failure(error); }
   }
 
@@ -231,8 +231,8 @@
       const records = list(c.records);
       const appointments = list(data.appointments, c.appointments_list);
       remember(appointments);
-      target.innerHTML = `<button class="ba-btn" type="button" data-ba-back-customers>← Kunden</button>
-        <section class="ba-card" style="margin-top:9px"><div style="display:flex;gap:11px;align-items:center"><span class="ba-avatar">${esc(initials(c.name))}</span><div><h2 style="margin:0">${esc(c.name || 'Kunde')}</h2><div class="ba-muted">${esc(c.email || '')}${c.phone ? ` · ${esc(c.phone)}` : ''}</div></div></div></section>
+      target.innerHTML = `<button class="ba-btn" type="button" data-ba-back-customers>← Patienten</button>
+        <section class="ba-card" style="margin-top:9px"><div style="display:flex;gap:11px;align-items:center"><span class="ba-avatar">${esc(initials(c.name))}</span><div><h2 style="margin:0">${esc(c.name || 'Patient')}</h2><div class="ba-muted">${esc(c.email || '')}${c.phone ? ` · ${esc(c.phone)}` : ''}</div></div></div></section>
         <section class="ba-card"><h3>Patientenakte</h3>${records.length ? records.map(r => `<div class="ba-record"><b>${esc(r.title || 'Eintrag')}</b><small>${esc(r.kind || '')} · ${esc(r.source || '')} · ${r.shared_with_customer ? 'geteilt' : 'intern'}</small>${r.note ? `<small>${esc(r.note)}</small>` : ''}</div>`).join('') : '<div class="ba-empty">Keine Akteneinträge.</div>'}</section>
         <section class="ba-card"><h3>Terminverlauf</h3><div class="ba-list">${appointments.length ? appointments.map(bookingCard).join('') : '<div class="ba-empty">Keine Termine.</div>'}</div></section>`;
     } catch (error) { target.innerHTML = failure(error); }
