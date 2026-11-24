@@ -17,18 +17,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 9f8a1612580fd5d07ec5ba9bf92a06d896015d99
+          ref: d69443166d0f52aaf165d367d7a1fc8ba3ea2eca
           fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: reconciled-candidate-patch
           path: /tmp/release-candidate
-          run-id: 45374832341
+          run-id: 45375251158
           github-token: ${{ github.token }}
       - name: Apply exact reviewed application patch
         run: |
           set -euo pipefail
-          git apply --index /tmp/release-candidate/reconciled.patch
+          git apply --index --whitespace=fix /tmp/release-candidate/reconciled.patch
           # Keep the current release automation separate from application source.
           git restore --source=HEAD --staged --worktree .github/workflows
           git diff --cached --check
@@ -78,15 +78,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 9f8a1612580fd5d07ec5ba9bf92a06d896015d99
+          ref: d69443166d0f52aaf165d367d7a1fc8ba3ea2eca
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: reconciled-candidate-patch
           path: /tmp/release-candidate
-          run-id: 45374832341
+          run-id: 45375251158
           github-token: ${{ github.token }}
-      - run: git apply --index /tmp/release-candidate/reconciled.patch
+      - run: git apply --index --whitespace=fix /tmp/release-candidate/reconciled.patch
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
