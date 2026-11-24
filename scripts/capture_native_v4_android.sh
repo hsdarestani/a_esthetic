@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-adb install -r "${APLUS_QA_APK:-artifacts/APlus-Esthetic-V4-1.0.54-B60.apk}"
+adb install -r "${APLUS_QA_APK:-artifacts/APlus-Esthetic-V4-1.0.55-B61.apk}"
 target=${APLUS_QA_OUTPUT:-screenshots/android}
 mkdir -p "$target"
 fixtures=(qa-fixtures/*.json)
