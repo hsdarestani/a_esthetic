@@ -260,7 +260,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   async function renderPatient(){
     const p=patient.patient;
     const sections=[['overview',tr('Übersicht','Overview')],['appointments',tr('Termine','Appointments')],['records',tr('Patientenakte','Records')],['contact',tr('Kontakt','Contact')],
-      ...(admin?[['account',tr('Kundenkonto','Customer account')]]:[])];
+      ...(admin?[['account',tr('Patientenkonto','Patient account')]]:[])];
     const appointments=patient.appointments||[], records=patient.records||[];
     const timeline=appointments.map(a=>({...row('appointment:'+a.id,a.date+' · '+a.start,[a.service_name&&displayCopy(a.service_name),a.staff_name].filter(Boolean).join(' · ')),badge:a.status}));
     const recordRows=records.map(r=>({...row('record-detail:'+r.id,r.title,[r.date?.slice(0,10),r.note,r.filename].filter(Boolean).join(' · ')),badge:r.kind||''}));
@@ -269,31 +269,40 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       currentPatientAccount=null;
       try {
       let linked;
-      try{ linked=await office('patient-account/'+p.id+'/'); }
-      catch(err){
-        if(err.status!==404)throw err;
-        // Older servers can search verified links but lack the dedicated lookup.
-        // Never infer identity from a name or email match alone.
-        try{const result=await office('customers/?q='+encodeURIComponent(p.email||p.name||''));const exact=(result.items||[]).filter(x=>Number(x.book_customer_id)===Number(p.id));linked={customer_id:exact.length===1?exact[0].id:null};}catch(fallbackError){if(fallbackError.status===401)throw fallbackError;linked=null;}
-      }
-      if(!linked){accountContent={message:tr('Das Kundenkonto konnte nicht geprüft werden. Bitte erneut laden.','The customer account could not be verified. Please reload.'),actions:[row('patient-section:account',tr('Erneut laden','Reload')),row('patient-link-account',tr('Konto suchen','Find account'))]};}
+       try{ linked=await office('patient-account/'+p.id+'/'); }
+       catch(err){if(err.status!==404)throw err;linked=null;}
+       // Recover only an explicit verified Book ID, never an email/name-only match.
+       if(!linked?.customer_id){
+         const verified=new Map();
+         let successfulSearch=false;
+         for(const q of [...new Set([p.email,p.name].filter(v=>String(v||'').trim().length>=2))]){
+           try{
+             const result=await office('customers/?q='+encodeURIComponent(q));
+             successfulSearch=true;
+             for(const x of result.items||[])if(Number(x.book_customer_id)===Number(p.id)&&Number(x.id)>0)verified.set(Number(x.id),x);
+           }catch(err){if(err.status===401)throw err;}
+         }
+         if(verified.size===1)linked={customer_id:[...verified.keys()][0]};
+         else if(successfulSearch||linked)linked={customer_id:null};
+       }
+       if(!linked){accountContent={message:tr('Das Patientenkonto konnte nicht geprüft werden. Bitte erneut laden.','The patient account could not be verified. Please reload.'),actions:[row('patient-section:account',tr('Erneut laden','Reload')),row('patient-link-account',tr('Konto suchen','Find account'))]};}
       else if(!linked.customer_id){
         currentPatientAccount=null;
-        accountContent={message:tr('Das A+ Kundenkonto ist noch nicht eindeutig mit der Patientenakte verknüpft.','The A+ customer account is not yet linked to this patient record.'),
+        accountContent={message:tr('Das A+ Patientenkonto ist noch nicht eindeutig mit der Patientenakte verknüpft.','The A+ patient account is not yet linked to this patient record.'),
           actions:[row('patient-link-account',tr('Konto suchen und Identität prüfen','Find account and verify identity'))]};
       }else{
         let detail;
-        try{detail=await request('customers/'+linked.customer_id+'/',undefined,'/api/mobile/admin/');}catch(err){if(err.status!==404)throw err;accountContent={message:tr('Das verknüpfte Kundenkonto ist nicht mehr verfügbar. Bitte Identität prüfen.','The linked customer account is no longer available. Please verify identity.'),actions:[row('patient-link-account',tr('Konto prüfen','Verify account'))]};}
+        try{detail=await request('customers/'+linked.customer_id+'/',undefined,'/api/mobile/admin/');}catch(err){if(err.status!==404)throw err;accountContent={message:tr('Das verknüpfte Patientenkonto ist nicht mehr verfügbar. Bitte Identität prüfen.','The linked patient account is no longer available. Please verify identity.'),actions:[row('patient-link-account',tr('Konto prüfen','Verify account'))]};}
         if(detail?.customer){currentPatientAccount=detail.customer;
         accountContent={
           metrics:[row('',tr('A+ Punkte','A+ points'),String(detail.customer.coins)),row('',tr('Guthaben','Credit'),(detail.customer.credit_cents/100).toFixed(2)+' EUR')],
-          shortcuts:[row('patient-adjust-points',tr('Punkte korrigieren','Adjust points')),row('patient-wallet-history',tr('Wallet-Verlauf','Wallet history'))],
+          shortcuts:[row('patient-adjust-points',tr('Punkte korrigieren','Adjust points')),row('patient-wallet-history',tr('Wallet-Verlauf','Wallet history')),row('patient-invoices',tr('GOÄ Rechnungen','GOÄ invoices'))],
           sectionTitle:tr('PAKETE','PACKAGES'),
           rows:(detail.packages||[]).map(x=>({...row('',x.name,String(x.remaining_sessions)+' '+tr('Sitzungen · bis','sessions · until')+' '+x.expires_at),badge:x.status})),
           empty:tr('Keine Pakete.','No packages.'),
         };}
       }
-      }catch(err){if(err.status===401)throw err;accountContent={message:tr('Das Kundenkonto ist momentan nicht erreichbar. Bitte erneut laden.','The customer account is temporarily unavailable. Please reload.'),actions:[row('patient-section:account',tr('Erneut laden','Reload'))]};}
+      }catch(err){if(err.status===401)throw err;accountContent={message:tr('Das Patientenkonto ist momentan nicht erreichbar. Bitte erneut laden.','The patient account is temporarily unavailable. Please reload.'),actions:[row('patient-section:account',tr('Erneut laden','Reload'))]};}
     }
     return render(view(p.name,{hero:p.name,heroLabel:tr('PATIENTENAKTE','PATIENT RECORD'),subtitle:[p.email,p.phone].filter(Boolean).join(' · '),
       segments:sections.map(([id,label])=>({...row('patient-section:'+id,label),selected:patientSection===id})),
@@ -359,7 +368,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       value('date',tr('Datum (JJJJ-MM-TT)','Date (YYYY-MM-DD)'),appointment.date),
       value('start',tr('Beginn (HH:MM)','Start (HH:MM)'),appointment.start),
     ] : [
-      value('customer_id',tr('Kunde','Client'),edit?appointment.customer_id:chosenPatient?.id||'',options),
+      value('customer_id',tr('Patient','Patient'),edit?appointment.customer_id:chosenPatient?.id||'',options),
       value('staff_id',tr('Behandler','Provider'),edit?appointment.staff_id:(slot.staff_id && providersForBooking.some(p=>String(p.id)===String(slot.staff_id)) ? slot.staff_id : providersForBooking[0]?.id),optionFor(providersForBooking)),
       value('service_id',tr('Dienstleistung','Service'),edit?appointment.service_id:'',serviceOptions(servicesForBooking)),
       value('date',tr('Datum (JJJJ-MM-TT)','Date (YYYY-MM-DD)'),edit?appointment.date:(slot.date||date)),
@@ -375,7 +384,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     const p=patient.patient;
     const result=query.trim().length>=2?await office('customers/?q='+encodeURIComponent(query.trim())):{items:[]};
     const candidates=(result.items||[]).filter(x=>!x.book_customer_id||Number(x.book_customer_id)===Number(p.id));
-    return render(view(tr('Kundenkonto verknüpfen','Link customer account'),{subtitle:p.name,message:tr('Nur nach persönlicher Prüfung der Identität verknüpfen.','Link only after personally verifying the identity.'),fields:[value('query',tr('Name oder E Mail','Name or email'),query),value('customer_id',tr('Kundenkonto','Customer account'),'',[option('',tr('Auswählen','Select')),...candidates.map(x=>option(x.id,[x.name,x.email].filter(Boolean).join(' · ')))]),value('confirm',tr('Identität persönlich geprüft?','Identity verified in person?'),'no',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))])],actions:[row('patient-link-search',tr('Suchen','Search')),row('patient-link-confirm',tr('Verknüpfen','Link')),row('patient-section:account',tr('Abbrechen','Cancel'))]}));
+    return render(view(tr('Patientenkonto verknüpfen','Link patient account'),{subtitle:p.name,message:tr('Nur nach persönlicher Prüfung der Identität verknüpfen.','Link only after personally verifying the identity.'),fields:[value('query',tr('Name oder E Mail','Name or email'),query),value('customer_id',tr('Patientenkonto','Patient account'),'',[option('',tr('Auswählen','Select')),...candidates.map(x=>option(x.id,[x.name,x.email].filter(Boolean).join(' · ')))]),value('confirm',tr('Identität persönlich geprüft?','Identity verified in person?'),'no',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))])],actions:[row('patient-link-search',tr('Suchen','Search')),row('patient-link-confirm',tr('Verknüpfen','Link')),row('patient-section:account',tr('Abbrechen','Cancel'))]}));
   }
   async function blockForm(edit){
     catalog=catalog||await book('catalog/');
@@ -606,7 +615,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(admin&&id==='patient-link-account'&&patient)return await patientLinkForm(patient.patient.email||patient.patient.name||'');
       if(admin&&id==='patient-link-search'&&patient)return await patientLinkForm(fields.query||'');
       if(admin&&id==='patient-link-confirm'&&patient){
-        if(fields.confirm!=='yes'||!Number.isInteger(Number(fields.customer_id))||Number(fields.customer_id)<=0)throw new Error(tr('Kundenkonto auswählen und Identität bestätigen.','Select an account and confirm identity.'));
+        if(fields.confirm!=='yes'||!Number.isInteger(Number(fields.customer_id))||Number(fields.customer_id)<=0)throw new Error(tr('Patientenkonto auswählen und Identität bestätigen.','Select an account and confirm identity.'));
         await office('link/',{customer_id:Number(fields.customer_id),book_customer_id:patient.patient.id,confirmed_same_patient:true});
         patientSection='account';return await renderPatient();
       }
@@ -621,7 +630,21 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         await command('points/'+currentPatientAccount.id+'/',{coin_delta:delta});
         return await renderPatient();
       }
-      if(admin&&id==='patient-wallet-history'&&currentPatientAccount){
+      if(admin&&id==='patient-invoices'&&currentPatientAccount){
+         const account=currentPatientAccount;
+         let items=[],message='';
+         try{
+           const result=await office('invoices/'+account.id+'/');
+           if(!Array.isArray(result.items))throw new Error('invalid invoice response');
+           items=result.items.filter(i=>Number(i.customer_id)===Number(account.id));
+         }catch(err){if(err.status===401)throw err;message=tr('GOÄ Rechnungen momentan nicht verfügbar. Bitte erneut versuchen.','GOÄ invoices temporarily unavailable. Please try again.');}
+         const statuses={draft:tr('Entwurf','Draft'),issued:tr('Ausgestellt','Issued'),cancelled:tr('Storniert','Cancelled'),paid:tr('Bezahlt','Paid')};
+         return await render(view(tr('GOÄ Rechnungen','GOÄ invoices'),{subtitle:account.name,message,
+           rows:items.map(i=>row('',[i.number||tr('Entwurf','Draft'),i.service_date,(Number(i.total_cents)/100).toFixed(2)+' EUR'].filter(Boolean).join(' · '),statuses[i.status]||i.status)),
+           empty:message?'':tr('Keine GOÄ Rechnungen.','No GOÄ invoices.'),
+           actions:[...(message?[row('patient-invoices',tr('Erneut laden','Reload'))]:[]),row('patient-section:account',tr('Zurück zum Konto','Back to account'))]}));
+       }
+       if(admin&&id==='patient-wallet-history'&&currentPatientAccount){
         const result=await request('customers/'+currentPatientAccount.id+'/wallet-history/',undefined,'/api/mobile/admin/');
         return await render(view(tr('Wallet-Verlauf','Wallet history'),{subtitle:currentPatientAccount.name,
           rows:(result.transactions||[]).map(x=>row('',x.description||x.kind_label,[x.created_at?.slice(0,10),x.direction_label,x.coin_amount?String(x.coin_amount)+' '+tr('Punkte','points'):(x.amount_cents/100).toFixed(2)+' EUR'].filter(Boolean).join(' · '))),
@@ -771,7 +794,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(admin&&id.startsWith('invoice-pdf:'))return await showPDF('office/pdf/'+Number(id.slice(12))+'/',tr('GOÄ Entwurf','GOÄ draft'));
       if(id==='edit-appointment')return await appendForm(true);
       if(id==='save-new'||id==='save-edit'){
-        if(id==='save-new'&&(!fields.customer_id||!fields.service_id||!fields.staff_id))throw new Error(tr('Bitte Dienstleistung, Dienstleister und Kunden auswählen.','Choose a service, provider and client.'));
+        if(id==='save-new'&&(!fields.customer_id||!fields.service_id||!fields.staff_id))throw new Error(tr('Bitte Dienstleistung, Dienstleister und Patienten auswählen.','Choose a service, provider and client.'));
         const payload={operation:id==='save-new'?'create':'update',...fields};
         if(id==='save-edit'&&appointment.source_managed){
           if(!admin||!appointment.source_editable)

@@ -193,7 +193,7 @@ struct StaffNativeScreen: View {
                         HStack {
                             VStack(alignment:.leading,spacing:4) {
                                 if let selected=options.first(where:{text($0,"value")==binding.wrappedValue}) { StaffWordText(text(selected,"label")).font(.system(size:17,weight:.semibold)).foregroundColor(sbNavy); StaffWordText(label).font(.system(size:13)).foregroundColor(.gray) }
-                                else { StaffWordText(key == "service_id" ? t("Eine Dienstleistung auswählen","Choose a service") : key == "customer_id" ? t("Einen Kunden auswählen","Choose a client") : t("Auswählen","Select")).font(.system(size:16)).foregroundColor(sbNavy) }
+                                else { StaffWordText(key == "service_id" ? t("Eine Dienstleistung auswählen","Choose a service") : key == "customer_id" ? t("Patient auswählen","Choose a patient") : t("Auswählen","Select")).font(.system(size:16)).foregroundColor(sbNavy) }
                             }; Spacer(); Image(systemName:"chevron.down").font(.system(size:15,weight:.medium)).foregroundColor(.gray)
                         }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel(label)
@@ -460,9 +460,9 @@ struct StaffNativeScreen: View {
             ZStack {
                 Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { choosing=nil }
                 VStack(alignment:.leading,spacing:13) {
-                    Text(client ? t("Kunde wählen","Choose client") : text(field,"label")).font(.system(size:17,weight:.bold)).foregroundColor(sbNavy)
+                    Text(client ? t("Patient auswählen","Choose patient") : text(field,"label")).font(.system(size:17,weight:.bold)).foregroundColor(sbNavy)
                     HStack { TextField(t("Suchen...","Search..."),text:$choiceQuery).submitLabel(.search).onSubmit { if client { state.send?("calendar-client-search",state.values.merging(["_patient_query":choiceQuery]){$1}) } }; Button { if client { state.send?("calendar-client-search",state.values.merging(["_patient_query":choiceQuery]){$1}) } } label:{Image(systemName:"magnifyingglass").foregroundColor(sbNavy)} }.padding(10).background(sbSection,in:RoundedRectangle(cornerRadius:5))
-                    if client { Text(t("Neuen Kunden hinzufügen · Web","Add new client · Web")).font(.subheadline.weight(.semibold)).foregroundColor(Color(red:0,green:0.60,blue:0.78)).frame(maxWidth:.infinity).padding(.top,18).accessibilityHint(t("In der Webverwaltung verfügbar","Available in web administration")) }
+                    if client { Text(t("Neuen Patienten hinzufügen · Web","Add new patient · Web")).font(.subheadline.weight(.semibold)).foregroundColor(Color(red:0,green:0.60,blue:0.78)).frame(maxWidth:.infinity).padding(.top,18).accessibilityHint(t("In der Webverwaltung verfügbar","Available in web administration")) }
                     ScrollView {
                         VStack(spacing:0) { ForEach(Array(shown.enumerated()),id:\.offset) { _, option in
                             Button { state.values[key]=text(option,"value"); choosing=nil } label: {

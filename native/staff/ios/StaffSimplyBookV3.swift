@@ -409,7 +409,7 @@ struct StaffSimplyBookV3: View {
             .foregroundStyle(ink)
             .padding(.top, 6)
             .frame(width: max(16,width-1), height: height)
-            .background(amber)
+            .background(isNote ? Color(red: 1, green: 214.0/255, blue: 133.0/255) : kind == "block" ? Color(red: 227.0/255, green: 171.0/255, blue: 91.0/255) : amber)
             .overlay(Rectangle().stroke(.white.opacity(0.55), lineWidth: 0.6))
         }
         .buttonStyle(.plain)

@@ -27,7 +27,7 @@ globalThis.Capacitor={Plugins:{NativeStaff:{
   async pickPhoto(){return {filename:'synthetic-photo.jpg',base64:'AA=='};},
   async addListener(name,fn){assert.equal(name,'action');onAction=fn;return{remove(){onAction=null;}};},
 }}};
-let lastCalendar, lastFinancialUpdate, officeRevision='v1', sourceEditEnabled=false, accountMode='linked', invoiceRequests=0;
+let lastCalendar, lastFinancialUpdate, officeRevision='v1', sourceEditEnabled=false, accountMode='linked', invoiceRequests=0, invoiceMode='error';
 const officeSettings={company_name:'A+ Esthetic Demo',street:'Testweg 1',postal_code:'60313',city:'Frankfurt',
   email:'office@example.test',phone:'0691',tax_number:'',vat_id:'',bank_name:'',iban:'',bic:'',
   invoice_prefix:'RE',next_sequence:1};
@@ -58,10 +58,10 @@ globalThis.fetch=async(url,opts)=>{
   else if(path.endsWith('/patients/'))result={items:[{id:23,name:'Demo patient',email:'demo@example.test'}],has_more:new URL(url).searchParams.get('page')==='1'};
   else if(path.endsWith('/patient/23/'))result={patient:{id:23,name:'Demo patient',email:'demo@example.test',phone:'069000000'},appointments:[{id:46,public_id:'00000000-0000-4000-8000-000000000046',date:'2026-11-20',start:'11:30',service_name:'Consult',staff_name:'Demo clinician',status:'completed'}],records:[{id:'00000000-0000-4000-8000-000000000099',title:'Synthetic clinical note',date:'2026-11-20',note:'Synthetic record for UI testing',kind:'note',has_file:false}]};
   else if(path.endsWith('/customers/'))result={items:[{id:25,name:'Demo patient',email:'demo@example.test',book_customer_id:accountMode==='unlinked'?null:23,address:{street:'Testweg 1',postal_code:'60313',city:'Frankfurt'}}]};
-  else if(path.endsWith('/patient-account/23/')){if(accountMode==='fallback'||accountMode==='unlinked')return {ok:false,status:404};result={customer_id:25};}
+  else if(path.endsWith('/patient-account/23/')){if(accountMode==='fallback'||accountMode==='unlinked')return {ok:false,status:404};result={customer_id:accountMode==='null-verified'?null:25};}
   else if(path.endsWith('/customers/25/')){if(accountMode==='missing-detail')return {ok:false,status:404};result={customer:{id:25,name:'Demo patient',coins:240,credit_cents:1500},packages:[{id:1,name:'Synthetic package',remaining_sessions:2,expires_at:'2027-01-01',status:'active'}]};}
   else if(path.endsWith('/record-upload/'))result={ok:true,id:100};
-  else if(path.endsWith('/invoices/25/')){invoiceRequests++;return {ok:false,status:404};}
+  else if(path.endsWith('/invoices/25/')){invoiceRequests++;if(invoiceMode==='error')return {ok:false,status:404};result={items:[{id:7,customer_id:25,number:'RE-TEST',status:'issued',service_date:'2026-11-20',total_cents:4200},{id:8,customer_id:99,number:'OTHER-PATIENT',status:'issued',total_cents:9000}]};}
   else if(path.endsWith('/tariff-catalog/'))result={items:[{number:'1',de:'Beratung',en:'Consultation',points:80}],treatments:{},synthetic_reference_available:false};
   else if(path.endsWith('/quote/'))result={subtotal_cents:1072,tax_cents:204,total_cents:1276,items:[{goae_number:'1',description:'Consultation',quantity:'1',factor:'2.30',gross_cents:1276}]};
   else if(path.endsWith('/forms/'))result={items:[{id:17,name:'Synthetic patient',email:'synthetic@example.test',created_at:'2026-11-23T14:00:00Z',status:'review'}]};
@@ -207,10 +207,15 @@ capture('15-record-detail');
 await click('patient-section:account');
 assert.equal(current.metrics[0].detail,'240');
 capture('16-patient-account');
-assert.equal(invoiceRequests,0,'Office invoice request removed from account tab');
+assert.equal(invoiceRequests,0,'Invoice failure cannot break account tab');
+assert.equal(current.segments.find(s=>s.selected).label,'Patient account');
+await click('patient-invoices');assert.match(current.message,/temporarily unavailable/);
+invoiceMode='success';await click('patient-invoices');assert.equal(current.rows.length,1);assert.match(current.rows[0].label,/RE-TEST/);assert.ok(!current.rows.some(r=>r.label.includes('OTHER-PATIENT')));
+await click('patient-section:account');assert.equal(current.metrics[0].detail,'240');
+accountMode='null-verified';await click('patient-section:account');assert.equal(current.metrics[0].detail,'240');
 accountMode='fallback';await click('patient-section:contact');await click('patient-section:account');assert.equal(current.metrics[0].detail,'240');assert.equal(current.segments.find(s=>s.selected).id,'patient-section:account');
 accountMode='unlinked';await click('patient-section:account');assert.equal(current.segments.find(s=>s.selected).id,'patient-section:account');assert.ok(!current.message.includes('404'));assert.ok(current.actions.some(a=>a.id==='patient-link-account'));
-await click('patient-link-account');assert.equal(current.title,'Link customer account');assert.equal(current.fields.find(f=>f.id==='customer_id').value,'');assert.equal(current.fields.find(f=>f.id==='confirm').value,'no');
+await click('patient-link-account');assert.equal(current.title,'Link patient account');assert.equal(current.fields.find(f=>f.id==='customer_id').value,'');assert.equal(current.fields.find(f=>f.id==='confirm').value,'no');
 accountMode='missing-detail';await click('patient-section:account');assert.match(current.message,/no longer available/);assert.equal(current.segments.find(s=>s.selected).id,'patient-section:account');
 accountMode='linked';await click('patient-section:account');
 await click('patient-section:records');
