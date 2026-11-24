@@ -1,7 +1,18 @@
 // A+ Esthetic native admin calendar model. Pure transformation only; never writes Book.
 import {shiftDay, startWeek, minutes} from './calendar.mjs';
 
+// Previously approved fixed admin calendar window; identical every weekday.
+export const VISIBLE_START_HOUR = 10;
+export const VISIBLE_END_HOUR = 20;
+const WINDOW_START = VISIBLE_START_HOUR * 60;
+const WINDOW_END = VISIBLE_END_HOUR * 60;
 const clamp = (value, low, high) => Math.min(high,Math.max(low,value));
+const visibleSpan = span => {
+  if (!span) return null;
+  const lower=clamp(span.lower,WINDOW_START,WINDOW_END);
+  const upper=clamp(span.upper,WINDOW_START,WINDOW_END);
+  return upper>lower ? {lower,upper} : null;
+};
 const clock = value => /^\d\d:\d\d/.test(String(value||'')) ? String(value).slice(0,5) : '';
 const startOf = item => ({
   date: String(item.start_at || '').slice(0,10) || item.date,
@@ -69,7 +80,7 @@ export function buildNativeCalendarTimeline({date,mode='day',providers=[],servic
   for(const [index,col] of columns.entries()){
     const colEvents=[];
     for(const item of bookings){
-      const span=spanFor(item,col.date);
+      const span=visibleSpan(spanFor(item,col.date));
       if(!span || !matching(item,mode,col,provider,service))continue;
       colEvents.push({
         id:'appointment:'+item.id,kind:'appointment',date:col.date,column:index,
@@ -80,7 +91,7 @@ export function buildNativeCalendarTimeline({date,mode='day',providers=[],servic
       });
     }
     for(const item of blocks){
-      const span=spanFor(item,col.date);
+      const span=visibleSpan(spanFor(item,col.date));
       if(!span || (provider!=='all' && String(item.staff_id)!==provider) ||
         (mode==='provider' && String(item.staff_id)!==col.ref) ||
         (mode==='service' && item.service_id && String(item.service_id)!==col.ref))continue;
@@ -102,17 +113,19 @@ export function buildNativeCalendarTimeline({date,mode='day',providers=[],servic
       }
       for(const range of slot.ranges||[]){
         const lower=minutes(range.start), upper=minutes(range.end);
-        if(Number.isFinite(lower)&&Number.isFinite(upper)&&upper>lower)
-          bands.push({column:index,lower,upper});
+        if(Number.isFinite(lower)&&Number.isFinite(upper)&&upper>lower){
+          const visible=visibleSpan({lower,upper});
+          if(visible)bands.push({column:index,...visible});
+        }
       }
     }
   }
   return {
     mode,date,weekStart,week,
     columns,events,bands,appointmentCount:events.filter(x=>x.kind==='appointment').length,
-    // Preserve all-day visibility without hiding overnight appointments. Native starts
-    // near morning but can scroll above/below working hours.
-    firstHour:0,lastHour:24,provider,service,
+    // The same fixed 10:00–20:00 window for every date; server hours and
+    // actual booking availability remain authoritative for create/update.
+    firstHour:VISIBLE_START_HOUR,lastHour:VISIBLE_END_HOUR,provider,service,
     providers:providers.map(p=>({id:String(p.id),label:p.name})),
     services:services.filter(s=>s.active).map(s=>({id:String(s.id),label:s.name})),
   };

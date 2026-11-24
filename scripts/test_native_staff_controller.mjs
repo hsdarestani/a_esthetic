@@ -30,8 +30,8 @@ globalThis.fetch=async(url,opts)=>{
     lastCalendar=new URL(url).searchParams.get('start');
     result={
       appointments:[{id:44,customer_id:23,customer_name:'Synced patient',service_name:'Consult',staff_name:'Demo clinician',staff_id:1,service_id:1,
-        date:'2026-11-23',start:'09:00',end:'09:30',
-        start_at:'2026-11-23T09:00:00+01:00',end_at:'2026-11-23T09:30:00+01:00',source_managed:true,source_editable:sourceEditEnabled,status:'confirmed'}],
+        date:'2026-11-23',start:'10:00',end:'10:30',
+        start_at:'2026-11-23T10:00:00+01:00',end_at:'2026-11-23T10:30:00+01:00',source_managed:true,source_editable:sourceEditEnabled,status:'confirmed'}],
       blocks:[
         {id:90,staff_id:1,editable:false,source_managed:true,date:'2026-11-23',start:'12:00',end:'13:00',
           kind:'block',text:'Synced SimplyBook note',start_at:'2026-11-23T12:00:00+01:00',end_at:'2026-11-23T13:00:00+01:00'},
@@ -63,8 +63,8 @@ assert.equal(current.week.length,7);
 assert.equal(current.tabs.find(t=>t.selected).id,'calendar');
 assert.equal(current.timeline.mode,'day','native calendar must be a real time grid');
 assert.equal(current.timeline.columns.length,1);
-assert.equal(current.timeline.firstHour,0);
-assert.equal(current.timeline.lastHour,24);
+assert.equal(current.timeline.firstHour,10);
+assert.equal(current.timeline.lastHour,20);
 assert.equal(current.timeline.providers.length,2);
 assert.ok(current.timeline.events.some(e=>e.id==='block-info:90'));
 await click('block-info:90');

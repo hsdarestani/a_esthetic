@@ -30,7 +30,11 @@ struct StaffNativeScreen: View {
     private func text(_ item: [String: Any], _ key: String) -> String { item[key] as? String ?? "" }
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
+            if let calendar = state.screen["timeline"] as? [String: Any] {
+                StaffSimplyBookV3(state: state, model: calendar)
+            } else {
+                VStack(spacing: 0) {
             HStack {
                 Button { action("back") } label: {
                     Image(systemName: "chevron.left").font(.headline).frame(width: 44, height: 44)
@@ -42,9 +46,6 @@ struct StaffNativeScreen: View {
                     Image(systemName: "square.grid.2x2").font(.headline).frame(width: 44, height: 44)
                 }.accessibilityLabel("Home")
             }.foregroundColor(green).padding(.horizontal, 10)
-            if let calendar = state.screen["timeline"] as? [String: Any] {
-                StaffCalendarTimeline(state: state, model: calendar)
-            } else {
             VStack(alignment: .leading, spacing: 6) {
                 Text(text(state.screen, "title")).font(.system(size: 34, weight: .regular, design: .serif))
                 if !text(state.screen, "subtitle").isEmpty {
@@ -111,7 +112,6 @@ struct StaffNativeScreen: View {
                     }
                 }
             )
-            }
             HStack {
                 ForEach(Array(items("tabs").enumerated()), id: \.offset) { _, tab in
                     Button { action(text(tab, "id")) } label: {
@@ -126,7 +126,9 @@ struct StaffNativeScreen: View {
                     .accessibilityAddTraits((tab["selected"] as? Bool ?? false) ? .isSelected : [])
                 }
             }.padding(.horizontal, 8).background(card)
-        }.foregroundColor(ink).background(paper.ignoresSafeArea()).preferredColorScheme(.light)
+                }.foregroundColor(ink).background(paper.ignoresSafeArea()).preferredColorScheme(.light)
+            }
+        }
             .overlay { if privacyCover { paper.ignoresSafeArea() } }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in privacyCover = true }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in privacyCover = false }
