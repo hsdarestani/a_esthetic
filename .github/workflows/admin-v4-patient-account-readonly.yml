@@ -24,6 +24,14 @@ jobs:
             set +a
             git rev-parse HEAD || true
             systemctl show a-esthetic-mobile.service -p ActiveState -p WorkingDirectory --no-pager
+            master=$(systemctl show a-esthetic-mobile.service -p MainPID --value)
+            python3 - "$master" <<'PY'
+            import os,sys,datetime
+            pid=int(sys.argv[1]); args=open(f'/proc/{pid}/cmdline','rb').read().split(b'\0')
+            print('GUNICORN_PRELOAD_FLAG',b'--preload' in args)
+            print('MASTER_START',datetime.datetime.fromtimestamp(os.stat(f'/proc/{pid}').st_ctime).isoformat())
+            print('OFFICE_FILE_MODIFIED',datetime.datetime.fromtimestamp(os.stat('p0_app/native_office.py').st_mtime).isoformat())
+            PY
             /opt/a-esthetic-mobile/venv/bin/python manage.py shell <<'PY'
             from django.urls import resolve
             from django.db import connection, transaction
