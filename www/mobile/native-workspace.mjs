@@ -329,7 +329,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   async function appendForm(edit=false, chosenPatient=null, slot={}) {
     catalog=await book('catalog/');
     const r=await book('patients/?q='+encodeURIComponent(search));
-    const options=r.items.map(x=>option(x.id,x.name));
+    const options=r.items.map(x=>({...option(x.id,x.name),detail:[x.email,x.phone].filter(Boolean).join(' / ')}));
     if(chosenPatient&&!options.some(x=>x.value===String(chosenPatient.id)))options.unshift(option(chosenPatient.id,chosenPatient.name));
     const syncedEdit=Boolean(edit&&appointment?.source_managed&&appointment?.source_editable&&admin);
     const providersForBooking=syncedEdit
@@ -345,27 +345,27 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       value('date',tr('Datum (JJJJ-MM-TT)','Date (YYYY-MM-DD)'),appointment.date),
       value('start',tr('Beginn (HH:MM)','Start (HH:MM)'),appointment.start),
     ] : [
-      value('customer_id',tr('Patient','Patient'),edit?appointment.customer_id:chosenPatient?.id||options[0]?.value,options),
+      value('customer_id',tr('Kunde','Client'),edit?appointment.customer_id:chosenPatient?.id||'',options),
       value('staff_id',tr('Behandler','Provider'),edit?appointment.staff_id:(slot.staff_id && providersForBooking.some(p=>String(p.id)===String(slot.staff_id)) ? slot.staff_id : providersForBooking[0]?.id),optionFor(providersForBooking)),
-      value('service_id',tr('Behandlung','Treatment'),edit?appointment.service_id:servicesForBooking[0]?.id,optionFor(servicesForBooking)),
+      value('service_id',tr('Dienstleistung','Service'),edit?appointment.service_id:'',optionFor(servicesForBooking)),
       value('date',tr('Datum (JJJJ-MM-TT)','Date (YYYY-MM-DD)'),edit?appointment.date:(slot.date||date)),
       value('start',tr('Beginn (HH:MM)','Start (HH:MM)'),edit?appointment.start:(slot.start||'10:00')),
       value('notes',tr('Notiz','Notes'),edit?appointment.notes:''),
     ];
     stack.push(edit?'edit-appointment':'new-appointment');
-    return render(view(edit?tr('Termin bearbeiten','Edit appointment'):tr('Neuer Termin','New appointment'),
+    return render(view(edit?tr('Termin bearbeiten','Edit appointment'):tr('Neuen Termin buchen','Book new appointment'),
       {layout:'simplybook-form',formType:'booking',fields:syncedEdit?fields:[fields[2],fields[1],fields[0],...fields.slice(3)],actions:[row(edit?'save-edit':'save-new',tr('Speichern','Save'))]}));
   }
   let currentBlock, currentService, pendingUpload, selectedRecord;
   async function blockForm(edit){
     catalog=catalog||await book('catalog/');
-    return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Sperrzeit / Notiz','Block / note'),{layout:'simplybook-form',formType:'block',fields:[
+    return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Neue Notiz','New note'),{layout:'simplybook-form',formType:'block',fields:[
       value('staff_id',tr('Behandler','Provider'),edit?currentBlock.staff_id:catalog.providers.find(p=>!isSyncedProvider(p))?.id,optionFor(catalog.providers.filter(p=>!isSyncedProvider(p)))),
       value('date',tr('Datum','Date'),edit?currentBlock.date:date),
-      value('kind',tr('Art','Type'),edit?currentBlock.kind:'block',[option('block',tr('Sperrzeit','Blocked time')),option('note',tr('Notiz','Note'))]),
-      value('start',tr('Beginn','Start'),edit?currentBlock.start:'12:00'),
-      value('end',tr('Ende','End'),edit?currentBlock.end:'13:00'),
-      value('text',tr('Text','Text'),edit?currentBlock.text:''),
+      value('kind',tr('Zeitraum ist geblockt','Time is blocked'),edit?currentBlock.kind:'note',[option('block',tr('Sperrzeit','Blocked time')),option('note',tr('Notiz','Note'))]),
+      value('start',tr('Startzeit','Start time'),edit?currentBlock.start:'10:00'),
+      value('end',tr('Endzeit','End time'),edit?currentBlock.end:'10:15'),
+      value('text',tr('Text der Notiz','Note text'),edit?currentBlock.text:''),
     ],actions:[row(edit?'save-block-edit':'save-block-new',tr('Speichern','Save')),...(edit?[row('remove-block',tr('Eintrag löschen','Delete entry'))]:[])]}));
   }
   async function availabilityForm(id){
@@ -521,6 +521,15 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     if(/^(office$|intakes$|intake-(?:next|prev|reviews|review|link)|filter-intakes$|submission(?:-|:)|billing(?:-|:)|invoice-(?!pdf:)|add-(?:invoice|manual|material)-line|save-(?:billing-settings|verified-line|manual-line|material-line)|delete-line)/.test(id))return;
     busy=true;
     try {
+      if(id==='calendar-client-search'&&current.layout==='simplybook-form'&&current.formType==='booking'){
+        const query=String(fields._patient_query||'').trim();
+        const result=await book('patients/?q='+encodeURIComponent(query));
+        const previous=current.fields.find(f=>f.id==='customer_id');
+        const selected=previous?.options?.find(o=>o.value===fields.customer_id);
+        const options=result.items.map(x=>({...option(x.id,x.name),detail:[x.email,x.phone].filter(Boolean).join(' / ')}));
+        if(selected&&!options.some(o=>o.value===selected.value))options.unshift(selected);
+        return await render({...current,openChoice:'customer_id',choiceQuery:query,fields:current.fields.map(f=>({...f,value:fields[f.id]??f.value,...(f.id==='customer_id'?{options}: {})}))});
+      }
       for(const key of Object.keys(fields).filter(key=>dateFields.has(key))){
         const canonical=canonicalDate(fields[key]);
         if(canonical!==null)fields[key]=canonical;
@@ -736,6 +745,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(admin&&id.startsWith('invoice-pdf:'))return await showPDF('office/pdf/'+Number(id.slice(12))+'/',tr('GOÄ Entwurf','GOÄ draft'));
       if(id==='edit-appointment')return await appendForm(true);
       if(id==='save-new'||id==='save-edit'){
+        if(id==='save-new'&&(!fields.customer_id||!fields.service_id||!fields.staff_id))throw new Error(tr('Bitte Dienstleistung, Dienstleister und Kunden auswählen.','Choose a service, provider and client.'));
         const payload={operation:id==='save-new'?'create':'update',...fields};
         if(id==='save-edit'&&appointment.source_managed){
           if(!admin||!appointment.source_editable)
