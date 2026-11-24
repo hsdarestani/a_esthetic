@@ -1,0 +1,163 @@
+name: Deploy verified V4 App Office API to existing production
+on:
+  push:
+    branches: ['ops/admin-v4-production-preflight-20261124']
+    paths: ['.github/workflows/admin-v4-app-production-deploy.yml']
+permissions: {contents: read}
+concurrency:
+  group: aesthetic-app-v4-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 20m
+          script: |
+            set -euo pipefail
+            ROOT=/opt/a-esthetic-mobile
+            TARGET=ee73d00bd85cbc09520a46e1eead44fb319c2b9c
+            SERVICE=a-esthetic-mobile.service
+            PYTHON="$ROOT/venv/bin/python"
+            exec 9>"$ROOT/.admin-v4-deploy.lock"
+            flock -n 9
+            systemctl is-active --quiet "$SERVICE"
+            master=$(systemctl show "$SERVICE" -p MainPID --value)
+            ps -p "$master" -o comm= | grep -qi gunicorn
+            test "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' https://book.a-esthetic.de/api/mobile/staff/catalog/)" = 401
+            cd "$ROOT"; set -a; source "$ROOT/mobile.env"; set +a
+            "$PYTHON" manage.py shell <<'PY'
+            from pathlib import Path
+            from django.db import connection
+            assert connection.vendor=='sqlite'
+            assert Path(connection.settings_dict['NAME']).resolve()==Path('/opt/a-esthetic-mobile/db.sqlite3')
+            print('PRODUCTION_DATABASE_PATH_VERIFIED')
+            PY
+            umask 077
+            stage=$(mktemp -d "$ROOT/v4-source.XXXXXXXX")
+            backup="$ROOT/v4-backups/${{ github.run_id }}"
+            install -d -m 0700 "$backup/source" "$backup/unactivated"
+            cp -a "$ROOT/config" "$ROOT/platform_app" "$ROOT/p0_app" "$ROOT/p1_app" "$ROOT/p2_app" "$ROOT/p3_app" "$ROOT/manage.py" "$stage/"
+            ln -s "$ROOT/templates" "$stage/templates"
+            ln -s "$ROOT/static" "$stage/static"
+            cat > "$stage/runtime-manifest.txt" <<'MANIFEST'
+            platform_app/intake_identity.py|-|54c07c24200cf713be9dc2120734493f8fef81c764c13c3be6355e65a9248a75
+            platform_app/migrations/0006_native_office_identity_and_visit.py|-|bc32afa0c937740f4a3dd9c0968008926f55770e5654fee06db3dd953e8e2cd6
+            platform_app/migrations/0007_office_intake_review.py|-|e0659295a7b2505b8f2b29807977155db1cc0c36bb3e0749ec908779294bc3cd
+            platform_app/migrations/0008_goae_draft_revision.py|-|44770fe622f992e12d3b6dca811c2830033e55ce740d1816eb61f4caa71ae2ef
+            platform_app/migrations/0009_public_intake_forms.py|-|a748a78f2962734f096efe2198e104687ba265880cc60dc6f32d72f6d9ad421d
+            platform_app/models.py|eca77f0135c2505c1ad0d931c86863914d0033ad098a120f4ee4271b0c3212d4|b7b4ac9c4036bbef6a9f687f11d0f8450994c61a0ad94d8993452ba4b57128ef
+            platform_app/office_views.py|e665e26152e29b31f7195459b2b19687003f381c776cc989ac82768ad50f89ad|25d1ae3f2d4241c011f567dc96fec0b5481ad1e654fdb57644ea74af10661c8f
+            platform_app/password_reset.py|187d70a53c98ef4d64181020bbf355908aa446778094dad279461d6c92365725|a1e2ecc388ef2a429ae879587adfd555258b863b4d408f360dcb2a0cd834caa4
+            platform_app/public_intake.py|eb7a80607b94ed7d6c80a6865d4dbe146bccac6a27a497ef55f594dbd5bb0a2d|1b8fcab9d439b833670ea70276c49d3d83ff22135a0a068c616ec4f45fbbb7ab
+            p0_app/migrations/0010_package_booking_lifecycle.py|-|3f088950bed298ff6b4f1a4dbdc4245783859050f52bf011a9af16d3f9b6cff5
+            p0_app/mobile_staff_views.py|-|4083ea4c3f6b1bdce61da1b62b1df03d966e8cd672f4846802610dc076f26856
+            p0_app/models.py|9b5a876560dabd2a10ece2765ddfc8aa0c9c7ae97264299ad831b6b259412ef2|a62ad38ec35e059ea9ab0cbca0768f7ba95111adddf6f3663a410862d7a76985
+            p0_app/native_office.py|-|90f53dcac9b1d3cd9afec62921f826b1e4df4986f659d79d8f63212e8a6402b4
+            p0_app/package_bridge_views.py|732dce58b9b9319c837248937d1b7ed7f94775e969bedebcd7ced9c96a94ef1a|9845cd07f7c7da1139a058f368191d9f84f589f3c97585665eabcc947cdcde4b
+            p0_app/urls.py|56148d62a52f6ea63f6c975d33056703714d51049546938f5a67667739fac737|e79c0111a796707cef8902b3b4dc4119a5b7a6034e5f973f65a86ed6002e5191
+            MANIFEST
+            while IFS='|' read -r f oldhash newhash; do
+              case "$f" in platform_app/*.py|p0_app/*.py|config/*.py) ;; *) exit 1;; esac
+              if [ -f "$ROOT/$f" ]; then
+                actual=$(sha256sum "$ROOT/$f" | cut -d' ' -f1)
+                if [ "$oldhash" = - ]; then test "$actual" = "$newhash"; else test "$actual" = "$oldhash"; fi
+                install -d -m 0700 "$backup/source/$(dirname "$f")"
+                cp -a "$ROOT/$f" "$backup/source/$f"
+              else
+                test "$oldhash" = -
+              fi
+              mkdir -p "$stage/$(dirname "$f")"
+              curl -fsSL --max-time 30 "https://raw.githubusercontent.com/hsdarestani/a_esthetic/$TARGET/$f" -o "$stage/$f"
+              test "$(sha256sum "$stage/$f" | cut -d' ' -f1)" = "$newhash"
+            done < "$stage/runtime-manifest.txt"
+            cp "$stage/runtime-manifest.txt" "$backup/runtime-manifest.txt"
+            # The online SQLite backup API retains the live database unchanged,
+            # including any committed WAL content; this backup stays on server.
+            "$PYTHON" - "$ROOT/db.sqlite3" "$backup/app.sqlite3" <<'PY'
+            import sqlite3, sys
+            source=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True)
+            dest=sqlite3.connect(sys.argv[2])
+            try:
+                source.backup(dest)
+                assert dest.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            finally:
+                dest.close();source.close()
+            PY
+            chmod 0600 "$backup/app.sqlite3"
+            ln -s "$backup/app.sqlite3" "$stage/db.sqlite3"
+            cd "$stage"
+            "$PYTHON" manage.py check
+            "$PYTHON" manage.py shell <<'PY'
+            from django.db import connection
+            from django.db.migrations.executor import MigrationExecutor
+            executor=MigrationExecutor(connection)
+            plan=executor.migration_plan(executor.loader.graph.leaf_nodes())
+            changes={(m.app_label,m.name,backwards) for m,backwards in plan}
+            assert changes <= {('platform_app','0009_public_intake_forms',False)}, changes
+            print('STAGED_CODE_AND_SCHEMA_OK',len(changes))
+            PY
+            echo PRIVATE_DATABASE_AND_SOURCE_BACKUP_VERIFIED
+            rollback() {
+              rc=$?
+              trap - ERR
+              set +e
+              while IFS='|' read -r f oldhash newhash; do
+                if [ -f "$backup/source/$f" ]; then
+                  temp=$(mktemp "$ROOT/$(dirname "$f")/.v4-rollback.XXXXXX")
+                  cp -a "$backup/source/$f" "$temp" && mv -f "$temp" "$ROOT/$f"
+                elif [ -f "$ROOT/$f" ]; then
+                  install -d -m 0700 "$backup/unactivated/$(dirname "$f")"; mv "$ROOT/$f" "$backup/unactivated/$f"
+                fi
+              done < "$backup/runtime-manifest.txt"
+              kill -HUP "$master" 2>/dev/null
+              echo 'V4 App code rollback executed; original patient data retained'
+              exit "$rc"
+            }
+            trap rollback ERR
+            while IFS='|' read -r f oldhash newhash; do
+              temp=$(mktemp "$ROOT/$(dirname "$f")/.v4-code.XXXXXX")
+              install -m 0644 "$stage/$f" "$temp"
+              if [ -f "$ROOT/$f" ]; then chown --reference="$ROOT/$f" "$temp"; else chown --reference="$ROOT/$(dirname "$f")" "$temp"; fi
+              mv -f "$temp" "$ROOT/$f"
+            done < "$stage/runtime-manifest.txt"
+            cd "$ROOT"
+            "$PYTHON" manage.py check
+            "$PYTHON" manage.py shell <<'PY'
+            from django.db import connection
+            from django.db.migrations.executor import MigrationExecutor
+            executor=MigrationExecutor(connection)
+            changes={(m.app_label,m.name,backwards) for m,backwards in executor.migration_plan(executor.loader.graph.leaf_nodes())}
+            assert changes <= {('platform_app','0009_public_intake_forms',False)}, changes
+            # This migration is explicitly empty; no patient or invoice rows
+            # or schema columns are changed by recording its application.
+            if changes:
+                from django.db.migrations.recorder import MigrationRecorder
+                from importlib import import_module
+                migration=import_module('platform_app.migrations.0009_public_intake_forms').Migration
+                assert migration.operations==[]
+                MigrationRecorder(connection).record_applied('platform_app','0009_public_intake_forms')
+            print('LIVE_SCHEMA_READY')
+            PY
+            "$PYTHON" manage.py migrate --check --noinput
+            kill -HUP "$master"
+            healthy=0
+            for attempt in $(seq 1 15); do
+              status=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' https://app.a-esthetic.de/api/mobile/status/ || true)
+              auth=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' https://app.a-esthetic.de/api/mobile/staff/session/ || true)
+              office=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' https://app.a-esthetic.de/api/mobile/staff/office/submissions/ || true)
+              if [ "$status" = 200 ] && [ "$auth" = 401 ] && [ "$office" = 401 ]; then healthy=1; break; fi
+              sleep 2
+            done
+            test "$healthy" = 1
+            systemctl is-active --quiet "$SERVICE"
+            trap - ERR
+            printf '%s\n' "$TARGET" > "$backup/deployed-sha.txt"
+            echo APP_V4_PRODUCTION_HEALTHY
+            echo "App backend source commit $TARGET; private backup preserved; no patient, booking or invoice test writes."
