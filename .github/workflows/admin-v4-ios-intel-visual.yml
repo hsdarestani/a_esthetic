@@ -51,19 +51,19 @@ jobs:
           try:
               cmd('boot',udid,timeout=60)
               cmd('bootstatus',udid,'-b',timeout=240)
-              cmd('status_bar',udid,'override','--time','9:41','--batteryState','charged','--batteryLevel','100',check=False)
               app=pathlib.Path(os.environ['RUNNER_TEMP'])/'qa'/'App.app'
-              cmd('install',udid,str(app),timeout=90)
+              cmd('install',udid,str(app),timeout=150)
               fixtures=sorted(pathlib.Path('qa-fixtures').glob('*.json'))
               if family=='tablet':fixtures=[p for p in fixtures if p.name[:2] in ('01','02','09','13')]
               for f in fixtures:
                   env={**os.environ,'SIMCTL_CHILD_APLUS_NATIVE_QA_FIXTURE':base64.b64encode(f.read_bytes()).decode()}
-                  cmd('launch','--terminate-running-process',udid,'de.aplusesthetic.app',env=env,timeout=30)
+                  cmd('launch','--terminate-running-process',udid,'de.aplusesthetic.app',env=env,timeout=120)
                   time.sleep(2)
                   cmd('io',udid,'screenshot',str(pathlib.Path('screenshots')/(f.stem+'.png')),timeout=30)
                   print('CAPTURED',f.name,flush=True)
           finally:
-              cmd('shutdown',udid,timeout=30,check=False)
+              try: cmd('shutdown',udid,timeout=30,check=False)
+              except sp.TimeoutExpired: pass
           PY
       - uses: actions/upload-artifact@v4
         if: always()
