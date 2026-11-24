@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-adb install -r artifacts/APlus-Esthetic-V4-1.0.49-B55.apk
+adb install -r "${APLUS_QA_APK:-artifacts/APlus-Esthetic-V4-1.0.51-B57.apk}"
 mkdir -p screenshots/android
 for fixture in qa-fixtures/*.json; do
   adb shell am force-stop de.aplusesthetic.app

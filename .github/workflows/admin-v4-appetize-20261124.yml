@@ -45,8 +45,8 @@ jobs:
           /tmp/book-v4/bin/python ../scripts/run_offline_django_tests.py booking.test_mobile_staff_workspace --verbosity 1
   ios:
     needs: controller
-    runs-on: macos-latest
-    timeout-minutes: 65
+    runs-on: macos-15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -65,36 +65,11 @@ jobs:
           python3 scripts/install_native_staff.py
           grep -F 'StaffSimplyBookV3(state: state, model: calendar)' ios/App/App/AppDelegate.swift
           grep -F 'PRACTICE MANAGEMENT' ios/App/App/AppDelegate.swift
-      - name: Compile iOS Simulator build 56
+      - name: Compile iOS Simulator build 57
         run: |
           set -euo pipefail
           if [[ -d ios/App/App.xcworkspace ]]; then app=(-workspace ios/App/App.xcworkspace); else app=(-project ios/App/App.xcodeproj); fi
-          xcodebuild -quiet "${app[@]}" -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/admin-v4" CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO IPHONEOS_DEPLOYMENT_TARGET=18.0 MARKETING_VERSION=1.0.50 CURRENT_PROJECT_VERSION=56 build > "$RUNNER_TEMP/native-ios.log" 2>&1 || { grep -nE 'error:|fatal error:|unable to type-check|failed' "$RUNNER_TEMP/native-ios.log" | head -60 || true; tail -n 100 "$RUNNER_TEMP/native-ios.log"; exit 1; }
-      - name: Capture actual iOS renderer on phone and tablet (synthetic fixtures only)
-        run: |
-          set -euo pipefail
-          mkdir -p screenshots/ios-phone screenshots/ios-tablet
-          app="$RUNNER_TEMP/admin-v4/Build/Products/Debug-iphonesimulator/App.app"
-          for family in iPhone iPad; do
-            udid=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; x=json.load(sys.stdin); print(next(d["udid"] for ds in x["devices"].values() for d in ds if d["name"].startswith(sys.argv[1])))' "$family")
-            xcrun simctl boot "$udid" || true
-            xcrun simctl bootstatus "$udid" -b
-            xcrun simctl install "$udid" "$app"
-            if [[ "$family" == iPhone ]]; then
-              target=screenshots/ios-phone
-              fixtures=(qa-fixtures/*.json)
-            else
-              target=screenshots/ios-tablet
-              fixtures=(qa-fixtures/01-dashboard.json qa-fixtures/02-calendar.json qa-fixtures/09-goae-draft.json qa-fixtures/13-patient-profile.json)
-            fi
-            for fixture in "${fixtures[@]}"; do
-              payload=$(base64 -i "$fixture" | tr -d '\n')
-              SIMCTL_CHILD_APLUS_NATIVE_QA_FIXTURE="$payload" xcrun simctl launch --terminate-running-process "$udid" de.aplusesthetic.app
-              sleep 2
-              xcrun simctl io "$udid" screenshot "$target/$(basename "$fixture" .json).png"
-            done
-            xcrun simctl shutdown "$udid"
-          done
+          xcodebuild -quiet "${app[@]}" -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/admin-v4" ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO IPHONEOS_DEPLOYMENT_TARGET=18.0 MARKETING_VERSION=1.0.51 CURRENT_PROJECT_VERSION=57 build > "$RUNNER_TEMP/native-ios.log" 2>&1 || { grep -nE 'error:|fatal error:|unable to type-check|failed' "$RUNNER_TEMP/native-ios.log" | head -60 || true; tail -n 100 "$RUNNER_TEMP/native-ios.log"; exit 1; }
       - name: Package Appetize direct ZIP and verify actual source bundle
         if: always()
         run: |
@@ -102,15 +77,15 @@ jobs:
           mkdir -p artifacts
           app="$RUNNER_TEMP/admin-v4/Build/Products/Debug-iphonesimulator/App.app"
           test -s "$app/App"
-          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")" = "1.0.50"
-          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 56
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")" = "1.0.51"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 57
           test ! -e "$app/App.debug.dylib"
           grep -F 'VISIBLE_START_HOUR = 10' "$app/public/mobile/native-calendar-layout.mjs"
           grep -F 'calendar-sheet' "$app/public/mobile/native-workspace.mjs"
-          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-V4-1.0.50-B56-Appetize.zip
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-V4-1.0.51-B57-Appetize.zip
           python3 - <<'PY'
           import zipfile
-          with zipfile.ZipFile('artifacts/APlus-Esthetic-V4-1.0.50-B56-Appetize.zip') as z:
+          with zipfile.ZipFile('artifacts/APlus-Esthetic-V4-1.0.51-B57-Appetize.zip') as z:
               assert 'App.app/App' in z.namelist()
               assert 'App.app/Info.plist' in z.namelist()
               assert not z.testzip()
@@ -119,16 +94,32 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Admin-V4-iOS-visual-QA
-          path: screenshots
-          if-no-files-found: warn
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: APlus-Esthetic-V4-1.0.50-B56-Appetize
+          name: APlus-Esthetic-V4-1.0.51-B57-Appetize
           path: artifacts
           if-no-files-found: error
           retention-days: 30
+      - name: Focused iPhone visual QA (synthetic fixtures)
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          mkdir -p screenshots/ios-phone
+          app="$RUNNER_TEMP/admin-v4/Build/Products/Debug-iphonesimulator/App.app"
+          udid=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; x=json.load(sys.stdin); print(next(d["udid"] for ds in x["devices"].values() for d in ds if d["name"].startswith("iPhone")))')
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$app"
+          for fixture in qa-fixtures/01-dashboard.json qa-fixtures/03-new-appointment.json qa-fixtures/04-block.json qa-fixtures/06-working-hours.json; do
+            payload=$(base64 -i "$fixture" | tr -d '\n')
+            SIMCTL_CHILD_APLUS_NATIVE_QA_FIXTURE="$payload" xcrun simctl launch --terminate-running-process "$udid" de.aplusesthetic.app
+            sleep 3
+            xcrun simctl io "$udid" screenshot "screenshots/ios-phone/$(basename "$fixture" .json).png"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Admin-V4-B57-iOS-visual-QA
+          path: screenshots
+          if-no-files-found: warn
   android:
     needs: controller
     runs-on: ubuntu-latest
@@ -148,14 +139,14 @@ jobs:
           path: qa-fixtures
       - name: Compile and verify Android package
         env:
-          APP_VERSION_NAME: '1.0.50'
-          APP_BUILD_NUMBER: '56'
+          APP_VERSION_NAME: '1.0.51'
+          APP_BUILD_NUMBER: '57'
         run: |
           bash scripts/build-android.sh
           grep -R -F 'registerPlugin(NativeStaffPlugin.class);' android/app/src/main/java
           grep -R -F 'new NativeStaffV3Calendar(' android/app/src/main/java
           (cd android && ./gradlew assembleDebug --no-daemon)
-          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/APlus-Esthetic-V4-1.0.50-B56.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/APlus-Esthetic-V4-1.0.51-B57.apk
           git rev-parse HEAD > artifacts/source-commit.txt
       - name: Enable emulator acceleration
         run: |
@@ -179,7 +170,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: APlus-Esthetic-V4-1.0.50-B56-Android
-          path: artifacts/APlus-Esthetic-V4-1.0.50-B56.apk
+          name: APlus-Esthetic-V4-1.0.51-B57-Android
+          path: artifacts/APlus-Esthetic-V4-1.0.51-B57.apk
           if-no-files-found: error
           retention-days: 30

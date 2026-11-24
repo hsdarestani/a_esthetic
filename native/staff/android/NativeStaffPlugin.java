@@ -51,6 +51,7 @@ public final class NativeStaffPlugin extends Plugin {
     private static final int BRONZE = Color.rgb(151,111,58);
     private static final int SAND = Color.rgb(241,229,204);
     private static final int NAVY = Color.rgb(32,43,61);
+    private static final int SB_SECTION = Color.rgb(240,243,252), SB_LINE = Color.rgb(220,226,234);
     private static final int WINE = Color.rgb(98,12,14);
     private int accent=GREEN;
     private JSONObject calendarScreen;
@@ -201,6 +202,47 @@ public final class NativeStaffPlugin extends Plugin {
         choice.setContentView(wrap);choice.show();
         if(choice.getWindow()!=null){choice.getWindow().setLayout(-1,-2);choice.getWindow().setGravity(Gravity.BOTTOM);}
     }
+    private void sbDivider(LinearLayout parent){View line=new View(getContext());line.setBackgroundColor(SB_LINE);parent.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));}
+    private String sbGlyph(String key){
+        if(key.equals("service_id"))return "✦";if(key.equals("staff_id")||key.equals("customer_id"))return "♙";
+        if(key.equals("date")||key.equals("operation"))return "▦";if(key.startsWith("start")||key.startsWith("end"))return "◷";
+        return "▤";
+    }
+    private void sbChoice(String key,String title,JSONArray options,TextView control){
+        Dialog chooser=new Dialog(getActivity(),android.R.style.Theme_Material_Light_NoActionBar);
+        LinearLayout root=column();root.setBackgroundColor(Color.WHITE);
+        LinearLayout bar=row();bar.setBackgroundColor(NAVY);TextView close=text("×",24,Color.WHITE,false);close.setGravity(Gravity.CENTER);close.setOnClickListener(v->chooser.dismiss());bar.addView(close,new LinearLayout.LayoutParams(dp(48),dp(56)));
+        TextView heading=text(title,19,Color.WHITE,false);bar.addView(heading,new LinearLayout.LayoutParams(0,dp(56),1));heading.setGravity(Gravity.CENTER_VERTICAL);add(root,bar,0);
+        ScrollView scroll=new ScrollView(getContext());LinearLayout values=column();scroll.addView(values);
+        for(int i=0;i<options.length();i++){JSONObject option=options.optJSONObject(i);if(option==null)continue;String value=option.optString("value"),name=option.optString("label");TextView entry=text(name+(value.equals(choices.get(key))?"  ✓":""),17,NAVY,false);entry.setGravity(Gravity.CENTER_VERTICAL);entry.setPadding(dp(20),0,dp(20),0);values.addView(entry,new LinearLayout.LayoutParams(-1,dp(58)));entry.setOnClickListener(v->{choices.put(key,value);control.setText(name);chooser.dismiss();});entry.setFocusable(true);sbDivider(values);}
+        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));chooser.setContentView(root);chooser.show();if(chooser.getWindow()!=null){chooser.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);chooser.getWindow().setLayout(-1,-1);}
+    }
+    private void drawSimplyForm(JSONObject s){
+        boolean english="en".equals(s.optString("language")),sheet="calendar-sheet".equals(s.optString("presentation"));accent=NAVY;
+        LinearLayout root=column();root.setBackgroundColor(Color.WHITE);root.setFocusableInTouchMode(true);root.requestFocus();
+        JSONArray actions=list(s,"actions");JSONObject primary=null;for(int i=0;i<actions.length();i++){JSONObject a=actions.optJSONObject(i);if(a!=null&&a.optString("id").startsWith("save-")){primary=a;break;}}
+        String primaryId=primary==null?"":primary.optString("id");
+        LinearLayout header=row();header.setBackgroundColor(NAVY);TextView close=text("×",25,Color.WHITE,false);close.setGravity(Gravity.CENTER);close.setContentDescription(english?"Close":"Schließen");close.setOnClickListener(v->action(sheet?"calendar":"back"));header.addView(close,new LinearLayout.LayoutParams(dp(48),dp(56)));
+        TextView heading=text(s.optString("title"),19,Color.WHITE,false);heading.setGravity(Gravity.CENTER_VERTICAL);header.addView(heading,new LinearLayout.LayoutParams(0,dp(56),1));
+        if(primary!=null){TextView save=text(primary.optString("label"),15,Color.WHITE,true);save.setGravity(Gravity.CENTER);save.setPadding(dp(14),0,dp(14),0);save.setOnClickListener(v->action(primaryId));header.addView(save,new LinearLayout.LayoutParams(-2,dp(56)));}add(root,header,0);
+        ScrollView scroll=new ScrollView(getContext());LinearLayout body=column();scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        String type=s.optString("formType"), section=type.equals("booking")?(english?"Booking info":"Buchungsinformationen"):type.equals("availability")?(english?"Working hours":"Arbeitszeiten"):(english?"Calendar entry":"Kalendereintrag");
+        TextView sectionTitle=text(section,17,NAVY,false);sectionTitle.setGravity(Gravity.CENTER_VERTICAL);sectionTitle.setPadding(dp(19),0,dp(19),0);sectionTitle.setBackgroundColor(SB_SECTION);body.addView(sectionTitle,new LinearLayout.LayoutParams(-1,dp(54)));
+        if(!s.optString("message").isEmpty()){TextView msg=text(s.optString("message"),14,NAVY,false);msg.setPadding(dp(19),dp(12),dp(19),dp(12));msg.setBackgroundColor(SB_SECTION);add(body,msg,0);}
+        JSONArray fields=list(s,"fields");for(int i=0;i<fields.length();i++){
+            JSONObject f=fields.optJSONObject(i);if(f==null)continue;String key=f.optString("id"),label=f.optString("label"),kind=f.optString("kind"),value=f.optString("value");
+            LinearLayout entry=row();entry.setPadding(dp(18),dp(11),dp(18),dp(11));entry.setMinimumHeight(dp(65));TextView glyph=text(sbGlyph(key),21,NAVY,false);glyph.setGravity(Gravity.CENTER);entry.addView(glyph,new LinearLayout.LayoutParams(dp(27),dp(36)));
+            LinearLayout copy=column();copy.setPadding(dp(14),0,dp(12),0);entry.addView(copy,new LinearLayout.LayoutParams(0,-2,1));JSONArray options=f.optJSONArray("options");
+            TextView end=text(options!=null?"⌄":"✎",21,NAVY,false);end.setGravity(Gravity.CENTER);entry.addView(end,new LinearLayout.LayoutParams(dp(23),dp(36)));
+            if(options!=null){choices.put(key,value);String selected=english?"Select":"Auswählen";for(int n=0;n<options.length();n++){JSONObject o=options.optJSONObject(n);if(o!=null&&value.equals(o.optString("value"))){selected=o.optString("label");break;}}
+                TextView picker=text(selected,17,NAVY,true);add(copy,picker,4);entry.setOnClickListener(v->sbChoice(key,label,options,picker));entry.setFocusable(true);entry.setContentDescription(label+", "+selected);
+            }else{EditText input=new EditText(getContext());input.setText(value);input.setHint(label);input.setTextColor(NAVY);input.setTextSize(17);input.setTypeface(Typeface.DEFAULT,Typeface.BOLD);input.setPadding(0,0,0,0);input.setBackgroundColor(Color.TRANSPARENT);input.setContentDescription(label);input.setSingleLine(!kind.equals("multiline"));if(kind.equals("multiline"))input.setMinLines(2);add(copy,input,3);edits.put(key,input);end.setOnClickListener(v->{input.requestFocus();((android.view.inputmethod.InputMethodManager)getContext().getSystemService(Context.INPUT_METHOD_SERVICE)).showSoftInput(input,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});}
+            add(copy,text(label,13,MUTED,false),0);add(body,entry,0);sbDivider(body);
+        }
+        JSONArray rows=list(s,"rows");for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item==null)continue;TextView r=text(item.optString("label")+"  "+item.optString("detail"),15,NAVY,false);r.setPadding(dp(19),dp(16),dp(19),dp(16));add(body,r,0);sbDivider(body);}
+        for(int i=0;i<actions.length();i++){JSONObject item=actions.optJSONObject(i);if(item==null||primaryId.equals(item.optString("id")))continue;String actionId=item.optString("id");TextView link=text(item.optString("label"),15,actionId.contains("remove")?Color.RED:Color.rgb(0,153,200),true);link.setBackgroundColor(SB_SECTION);link.setGravity(Gravity.CENTER);link.setMinHeight(dp(53));link.setOnClickListener(v->action(actionId));add(body,link,0);}
+        contentView(root);
+    }
     private void draw(JSONObject s) {
         edits.clear(); choices.clear();
         if(s.optJSONObject("timeline") != null) {
@@ -216,6 +258,7 @@ public final class NativeStaffPlugin extends Plugin {
             }
             return;
         }
+        if("simplybook-form".equals(s.optString("layout"))){drawSimplyForm(s);return;}
         boolean sheet="calendar-sheet".equals(s.optString("presentation"));
         boolean english="en".equals(s.optString("language"));
         accent=sheet?NAVY:"billing".equals(s.optString("theme"))?WINE:GREEN;

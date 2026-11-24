@@ -85,7 +85,6 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     {...row('home',tr('Übersicht','Home')), icon:'square.grid.2x2'},
     {...row('calendar',tr('Kalender','Calendar')),icon:'calendar'},
     {...row('patients',tr('Patienten','Patients')),icon:'person.2'},
-    ...(admin ? [{...row('office','Office'),icon:'doc.text'}] : []),
     {...row('settings',tr('Einstellungen','Settings')),icon:'gearshape'},
   ];
   async function request(path, data, prefix='/api/mobile/staff/') {
@@ -115,7 +114,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     ...Object.fromEntries(['rows','secondaryRows'].filter(key=>content[key]).map(key=>[key,content[key].map(item=>({...item,...(item.badge?{badge:localizedStatus(item.badge)}:{})}))]))});
   async function render(screen) { if(!active)return; current=screen; await plugin.render({screen}); }
   async function screen(name, {push=true}={}) {
-    if(['home','calendar','patients','office','settings'].includes(name))activeTab=name;
+    if(['home','calendar','patients','settings'].includes(name))activeTab=name;
     if(push && stack.at(-1)!==name)stack.push(name);
     if(name==='home'){
       const r=await book('overview/');
@@ -125,10 +124,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         metrics:[row('calendar',tr('Termine heute','Appointments today'),String(r.today)),
           row('calendar',r.upcoming_count==null?tr('Nächste Termine (Auszug)','Next appointments (shown)'):tr('Bevorstehend','Upcoming'),String(r.upcoming_count??upcoming.length)),
           ...(r.patient_count==null?[]:[row('patients',tr('Kontaktprofile','Contact profiles'),String(r.patient_count))]),
-          ...(r.provider_count==null?[]:[row('calendar',tr('Behandler','Providers'),String(r.provider_count))]),
-          ...(admin&&r.intake_review_count!=null?[row('intakes',tr('Formulare zu prüfen','Forms to review'),String(r.intake_review_count))]:[])],
-        shortcuts:[row('calendar',tr('Kalender','Calendar')),row('patients',tr('Patientenakten','Patient records')),
-          ...(admin?[row('intakes',tr('Eingereichte Formulare','Submitted forms')),row('billing-search',tr('GOÄ Rechnung','GOÄ invoice'))]:[])],
+          ...(r.provider_count==null?[]:[row('calendar',tr('Behandler','Providers'),String(r.provider_count))])],
+        shortcuts:[row('calendar',tr('Kalender','Calendar')),row('patients',tr('Patientenakten','Patient records'))],
         sectionTitle:tr('NÄCHSTE TERMINE','NEXT APPOINTMENTS'),
         rows:upcoming.map(a=>({...row('appointment:'+a.id,a.customer_name,[a.date,a.start,a.service_name,a.staff_name].filter(Boolean).join(' · ')),badge:a.status||''})),
         secondaryTitle:tr('HEUTIGER PRAXISPLAN','TODAY’S PRACTICE SCHEDULE'),
@@ -192,12 +189,6 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       return render(view(tr('Behandlungen','Treatments'),{rows:catalog.services.map(s=>row('service:'+s.id,s.name,
         String(s.duration_minutes)+' min · '+String(s.buffer_minutes)+' min '+tr('Puffer','buffer')+
         (isSyncedService(s)?' · SimplyBook':'')))}));
-    }
-    if(name==='office' && admin){
-      return render(view('Office',{subtitle:tr('Formulare und private Abrechnung','Forms and private billing'),rows:[
-        row('intakes',tr('Eingereichte Formulare','Submitted forms'),tr('Anamnese · Unterschrift · Zuordnung','Medical history · Signature · Identity')),
-        row('billing-search',tr('GOÄ Rechnungserstellung','GOÄ invoicing'),tr('Rechner · Entwürfe · PDF','Calculator · Drafts · PDF')),
-      ]}));
     }
     if(name==='intakes'&&admin){
       activeTab='office';
@@ -363,12 +354,12 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     ];
     stack.push(edit?'edit-appointment':'new-appointment');
     return render(view(edit?tr('Termin bearbeiten','Edit appointment'):tr('Neuer Termin','New appointment'),
-      {fields,actions:[row(edit?'save-edit':'save-new',tr('Speichern','Save'))]}));
+      {layout:'simplybook-form',formType:'booking',fields:syncedEdit?fields:[fields[2],fields[1],fields[0],...fields.slice(3)],actions:[row(edit?'save-edit':'save-new',tr('Speichern','Save'))]}));
   }
   let currentBlock, currentService, pendingUpload, selectedRecord;
   async function blockForm(edit){
     catalog=catalog||await book('catalog/');
-    return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Sperrzeit / Notiz','Block / note'),{fields:[
+    return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Sperrzeit / Notiz','Block / note'),{layout:'simplybook-form',formType:'block',fields:[
       value('staff_id',tr('Behandler','Provider'),edit?currentBlock.staff_id:catalog.providers.find(p=>!isSyncedProvider(p))?.id,optionFor(catalog.providers.filter(p=>!isSyncedProvider(p)))),
       value('date',tr('Datum','Date'),edit?currentBlock.date:date),
       value('kind',tr('Art','Type'),edit?currentBlock.kind:'block',[option('block',tr('Sperrzeit','Blocked time')),option('note',tr('Notiz','Note'))]),
@@ -385,7 +376,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     const current=data.availability.find(r=>r.staff_id===provider.id&&r.date===date);
     const ranges=current?.ranges||[];
     if(isSyncedProvider(provider)){
-      return render(view(tr('Arbeitszeit – SimplyBook','Working hours – SimplyBook'),{
+      return render(view(tr('Arbeitszeit – SimplyBook','Working hours – SimplyBook'),{layout:'simplybook-form',formType:'availability',
         subtitle:provider.name+' · '+date,
         message:tr('Diese Arbeitszeiten werden aus SimplyBook synchronisiert. Bitte direkt in der SimplyBook-Verwaltung ändern. Die Änderungen werden anschließend übernommen.',
                    'These working hours are synced from SimplyBook. Change them in SimplyBook administration; they will sync here.'),
@@ -396,7 +387,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           row('calendar',tr('Zurück zum Kalender','Back to calendar'))],
       }));
     }
-    return render(view(tr('Arbeitszeit','Working hours'),{subtitle:date,fields:[
+    return render(view(tr('Arbeitszeit','Working hours'),{layout:'simplybook-form',formType:'availability',subtitle:date,fields:[
       value('staff_id',tr('Behandler','Provider'),provider.id,optionFor(catalog.providers)),value('date',tr('Datum','Date'),date),
       value('operation',tr('Gültigkeit','Scope'),'daily',[option('daily',tr('Diesen Tag','This day')),option('weekly',tr('Wöchentlich','Weekly')),option('reset',tr('Tagesausnahme zurücksetzen','Reset override'))]),
       value('closed',tr('Geschlossen','Closed'),ranges.length?'no':'yes',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))]),
@@ -526,6 +517,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   async function handle(event) {
     if(!active || busy) return;
     const id=event.id, fields={...(event.values||{})};
+    // Office is deliberately unavailable in the mobile workspace; retain web/API business logic.
+    if(/^(office$|intakes$|intake-(?:next|prev|reviews|review|link)|filter-intakes$|submission(?:-|:)|billing(?:-|:)|invoice-(?!pdf:)|add-(?:invoice|manual|material)-line|save-(?:billing-settings|verified-line|manual-line|material-line)|delete-line)/.test(id))return;
     busy=true;
     try {
       for(const key of Object.keys(fields).filter(key=>dateFields.has(key))){
@@ -540,9 +533,9 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         if(back.startsWith('patient:'))return await showPatient(Number(back.split(':')[1]));
         if(back.startsWith('billing:'))return await showBilling(Number(back.split(':')[1]));
         if(back.startsWith('appointment:'))return await showAppointment(Number(back.split(':')[1]));
-        return await screen(['home','calendar','patients','office','intakes','intake-reviews','identity-review','billing-search','billing-settings','settings','services'].includes(back)?back:'home');
+        return await screen(['home','calendar','patients','identity-review','settings','services'].includes(back)?back:'home');
       }
-      if(['home','calendar','patients','office','intakes','intake-reviews','identity-review','billing-search','billing-settings','settings','services'].includes(id)){
+      if(['home','calendar','patients','identity-review','settings','services'].includes(id)){
         if(id==='patients'||id==='billing-search')search='';
         if(id==='patients')patientPage=1;
         if(id==='intakes'){intakeSearch='';intakeStatus='';intakePage=1;intakeFrom='';intakeTo='';}

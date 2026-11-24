@@ -35,6 +35,10 @@ struct StaffNativeScreen: View {
     private let bronze = Color(red: 151/255, green: 111/255, blue: 58/255)
     private let sand = Color(red: 241/255, green: 229/255, blue: 204/255)
     private var modal: Bool { text(state.screen, "presentation") == "calendar-sheet" }
+    private var simplyForm: Bool { text(state.screen,"layout") == "simplybook-form" }
+    private let sbNavy = Color(red:32/255,green:43/255,blue:61/255)
+    private let sbSection = Color(red:240/255,green:243/255,blue:252/255)
+    private let sbLine = Color(red:220/255,green:226/255,blue:234/255)
     private var billing: Bool { text(state.screen, "theme") == "billing" }
     private var accent: Color { modal ? Color(red: 32/255,green: 43/255,blue: 61/255) : billing ? Color(red: 98/255,green: 12/255,blue: 14/255) : green }
     private var english: Bool { text(state.screen, "language") == "en" }
@@ -47,6 +51,8 @@ struct StaffNativeScreen: View {
         Group {
             if let calendar = state.screen["timeline"] as? [String: Any] {
                 StaffSimplyBookV3(state: state, model: calendar)
+            } else if simplyForm {
+                simplyBookForm
             } else if modal, let calendar = state.calendarScreen["timeline"] as? [String: Any] {
                 GeometryReader { geometry in
                     ZStack(alignment: .bottom) {
@@ -67,6 +73,71 @@ struct StaffNativeScreen: View {
             .overlay { if privacyCover { paper.ignoresSafeArea() } }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in privacyCover = true }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in privacyCover = false }
+    }
+
+    private func sbIcon(_ key: String) -> String {
+        if key == "service_id" { return "sparkles" }
+        if key == "staff_id" { return "person.crop.rectangle" }
+        if key == "customer_id" { return "person" }
+        if key == "date" { return "calendar" }
+        if key.hasPrefix("start") || key.hasPrefix("end") { return "clock" }
+        if key == "closed" { return "lock" }
+        if key == "operation" { return "calendar.badge.clock" }
+        return "note.text"
+    }
+    private var simplyBookForm: some View {
+        let primary = items("actions").first(where: { text($0,"id").hasPrefix("save-") })
+        let type = text(state.screen,"formType")
+        return VStack(spacing:0) {
+            HStack(spacing:12) {
+                Button { action(modal ? "calendar" : "back") } label: { Image(systemName:"xmark").font(.system(size:18,weight:.medium)).frame(width:42,height:48) }.accessibilityLabel(t("Schließen","Close"))
+                Text(text(state.screen,"title")).font(.system(size:19,weight:.medium)).lineLimit(2).minimumScaleFactor(0.78)
+                Spacer(minLength:4)
+                if let primary { Button { action(text(primary,"id")) } label: { Text(text(primary,"label")).font(.system(size:15,weight:.bold)).padding(.horizontal,13).frame(minHeight:48) } }
+            }.foregroundColor(.white).padding(.horizontal,5).background(sbNavy)
+            ScrollView {
+                VStack(alignment:.leading,spacing:0) {
+                    Text(type == "booking" ? t("Buchungsinformationen","Booking info") : type == "availability" ? t("Arbeitszeiten","Working hours") : t("Kalendereintrag","Calendar entry"))
+                        .font(.system(size:17)).foregroundColor(sbNavy).padding(.horizontal,19).frame(maxWidth:.infinity,minHeight:54,alignment:.leading).background(sbSection)
+                    if !text(state.screen,"message").isEmpty { Text(text(state.screen,"message")).font(.footnote).foregroundColor(sbNavy).padding(16).frame(maxWidth:.infinity,alignment:.leading).background(sbSection) }
+                    ForEach(Array(items("fields").enumerated()),id:\.offset) { _, field in sbField(field) }
+                    ForEach(Array(items("rows").enumerated()),id:\.offset) { _, item in
+                        Text(text(item,"label") + "  " + text(item,"detail")).font(.subheadline).padding(16).frame(maxWidth:.infinity,alignment:.leading)
+                        Divider()
+                    }
+                    ForEach(Array(items("actions").filter { text($0,"id") != (primary.map { text($0,"id") } ?? "") }.enumerated()),id:\.offset) { _, item in
+                        Button { action(text(item,"id")) } label: { Text(text(item,"label")).font(.system(size:15,weight:.semibold)).foregroundColor(text(item,"id").contains("remove") ? .red : Color(red:0,green:0.60,blue:0.78)).frame(maxWidth:.infinity,minHeight:53).background(sbSection) }.buttonStyle(.plain)
+                    }
+                }.background(Color.white)
+            }.background(Color.white)
+        }.background(Color.white).preferredColorScheme(.light)
+    }
+    private func sbField(_ field:[String:Any]) -> some View {
+        let key=text(field,"id"), kind=text(field,"kind"), label=text(field,"label")
+        let binding=Binding(get:{state.values[key] ?? ""},set:{state.values[key]=$0})
+        return VStack(spacing:0) {
+            HStack(alignment:.center,spacing:15) {
+                Image(systemName:sbIcon(key)).font(.system(size:19,weight:.regular)).foregroundColor(sbNavy).frame(width:25)
+                if let options=field["options"] as? [[String:Any]] {
+                    Button { choosing=key } label: {
+                        HStack {
+                            VStack(alignment:.leading,spacing:4) {
+                                Text(options.first(where:{text($0,"value")==binding.wrappedValue}).map{text($0,"label")} ?? t("Auswählen","Select")).font(.system(size:17,weight:.semibold)).foregroundColor(sbNavy).multilineTextAlignment(.leading)
+                                Text(label).font(.system(size:13)).foregroundColor(.gray)
+                            }; Spacer(); Image(systemName:"chevron.down").font(.system(size:15,weight:.medium)).foregroundColor(.gray)
+                        }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityLabel(label)
+                } else {
+                    VStack(alignment:.leading,spacing:4) {
+                        if kind == "multiline" { TextEditor(text:binding).frame(minHeight:58).font(.system(size:16)).scrollContentBackground(.hidden).accessibilityLabel(label) }
+                        else { TextField(label,text:binding).font(.system(size:17,weight:.semibold)).keyboardType(keyboardType(kind)).autocorrectionDisabled().accessibilityLabel(label) }
+                        Text(label).font(.system(size:13)).foregroundColor(.gray)
+                    }.foregroundColor(sbNavy)
+                    Image(systemName:"pencil").font(.system(size:18)).foregroundColor(sbNavy)
+                }
+            }.padding(.horizontal,19).padding(.vertical,12).frame(minHeight:65).background(Color.white)
+            Rectangle().fill(sbLine).frame(height:1)
+        }
     }
 
     private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -287,7 +358,21 @@ struct StaffNativeScreen: View {
     @ViewBuilder private var choiceOverlay: some View {
         if let key = choosing, let field = items("fields").first(where: { text($0,"id") == key }),
            let options = field["options"] as? [[String: Any]] {
-            ZStack(alignment:.bottom) {
+            if simplyForm {
+                VStack(spacing:0) {
+                    HStack(spacing:12) { Button { choosing=nil } label: { Image(systemName:"xmark").font(.system(size:18)).frame(width:42,height:48) }; Text(text(field,"label")).font(.system(size:19,weight:.medium)); Spacer() }.foregroundColor(.white).padding(.horizontal,5).background(sbNavy)
+                    ScrollView {
+                        VStack(spacing:0) {
+                            ForEach(Array(options.enumerated()),id:\.offset) { _, option in
+                                Button { state.values[key]=text(option,"value"); choosing=nil } label: {
+                                    HStack { Text(text(option,"label")).font(.system(size:17)); Spacer(); if state.values[key]==text(option,"value") { Image(systemName:"checkmark").foregroundColor(Color(red:0,green:0.6,blue:0.78)) } }.foregroundColor(sbNavy).padding(.horizontal,19).frame(minHeight:58).contentShape(Rectangle())
+                                }.buttonStyle(.plain)
+                                Rectangle().fill(sbLine).frame(height:1)
+                            }
+                        }
+                    }
+                }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.top).background(Color.white)
+            } else { ZStack(alignment:.bottom) {
                 Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { choosing=nil }
                 VStack(alignment:.leading,spacing:10) {
                     HStack { Text(text(field,"label")).font(.title2.weight(.semibold)); Spacer(); Button { choosing=nil } label: { Image(systemName:"xmark.circle.fill").font(.title2).foregroundColor(muted) } }
@@ -306,7 +391,7 @@ struct StaffNativeScreen: View {
                         }
                     }.frame(maxHeight:430)
                 }.padding(20).frame(maxWidth:680).background(paper,in:RoundedRectangle(cornerRadius:24)).padding(.bottom,8)
-            }
+            } }
         }
     }
 
