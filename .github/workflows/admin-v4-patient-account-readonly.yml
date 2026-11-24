@@ -25,6 +25,8 @@ jobs:
             git rev-parse HEAD || true
             systemctl show a-esthetic-mobile.service -p ActiveState -p WorkingDirectory --no-pager
             master=$(systemctl show a-esthetic-mobile.service -p MainPID --value)
+            systemctl show a-esthetic-mobile.service -p ExecStart --value | grep -q -- '--preload' && echo UNIT_PRELOAD_TRUE || echo UNIT_PRELOAD_NOT_SET
+            ps --ppid "$master" -o lstart=,comm= | awk '/gunicorn/ {print "WORKER_START",$1,$2,$3,$4,$5}'
             python3 - "$master" <<'PY'
             import os,sys,datetime
             pid=int(sys.argv[1]); args=open(f'/proc/{pid}/cmdline','rb').read().split(b'\0')
