@@ -1,0 +1,73 @@
+name: V4 visual QA from exact prebuilt iOS Appetize package
+on:
+  push:
+    branches: ['ops/admin-v4-production-preflight-20261124']
+    paths: ['.github/workflows/admin-v4-ios-prebuilt-visual.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  visual:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [phone, tablet]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: APlus-Esthetic-V4-1.0.49-B55-Appetize
+          path: artifacts
+          run-id: 45434593094
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-v4-synthetic-fixtures
+          path: qa-fixtures
+          run-id: 45434415378
+          github-token: ${{ github.token }}
+      - name: Extract and capture the exact native package on fresh simulator
+        env:
+          QA_FAMILY: ${{ matrix.family }}
+        run: |
+          set -euo pipefail
+          test "$(cat artifacts/source-commit.txt)" = ee73d00bd85cbc09520a46e1eead44fb319c2b9c
+          ditto -x -k artifacts/APlus-Esthetic-V4-1.0.49-B55-Appetize.zip "$RUNNER_TEMP/qa"
+          mkdir -p screenshots
+          python3 - <<'PY'
+          import subprocess as sp, json, os, pathlib, base64, time
+          def cmd(*args, timeout=60, output=False, check=True, env=None):
+              return sp.run(['xcrun','simctl',*args],check=check,timeout=timeout,env=env,text=True,stdout=sp.PIPE if output else None).stdout
+          family=os.getenv('QA_FAMILY')
+          runtimes=json.loads(cmd('list','runtimes','-j',output=True))['runtimes']
+          runtime=next(x['identifier'] for x in runtimes if x['isAvailable'] and x['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS'))
+          types=json.loads(cmd('list','devicetypes','-j',output=True))['devicetypes']
+          prefix='iPhone' if family=='phone' else 'iPad Pro'
+          preferred='iPhone 16 Pro Max' if family=='phone' else 'iPad Pro 13-inch (M4)'
+          device=next((d for d in types if d['name']==preferred),None) or next(d for d in types if d['name'].startswith(prefix))
+          udid=cmd('create','APlus V4 '+family,device['identifier'],runtime,output=True).strip()
+          print('SIMULATOR_CREATED',family,device['name'],flush=True)
+          try:
+              cmd('boot',udid,timeout=60)
+              cmd('bootstatus',udid,'-b',timeout=240)
+              cmd('status_bar',udid,'override','--time','9:41','--batteryState','charged','--batteryLevel','100',check=False)
+              app=pathlib.Path(os.environ['RUNNER_TEMP'])/'qa'/'App.app'
+              cmd('install',udid,str(app),timeout=90)
+              fixtures=sorted(pathlib.Path('qa-fixtures').glob('*.json'))
+              if family=='tablet':fixtures=[p for p in fixtures if p.name[:2] in ('01','02','09','13')]
+              for f in fixtures:
+                  env={**os.environ,'SIMCTL_CHILD_APLUS_NATIVE_QA_FIXTURE':base64.b64encode(f.read_bytes()).decode()}
+                  cmd('launch','--terminate-running-process',udid,'de.aplusesthetic.app',env=env,timeout=30)
+                  time.sleep(2)
+                  cmd('io',udid,'screenshot',str(pathlib.Path('screenshots')/(f.stem+'.png')),timeout=30)
+                  print('CAPTURED',f.name,flush=True)
+          finally:
+              cmd('shutdown',udid,timeout=30,check=False)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Admin-V4-iOS-prebuilt-${{ matrix.family }}-visual-QA
+          path: screenshots
+          if-no-files-found: warn
