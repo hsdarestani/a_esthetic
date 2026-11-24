@@ -1,0 +1,54 @@
+name: Inspect production routing and SimplyBook readiness (read only)
+on:
+  push:
+    branches: ['release/integration-qa-20261124']
+    paths: ['.github/workflows/release-live-routing-readonly-20261124.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 4m
+          script: |
+            set -euo pipefail
+            for f in a-esthetic-app.conf a-esthetic-office.conf aesthetic-book.conf; do
+              echo "VHOST $f"
+              test -f "/etc/nginx/sites-enabled/$f"
+              grep -E '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:[0-9]+' "/etc/nginx/sites-enabled/$f" | sed -E 's/.*http:\/\/127\.0\.0\.1:([0-9]+).*/\1/' | sort -u
+            done
+            for p in 8017 8018 8019 8770 8771 8772; do
+              if ss -ltn "( sport = :$p )" | grep -q LISTEN; then echo "PORT_IN_USE $p"; fi
+            done
+            for unit in $(systemctl list-units --type=service --state=running --no-legend 'aesthetic-*' 'a-esthetic-*' | awk '{print $1}'); do
+              echo "UNIT $unit"
+              systemctl show "$unit" -p WorkingDirectory -p ActiveState --no-pager
+            done
+            for dir in /opt/a-esthetic-mobile /opt/aesthetic-book; do
+              test -x "$dir/venv/bin/python"
+              "$dir/venv/bin/python" -c 'import PIL._imaging, django; print("VENV_OK",django.get_version())' || echo "VENV_CHECK_FAILED $dir"
+            done
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            p=Path('/etc/aesthetic-book.env')
+            keys={'SIMPLYBOOK_COMPANY_LOGIN','SIMPLYBOOK_USER_LOGIN','SIMPLYBOOK_API_USER_KEY','SIMPLYBOOK_USER_PASSWORD','SIMPLYBOOK_ADMIN_WRITEBACK_ENABLED','AESTHETIC_MEMBER_API_URL'}
+            found={}
+            for line in p.read_text().splitlines():
+                m=re.match(r'^\s*(?:export\s+)?([A-Z_]+)=(.*)$',line)
+                if m and m[1] in keys:
+                    found[m[1]]=bool(m[2].strip().strip('"').strip("'"))
+            for key in sorted(keys):
+                print('CONFIG_PRESENT',key,found.get(key,False))
+            print('APP_SQLITE_EXISTS',Path('/opt/a-esthetic-mobile/db.sqlite3').is_file())
+            PY
+            for u in https://book.a-esthetic.de/api/health/ https://book.a-esthetic.de/api/mobile/staff/catalog/ https://app.a-esthetic.de/api/mobile/staff/session/ https://office.a-esthetic.de/office/; do
+              echo "HTTP $u $(curl -sS --max-time 12 -o /dev/null -w '%{http_code}' "$u")"
+            done
