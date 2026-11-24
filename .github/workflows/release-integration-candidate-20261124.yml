@@ -44,6 +44,14 @@ jobs:
           for filename in config['noops']:
               p=Path(filename); data=p.read_text(); assert data.count('    operations = [')==1,filename
               p.write_text(data.split('    operations = [')[0]+'    # Equivalent schema already provided by the deployed web intake migration.\n    operations = []\n')
+          # A signed ambiguous public submission remains private and must also be
+          # available to the native admin identity-review workflow.
+          p=Path('platform_app/public_intake.py')
+          data=p.read_text()
+          old="        user,_=_match_or_create(identity)\n"
+          new="        user,match_status=_match_or_create(identity)\n        if user is None and match_status == 'review':\n            from .intake_identity import queue_review\n            queue_review(identity)\n"
+          assert data.count(old)==1
+          p.write_text(data.replace(old,new))
           subprocess.run(['git','add','-A'],check=True)
           assert not subprocess.check_output(['git','diff','--name-only','--diff-filter=U'],text=True)
           print('CANDIDATE_CONFLICTS_RESOLVED')
@@ -66,3 +74,52 @@ jobs:
         with:
           name: reconciled-candidate-patch
           path: /tmp/release-candidate/
+
+  ios-appetize:
+    needs: candidate
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: reconciled-candidate-patch
+          path: /tmp/release-candidate
+      - name: Apply the exact regression-tested candidate
+        run: git apply --index /tmp/release-candidate/reconciled.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate and validate native app
+        run: |
+          set -euo pipefail
+          npm pkg delete scripts.capacitor:sync:after
+          npm install --no-audit --no-fund
+          npx cap add ios
+          python3 scripts/configure_native_camera_permissions.py
+          python3 scripts/install_native_staff.py
+          node scripts/test_native_staff_controller.mjs
+          node scripts/test_native_calendar_layout.mjs
+      - name: Compile unsigned iOS Simulator app
+        run: |
+          set -euo pipefail
+          if [[ -d ios/App/App.xcworkspace ]]; then
+            app=(-workspace ios/App/App.xcworkspace)
+          else
+            app=(-project ios/App/App.xcodeproj)
+          fi
+          xcodebuild "${app[@]}" -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/esthetic-integrated" CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/ios.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/ios.log"; exit 1; }
+      - name: Package Appetize simulator build
+        run: |
+          mkdir -p artifacts
+          app="$RUNNER_TEMP/esthetic-integrated/Build/Products/Debug-iphonesimulator/App.app"
+          test -s "$app/App"
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-Integrated-20261124-Appetize-iOS.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-Esthetic-Integrated-20261124-Appetize-iOS
+          path: artifacts/APlus-Esthetic-Integrated-20261124-Appetize-iOS.zip
+          if-no-files-found: error
+          retention-days: 14
