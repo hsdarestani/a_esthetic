@@ -19,10 +19,22 @@ jobs:
           command_timeout: 4m
           script: |
             set -uo pipefail
-            echo 'NGINX_CONFIG_ROUTE_SUMMARY'
-            nginx -T 2>/dev/null | awk '/^# configuration file /{f=$0} /server_name.*(app\.a-esthetic\.de|office\.a-esthetic\.de|book\.a-esthetic\.de)/{print f; print $0} /^[[:space:]]*proxy_pass[[:space:]]+http:\/\/127\.0\.0\.1:[0-9]+/{print f; print $0}' | head -n 160 || true
-            ls -1 /etc/nginx/sites-enabled || true
-            for p in 8017 8018 8019 8770 8771 8772; do
+            echo 'ESTHETIC_ROUTE_DETAILS'
+            for f in a-esthetic-app.conf a-esthetic-office.conf aesthetic-book.conf a-esthetic-connected.conf; do
+              echo "FILE $f"
+              awk '/server_name|^[[:space:]]*location[[:space:]]|^[[:space:]]*proxy_pass[[:space:]]|^[[:space:]]*root[[:space:]]|^[[:space:]]*alias[[:space:]]/{print}' "/etc/nginx/sites-enabled/$f"
+            done
+            echo 'SIMPLYBOOK_IMPORT_UNIT_METADATA'
+            systemctl list-unit-files --no-legend | grep -Ei 'simplybook|aesthetic.*sync|aesthetic.*import' || true
+            for unit in $(systemctl list-unit-files --no-legend | awk 'tolower($1) ~ /simplybook|aesthetic.*sync|aesthetic.*import/ && $1 ~ /\.service$/ {print $1}'); do
+              echo "IMPORT_UNIT $unit"
+              systemctl show "$unit" -p EnvironmentFiles -p WorkingDirectory -p User -p ActiveState --no-pager
+            done
+            for dir in /opt/a-esthetic-mobile /opt/aesthetic-book; do
+              echo "DIR $dir"
+              stat -c '%a %U:%G %n' "$dir" "$dir/releases" "$dir/venv" 2>/dev/null || true
+            done
+            for p in 8017 8018 8019 8020 8770 8771 8772 8773 8774; do
               if ss -ltn "( sport = :$p )" | grep -q LISTEN; then echo "PORT_IN_USE $p"; fi
             done
             for unit in $(systemctl list-units --type=service --state=running --no-legend 'aesthetic-*' 'a-esthetic-*' | awk '{print $1}'); do
