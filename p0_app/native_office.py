@@ -4,6 +4,7 @@ import json
 import re
 import unicodedata
 from datetime import date
+from decimal import Decimal
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 from uuid import UUID
@@ -20,8 +21,8 @@ from django.utils import timezone
 
 from platform_app.admin_aware_login import _is_admin
 from platform_app.mobile_api import _auth
-from platform_app.goae_billing import calculate_goae_lines, create_goae_draft, goae_draft_pdf_bytes
-from platform_app.goae_tariff import catalog_payload, TREATMENTS, reference_case
+from platform_app.goae_billing import calculate_goae_lines, create_goae_draft, goae_draft_pdf_bytes, to_decimal, cents
+from platform_app.goae_tariff import catalog_payload, TREATMENTS, reference_case, POINT_VALUE_EUR
 from platform_app.models import AuditLog, CheckInSession, Invoice, InvoiceItem, InvoiceSettings, OfficePatientLink, OfficeIntakeReview, OfficeIntakeSubmission, UserProfile
 from platform_app.intake_identity import score, user_data, birth_date
 from .mobile_staff_views import NoRedirect
@@ -146,6 +147,7 @@ def office(request, operation, ident=None):
                 'settings':{key:getattr(config,key) for key in keys}})
         if operation == 'tariff-catalog' and ident is None:
             return JsonResponse({'ok': True, 'items': catalog_payload(), 'treatments': TREATMENTS,
+                'point_value_eur':str(POINT_VALUE_EUR),
                 'approval_required': True, 'synthetic_reference_available': bool(getattr(settings, 'OFFICE_SYNTHETIC_STAGE', False))})
         if operation == 'reference-case' and ident is None:
             if not getattr(settings, 'OFFICE_SYNTHETIC_STAGE', False):
@@ -303,13 +305,22 @@ def office(request, operation, ident=None):
             return JsonResponse({'ok': True, 'invoice': serialize(invoice)})
         if operation == 'quote' and ident is None:
             lines = calculate_goae_lines(data)
+            total=sum(item['gross_cents'] for item in lines)
+            target=None
+            if str(data.get('desired_total_eur') or '').strip():
+                requested=to_decimal(data['desired_total_eur'])
+                if not 1<=requested<=10000000 or requested!=requested.quantize(Decimal('.01')):
+                    return error('invalid_target')
+                target=cents(requested)
             return JsonResponse({'ok': True,
                 'subtotal_cents': sum(item['net_cents'] for item in lines),
                 'tax_cents': sum(item['tax_cents'] for item in lines),
-                'total_cents': sum(item['gross_cents'] for item in lines),
+                'total_cents': total,
+                'target_cents':target,'target_matches':None if target is None else abs(total-target)<=1,
                 'items': [{
                     'goae_number': item['goae_number'], 'description': item['description'],
                     'quantity': str(item['quantity']), 'factor': str(item['goae_factor']),
+                    'base_cents':item['goae_base_cents'],'unit_gross_cents':item['unit_gross_cents'],
                     'net_cents': item['net_cents'], 'tax_cents': item['tax_cents'],
                     'gross_cents': item['gross_cents'],
                 } for item in lines]})

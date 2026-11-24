@@ -1,0 +1,190 @@
+name: Admin V4 — native simulator ZIP and Android QA (no store submission)
+on:
+  push:
+    branches: ['feature/admin-v4-native-20261124']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  controller:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          node scripts/test_native_calendar_layout.mjs
+          APLUS_NATIVE_QA_FIXTURES=qa-fixtures node scripts/test_native_staff_controller.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-v4-synthetic-fixtures
+          path: qa-fixtures
+  backend:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_DEBUG: '1'
+      PATIENT_SYNC_TOKEN: synthetic-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install -r requirements.txt
+          python manage.py test p0_app.test_native_office p0_app.test_mobile_staff_workspace --verbosity 1
+      - uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/book
+          ref: 8ac6b7e96d52f73b59088331192821c0375ea6d9
+          path: book-api
+      - run: |
+          python -m venv /tmp/book-v4
+          /tmp/book-v4/bin/python -m pip install -r book-api/requirements.txt
+          cd book-api
+          /tmp/book-v4/bin/python manage.py test booking.test_mobile_staff_workspace --verbosity 1
+  ios:
+    needs: controller
+    runs-on: macos-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-v4-synthetic-fixtures
+          path: qa-fixtures
+      - name: Generate exact iOS native target
+        run: |
+          npm pkg delete scripts.capacitor:sync:after
+          npm install --no-audit --no-fund
+          npx cap add ios
+          python3 scripts/configure_native_camera_permissions.py
+          python3 scripts/install_native_staff.py
+          grep -F 'StaffSimplyBookV3(state: state, model: calendar)' ios/App/App/AppDelegate.swift
+          grep -F 'PRACTICE MANAGEMENT' ios/App/App/AppDelegate.swift
+      - name: Compile iOS Simulator build 55
+        run: |
+          set -euo pipefail
+          if [[ -d ios/App/App.xcworkspace ]]; then app=(-workspace ios/App/App.xcworkspace); else app=(-project ios/App/App.xcodeproj); fi
+          xcodebuild "${app[@]}" -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/admin-v4" CODE_SIGNING_ALLOWED=NO MARKETING_VERSION=1.0.49 CURRENT_PROJECT_VERSION=55 build > "$RUNNER_TEMP/native-ios.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/native-ios.log"; exit 1; }
+      - name: Capture actual iOS renderer on phone and tablet (synthetic fixtures only)
+        run: |
+          set -euo pipefail
+          mkdir -p screenshots/ios-phone screenshots/ios-tablet
+          app="$RUNNER_TEMP/admin-v4/Build/Products/Debug-iphonesimulator/App.app"
+          for family in iPhone iPad; do
+            udid=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; x=json.load(sys.stdin); print(next(d["udid"] for ds in x["devices"].values() for d in ds if d["name"].startswith(sys.argv[1])))' "$family")
+            xcrun simctl boot "$udid" || true
+            xcrun simctl bootstatus "$udid" -b
+            xcrun simctl install "$udid" "$app"
+            if [[ "$family" == iPhone ]]; then
+              target=screenshots/ios-phone
+              fixtures=(qa-fixtures/*.json)
+            else
+              target=screenshots/ios-tablet
+              fixtures=(qa-fixtures/01-dashboard.json qa-fixtures/02-calendar.json qa-fixtures/09-goae-draft.json qa-fixtures/13-patient-profile.json)
+            fi
+            for fixture in "${fixtures[@]}"; do
+              payload=$(base64 -i "$fixture" | tr -d '\n')
+              SIMCTL_CHILD_APLUS_NATIVE_QA_FIXTURE="$payload" xcrun simctl launch --terminate-running-process "$udid" de.aplusesthetic.app
+              sleep 2
+              xcrun simctl io "$udid" screenshot "$target/$(basename "$fixture" .json).png"
+            done
+            xcrun simctl shutdown "$udid"
+          done
+      - name: Package Appetize direct ZIP and verify actual source bundle
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          app="$RUNNER_TEMP/admin-v4/Build/Products/Debug-iphonesimulator/App.app"
+          test -s "$app/App"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")" = "1.0.49"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 55
+          grep -F 'VISIBLE_START_HOUR = 10' "$app/public/mobile/native-calendar-layout.mjs"
+          grep -F 'calendar-sheet' "$app/public/mobile/native-workspace.mjs"
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-V4-1.0.49-B55-Appetize.zip
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('artifacts/APlus-Esthetic-V4-1.0.49-B55-Appetize.zip') as z:
+              assert 'App.app/App' in z.namelist()
+              assert 'App.app/Info.plist' in z.namelist()
+              assert not z.testzip()
+          PY
+          git rev-parse HEAD > artifacts/source-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Admin-V4-iOS-visual-QA
+          path: screenshots
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-Esthetic-V4-1.0.49-B55-Appetize
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 30
+  android:
+    needs: controller
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-v4-synthetic-fixtures
+          path: qa-fixtures
+      - name: Compile and verify Android package
+        env:
+          APP_VERSION_NAME: '1.0.49'
+          APP_BUILD_NUMBER: '55'
+        run: |
+          bash scripts/build-android.sh
+          grep -R -F 'registerPlugin(NativeStaffPlugin.class);' android/app/src/main/java
+          grep -R -F 'new NativeStaffV3Calendar(' android/app/src/main/java
+          (cd android && ./gradlew assembleDebug --no-daemon)
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/APlus-Esthetic-V4-1.0.49-B55.apk
+          git rev-parse HEAD > artifacts/source-commit.txt
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android native rendering QA (synthetic fixtures only)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          script: |
+            adb install -r artifacts/APlus-Esthetic-V4-1.0.49-B55.apk
+            mkdir -p screenshots/android
+            for fixture in qa-fixtures/*.json; do
+              adb shell am force-stop de.aplusesthetic.app
+              payload=$(base64 -w0 "$fixture")
+              adb shell am start -W -n de.aplusesthetic.app/.MainActivity --es APLUS_NATIVE_QA_FIXTURE "$payload"
+              sleep 2
+              adb exec-out screencap -p > "screenshots/android/$(basename "$fixture" .json).png"
+            done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Admin-V4-Android-visual-QA
+          path: screenshots
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APlus-Esthetic-V4-1.0.49-B55-Android
+          path: artifacts/APlus-Esthetic-V4-1.0.49-B55.apk
+          if-no-files-found: error
+          retention-days: 30

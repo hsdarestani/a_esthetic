@@ -288,13 +288,28 @@ struct StaffNativeScreen: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(text(field, "label")).font(.system(size:13,weight:.semibold)).foregroundColor(muted)
             if let options = field["options"] as? [[String: Any]], !options.isEmpty {
-                Button { choosing=key } label: {
-                    HStack {
-                        Text(options.first(where:{ text($0,"value")==binding.wrappedValue }).map{ text($0,"label") } ?? t("Auswählen","Select"))
-                            .foregroundColor(ink).multilineTextAlignment(.leading)
-                        Spacer(); Image(systemName:"chevron.up.chevron.down").font(.caption).foregroundColor(accent)
-                    }.padding(12).frame(minHeight:47).frame(maxWidth:.infinity,alignment:.leading)
-                }.buttonStyle(.plain)
+                if kind == "choice-grid" {
+                    LazyVGrid(columns:[GridItem(.flexible(),spacing:7),GridItem(.flexible(),spacing:7)],spacing:7) {
+                        ForEach(Array(options.enumerated()),id:\.offset) { _, option in
+                            let selected = binding.wrappedValue == text(option,"value")
+                            Button { binding.wrappedValue=text(option,"value") } label: {
+                                Text(text(option,"label")).font(.subheadline.weight(.semibold))
+                                    .frame(maxWidth:.infinity).frame(minHeight:48)
+                                    .foregroundColor(selected ? .white : accent)
+                                    .background(selected ? accent : card,in:RoundedRectangle(cornerRadius:10))
+                                    .overlay { RoundedRectangle(cornerRadius:10).strokeBorder(accent.opacity(0.3),lineWidth:1) }
+                            }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
+                        }
+                    }
+                } else {
+                    Button { choosing=key } label: {
+                        HStack {
+                            Text(options.first(where:{ text($0,"value")==binding.wrappedValue }).map{ text($0,"label") } ?? t("Auswählen","Select"))
+                                .foregroundColor(ink).multilineTextAlignment(.leading)
+                            Spacer(); Image(systemName:"chevron.up.chevron.down").font(.caption).foregroundColor(accent)
+                        }.padding(12).frame(minHeight:47).frame(maxWidth:.infinity,alignment:.leading)
+                    }.buttonStyle(.plain)
+                }
             } else if kind == "multiline" {
                 TextEditor(text: binding)
                     .font(.body).frame(minHeight: 100).scrollContentBackground(.hidden).padding(8)
@@ -421,6 +436,9 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
 }
 
 class StaffBridgeViewController: CAPBridgeViewController {
+#if DEBUG && targetEnvironment(simulator)
+    private var syntheticQAHost: UIHostingController<StaffNativeScreen>?
+#endif
     override open func capacitorDidLoad() {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(NativeStaffPlugin())
@@ -429,6 +447,25 @@ class StaffBridgeViewController: CAPBridgeViewController {
 #if DEBUG
     override open func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+#if targetEnvironment(simulator)
+        // Simulator-only visual fixture, never reads credentials or connects
+        // this view to a real patient's API. Normal app launch is unchanged.
+        if syntheticQAHost == nil,
+           let payload = ProcessInfo.processInfo.environment["APLUS_NATIVE_QA_FIXTURE"],
+           payload.count < 160000,
+           let data = Data(base64Encoded:payload),
+           let fixture = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any],
+           let screen = fixture["screen"] as? [String:Any] {
+            let state=StaffScreenState()
+            state.calendarScreen=fixture["calendar"] as? [String:Any] ?? [:]
+            state.replace(screen)
+            let host=UIHostingController(rootView:StaffNativeScreen(state:state))
+            host.modalPresentationStyle = .fullScreen
+            syntheticQAHost=host
+            present(host,animated:false)
+            return
+        }
+#endif
         // Probe the real Capacitor JS-to-Swift bridge in iOS Simulator before
         // signing in. No tokens, account identifiers or patient data involved.
         DispatchQueue.main.asyncAfter(deadline: .now() + 7) { [weak self] in

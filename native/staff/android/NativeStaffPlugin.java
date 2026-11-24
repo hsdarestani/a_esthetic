@@ -276,9 +276,30 @@ public final class NativeStaffPlugin extends Plugin {
                 String selected=f.optString("value"), selectedLabel=english?"Select":"Auswählen";
                 for(int j=0;j<options.length();j++){JSONObject option=options.optJSONObject(j);if(option!=null&&option.optString("value").equals(selected))selectedLabel=option.optString("label");}
                 choices.put(key,selected);
-                TextView picker=text(selectedLabel+"   ▾",16,INK,false);picker.setMinHeight(dp(48));picker.setGravity(Gravity.CENTER_VERTICAL);
-                picker.setPadding(dp(12),dp(9),dp(12),dp(9));picker.setBackground(outlined(PAPER,11,EDGE));picker.setFocusable(true);
-                picker.setOnClickListener(v->choiceDialog(key,f.optString("label"),options,picker));add(container,picker,0);
+                if("choice-grid".equals(f.optString("kind"))){
+                    Map<String,Button> tiles=new LinkedHashMap<>();
+                    for(int j=0;j<options.length();j+=2){
+                        LinearLayout pair=row();
+                        for(int k=0;k<2;k++){
+                            JSONObject item=options.optJSONObject(j+k);
+                            if(item==null){weight(pair,new View(getContext()));continue;}
+                            String keyValue=item.optString("value");
+                            Button tile=button(item.optString("label"),"",keyValue.equals(selected));
+                            tiles.put(keyValue,tile);
+                            tile.setOnClickListener(v->{choices.put(key,keyValue);for(Map.Entry<String,Button> tileEntry:tiles.entrySet()){
+                                boolean marked=tileEntry.getKey().equals(keyValue);
+                                tileEntry.getValue().setTextColor(marked?Color.WHITE:accent);
+                                tileEntry.getValue().setBackground(marked?background(accent,10):outlined(CARD,10,EDGE));
+                            }});
+                            weight(pair,tile);
+                        }
+                        add(container,pair,7);
+                    }
+                }else{
+                    TextView picker=text(selectedLabel+"   ▾",16,INK,false);picker.setMinHeight(dp(48));picker.setGravity(Gravity.CENTER_VERTICAL);
+                    picker.setPadding(dp(12),dp(9),dp(12),dp(9));picker.setBackground(outlined(PAPER,11,EDGE));picker.setFocusable(true);
+                    picker.setOnClickListener(v->choiceDialog(key,f.optString("label"),options,picker));add(container,picker,0);
+                }
             } else {
                 EditText input=new EditText(getContext());
                 String kind=f.optString("kind","text");
@@ -366,6 +387,26 @@ public final class NativeStaffPlugin extends Plugin {
             int height=(int)(getContext().getResources().getDisplayMetrics().heightPixels*.86);
             FrameLayout.LayoutParams sheetParams=new FrameLayout.LayoutParams(-1,height,Gravity.BOTTOM);frame.addView(root,sheetParams);dialog.setContentView(frame);
         }else dialog.setContentView(root);
+    }
+    @Override public void load() {
+        super.load();
+        // ADB-only synthetic visual fixture on a debuggable emulator. This
+        // dialog has no authenticated controller or server interaction.
+        Activity activity=getActivity();
+        if(activity==null||(activity.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)==0)return;
+        if(!android.os.Build.FINGERPRINT.contains("generic")&&!android.os.Build.HARDWARE.contains("ranchu"))return;
+        String payload=activity.getIntent().getStringExtra("APLUS_NATIVE_QA_FIXTURE");
+        if(payload==null||payload.length()>160000)return;
+        activity.runOnUiThread(()->{
+            try{
+                JSONObject fixture=new JSONObject(new String(Base64.decode(payload,Base64.DEFAULT),java.nio.charset.StandardCharsets.UTF_8));
+                JSONObject screen=fixture.getJSONObject("screen");
+                calendarScreen=fixture.optJSONObject("calendar");
+                dialog=new Dialog(activity,android.R.style.Theme_Material_Light_NoActionBar);
+                dialog.setCancelable(false);
+                draw(screen);dialog.show();if(dialog.getWindow()!=null)dialog.getWindow().setLayout(-1,-1);
+            }catch(Exception ignored){if(dialog!=null)dialog.dismiss();dialog=null;}
+        });
     }
     @PluginMethod public void probe(PluginCall call) {
         JSObject result=new JSObject();result.put("ok",true);result.put("native",true);
