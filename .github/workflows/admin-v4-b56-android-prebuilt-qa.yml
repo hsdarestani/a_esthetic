@@ -1,0 +1,43 @@
+name: V4 B56 Android exact prebuilt visual QA
+on:
+  push:
+    branches: ['ops/admin-v4-production-preflight-20261124']
+    paths: ['.github/workflows/admin-v4-b56-android-prebuilt-qa.yml']
+permissions: {contents: read, actions: read}
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: be46bbfaefba4abe258b19b10b4d70739e4d367e
+      - uses: actions/download-artifact@v4
+        with:
+          name: APlus-Esthetic-V4-1.0.50-B56-Android
+          run-id: 45445167470
+          github-token: ${{ github.token }}
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-v4-synthetic-fixtures
+          run-id: 45445167470
+          github-token: ${{ github.token }}
+          path: qa-fixtures
+      - name: Enable emulator and adapt old capture script APK filename
+        run: |
+          sudo chmod 666 /dev/kvm
+          sed -i 's/1\.0\.49-B55/1.0.50-B56/g' scripts/capture_native_v4_android.sh
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          script: bash scripts/capture_native_v4_android.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: B56-Android-native-visual-QA
+          path: screenshots
+          if-no-files-found: error
