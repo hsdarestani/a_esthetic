@@ -1,0 +1,53 @@
+name: Diagnose production patient account API (read only)
+on:
+  push:
+    branches: ['ops/admin-v4-production-preflight-20261124']
+    paths: ['.github/workflows/admin-v4-patient-account-readonly.yml']
+permissions: {contents: read}
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 4m
+          script: |
+            set -euo pipefail
+            cd /opt/a-esthetic-mobile
+            set -a
+            . /opt/a-esthetic-mobile/mobile.env
+            set +a
+            git rev-parse HEAD || true
+            systemctl show a-esthetic-mobile.service -p ActiveState -p WorkingDirectory --no-pager
+            /opt/a-esthetic-mobile/venv/bin/python manage.py shell <<'PY'
+            from django.urls import resolve
+            from django.db import connection, transaction
+            from django.test import RequestFactory
+            from unittest.mock import patch
+            from p0_app import native_office
+            paths=['/api/mobile/staff/office/patient-account/0/','/api/mobile/staff/office/invoices/0/','/api/mobile/admin/customers/0/']
+            for path in paths:
+                match=resolve(path)
+                print('ROUTE',path,match.func.__module__,match.func.__name__)
+            # Isolated in-process test with an impossible synthetic identifier;
+            # no authentication policy is changed, no user data read or logged.
+            with transaction.atomic():
+                if connection.vendor=='postgresql':
+                    with connection.cursor() as cursor: cursor.execute('SET TRANSACTION READ ONLY')
+                match=resolve(paths[0])
+                with patch.object(native_office,'_auth',return_value=(object(),None)), patch.object(native_office,'_is_admin',return_value=True):
+                    response=match.func(RequestFactory().get(paths[0]),**match.kwargs)
+                print('MISSING_LINK_STATUS',response.status_code)
+                if response.status_code==200:
+                    import json
+                    print('MISSING_LINK_NULL',json.loads(response.content).get('customer_id') is None)
+                transaction.set_rollback(True)
+            PY
+            for route in staff/office/patient-account/0/ staff/office/invoices/0/ admin/customers/0/; do
+              curl -sS -o /dev/null -w "PUBLIC_ROUTE $route %{http_code}\n" --max-time 15 "https://app.a-esthetic.de/api/mobile/$route"
+            done
