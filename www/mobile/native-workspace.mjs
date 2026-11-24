@@ -14,6 +14,9 @@ const inputKind = id => {
 };
 const dateFields = new Set(['date','from','to','service_date','date_of_birth']);
 export const germanDate = value => String(value ?? '').replace(/\b(\d{4})-(\d{2})-(\d{2})(?=\b|T)/g,'$3.$2.$1');
+// Display copy only. Keep canonical values, email addresses, phone numbers,
+// file names, links, and patient identifiers untouched.
+export const displayCopy = value => String(value??'').replace(/\s+[\-–—]\s+/g,' · ').replace(/[\u00ad\-‐‑–—]/g,' ').replace(/ {2,}/g,' ').trim();
 export function canonicalDate(value) {
   const raw=String(value??'').trim();
   if(!raw)return '';
@@ -24,13 +27,15 @@ export function canonicalDate(value) {
   return !Number.isNaN(parsed.getTime())&&parsed.toISOString().slice(0,10)===iso?iso:null;
 }
 const value = (id, label, initial = '', options) => ({
-  id,label:dateFields.has(id)&&!options?label.replace(/\s*\((?:JJJJ-MM-TT|YYYY-MM-DD)\)/,'')+' · TT.MM.JJJJ':label,value:dateFields.has(id)&&!options?germanDate(initial):String(initial ?? ''),kind:options?'select':inputKind(id),
+  id,label:displayCopy(dateFields.has(id)&&!options?label.replace(/\s*\((?:JJJJ[ -]MM[ -]TT|YYYY[ -]MM[ -]DD)\)/,'')+' · TT.MM.JJJJ':label),value:dateFields.has(id)&&!options?germanDate(initial):String(initial ?? ''),kind:options?'select':inputKind(id),
   ...(options ? {options} : {}),
 });
-const row = (id,label,detail='') => ({id,label:germanDate(label),detail:germanDate(detail)});
+const displayData = value => germanDate(value).replace(/\s+[\-–—]\s+/g,' · ').replace(/^\s*[–—-]\s*$/,'');
+const row = (id,label,detail='') => ({id,label:displayData(label),detail:displayData(detail)});
 const option = (value,label) => ({value:String(value),label:germanDate(label)});
 const dateLabel = (date, locale, options) => new Date(date+'T12:00:00Z').toLocaleDateString('de-DE',{...options,timeZone:'UTC'});
 const optionFor = (list) => list.map(x=>option(x.id,x.name));
+const serviceOptions = list => list.map(x=>option(x.id,displayCopy(x.name)));
 const sourceOfBlock = block => block?.source_managed || /\u2063[\u200b\u200c]+\u2063/.test(block?.text||'')
   ? 'SimplyBook' : 'Book';
 const isSyncedProvider = p => Boolean(p?.source_managed || String(p?.name||'').startsWith('A+ Esthetic (SimplyBook #'));
@@ -42,7 +47,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   if (!plugin) throw new Error('Native staff renderer unavailable');
   const admin = identity.role === 'admin';
   let language = localStorage.getItem('aplus_language') === 'en' ? 'en' : 'de';
-  const tr = (de,en) => language === 'en' ? en : de;
+  const tr = (de,en) => displayCopy(language === 'en' ? en : de);
   let locale = language === 'en' ? 'en-GB' : 'de-DE';
   const stack = [];
   const appointmentsById = new Map();
@@ -110,7 +115,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   const view = (title, content={}) => ({title:germanDate(title),language,
     ...(activeTab==='calendar'&&!content.timeline?{presentation:'calendar-sheet'}:{}),
     tabs:tabs().map(tab=>({...tab,selected:tab.id===activeTab})), ...content,
-    ...(content.subtitle?{subtitle:germanDate(content.subtitle)}:{}),
+    ...(content.subtitle?{subtitle:displayData(content.subtitle)}:{}),
     ...Object.fromEntries(['rows','secondaryRows'].filter(key=>content[key]).map(key=>[key,content[key].map(item=>({...item,...(item.badge?{badge:localizedStatus(item.badge)}:{})}))]))});
   async function render(screen) { if(!active)return; current=screen; await plugin.render({screen}); }
   async function screen(name, {push=true}={}) {
@@ -127,7 +132,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           ...(r.provider_count==null?[]:[row('calendar',tr('Behandler','Providers'),String(r.provider_count))])],
         shortcuts:[row('calendar',tr('Kalender','Calendar')),row('patients',tr('Patientenakten','Patient records'))],
         sectionTitle:tr('NÄCHSTE TERMINE','NEXT APPOINTMENTS'),
-        rows:upcoming.map(a=>({...row('appointment:'+a.id,a.customer_name,[a.date,a.start,a.service_name,a.staff_name].filter(Boolean).join(' · ')),badge:a.status||''})),
+        rows:upcoming.map(a=>({...row('appointment:'+a.id,a.customer_name,[a.date,a.start,a.service_name&&displayCopy(a.service_name),a.staff_name].filter(Boolean).join(' · ')),badge:a.status||''})),
         secondaryTitle:tr('HEUTIGER PRAXISPLAN','TODAY’S PRACTICE SCHEDULE'),
         secondaryRows:(r.provider_today||[]).map(p=>row('cal-provider:'+p.id,p.name,String(p.count)+' '+tr('Termine heute','appointments today'))),
         empty:tr('Keine kommenden Termine.','No upcoming appointments.')} ));
@@ -159,9 +164,9 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         fields:[
           value('calendar_mode',tr('Ansicht','View'),calendarMode,[option('day',tr('Tag','Day')),option('week',tr('Woche','Week')),option('provider',tr('Behandler','Provider')),option('service',tr('Behandlung','Service'))]),
           value('provider_filter',tr('Behandler','Provider'),providerFilter,[option('all',tr('Alle','All')),...optionFor(catalog.providers)]),
-          value('service_filter',tr('Behandlung','Service'),serviceFilter,[option('all',tr('Alle','All')),...optionFor(catalog.services.filter(x=>x.active))]),
+          value('service_filter',tr('Behandlung','Service'),serviceFilter,[option('all',tr('Alle','All')),...serviceOptions(catalog.services.filter(x=>x.active))]),
         ],
-        rows:[...found.map(a=>row('appointment:'+a.id,(calendarMode==='week'?a.date+' · ':'')+a.start+' · '+a.customer_name,a.service_name+' · '+a.staff_name)),
+        rows:[...found.map(a=>row('appointment:'+a.id,(calendarMode==='week'?a.date+' · ':'')+a.start+' · '+a.customer_name,displayCopy(a.service_name)+' · '+a.staff_name)),
           ...blocked.map(b=>row((b.editable?'block:':'block-info:')+b.id,b.start+' · '+(b.text||tr('Gesperrt','Blocked')).split('\u2063')[0],b.end||''))],
         actions:[row('apply-calendar-filter',tr('Ansicht aktualisieren','Apply filters')),
           row('new-appointment',tr('Termin hinzufügen','Add appointment')),row('new-block',tr('Sperrzeit / Notiz','Block / note')),
@@ -257,29 +262,38 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     const sections=[['overview',tr('Übersicht','Overview')],['appointments',tr('Termine','Appointments')],['records',tr('Patientenakte','Records')],['contact',tr('Kontakt','Contact')],
       ...(admin?[['account',tr('Kundenkonto','Customer account')]]:[])];
     const appointments=patient.appointments||[], records=patient.records||[];
-    const timeline=appointments.map(a=>({...row('appointment:'+a.id,a.date+' · '+a.start,[a.service_name,a.staff_name].filter(Boolean).join(' · ')),badge:a.status}));
+    const timeline=appointments.map(a=>({...row('appointment:'+a.id,a.date+' · '+a.start,[a.service_name&&displayCopy(a.service_name),a.staff_name].filter(Boolean).join(' · ')),badge:a.status}));
     const recordRows=records.map(r=>({...row('record-detail:'+r.id,r.title,[r.date?.slice(0,10),r.note,r.filename].filter(Boolean).join(' · ')),badge:r.kind||''}));
     let accountContent={};
     if(patientSection==='account'&&admin){
-      const linked=await office('patient-account/'+p.id+'/');
-      if(!linked.customer_id){
+      currentPatientAccount=null;
+      try {
+      let linked;
+      try{ linked=await office('patient-account/'+p.id+'/'); }
+      catch(err){
+        if(err.status!==404)throw err;
+        // Older servers can search verified links but lack the dedicated lookup.
+        // Never infer identity from a name or email match alone.
+        try{const result=await office('customers/?q='+encodeURIComponent(p.email||p.name||''));const exact=(result.items||[]).filter(x=>Number(x.book_customer_id)===Number(p.id));linked={customer_id:exact.length===1?exact[0].id:null};}catch(fallbackError){if(fallbackError.status===401)throw fallbackError;linked=null;}
+      }
+      if(!linked){accountContent={message:tr('Das Kundenkonto konnte nicht geprüft werden. Bitte erneut laden.','The customer account could not be verified. Please reload.'),actions:[row('patient-section:account',tr('Erneut laden','Reload')),row('patient-link-account',tr('Konto suchen','Find account'))]};}
+      else if(!linked.customer_id){
         currentPatientAccount=null;
         accountContent={message:tr('Das A+ Kundenkonto ist noch nicht eindeutig mit der Patientenakte verknüpft.','The A+ customer account is not yet linked to this patient record.'),
           actions:[row('patient-link-account',tr('Konto suchen und Identität prüfen','Find account and verify identity'))]};
       }else{
-        const detail=await request('customers/'+linked.customer_id+'/',undefined,'/api/mobile/admin/');
-        const list=await office('invoices/'+linked.customer_id+'/');
-        currentPatientAccount=detail.customer;
+        let detail;
+        try{detail=await request('customers/'+linked.customer_id+'/',undefined,'/api/mobile/admin/');}catch(err){if(err.status!==404)throw err;accountContent={message:tr('Das verknüpfte Kundenkonto ist nicht mehr verfügbar. Bitte Identität prüfen.','The linked customer account is no longer available. Please verify identity.'),actions:[row('patient-link-account',tr('Konto prüfen','Verify account'))]};}
+        if(detail?.customer){currentPatientAccount=detail.customer;
         accountContent={
           metrics:[row('',tr('A+ Punkte','A+ points'),String(detail.customer.coins)),row('',tr('Guthaben','Credit'),(detail.customer.credit_cents/100).toFixed(2)+' EUR')],
           shortcuts:[row('patient-adjust-points',tr('Punkte korrigieren','Adjust points')),row('patient-wallet-history',tr('Wallet-Verlauf','Wallet history'))],
           sectionTitle:tr('PAKETE','PACKAGES'),
           rows:(detail.packages||[]).map(x=>({...row('',x.name,String(x.remaining_sessions)+' '+tr('Sitzungen · bis','sessions · until')+' '+x.expires_at),badge:x.status})),
           empty:tr('Keine Pakete.','No packages.'),
-          secondaryTitle:tr('GOÄ RECHNUNGEN','GOÄ INVOICES'),
-          secondaryRows:(list.items||[]).map(x=>row(x.status==='draft'?'invoice-pdf:'+x.id:'',(x.number||tr('Entwurf','Draft'))+' · '+x.service_date,(x.total_cents/100).toFixed(2)+' EUR · '+x.status)),
-        };
+        };}
       }
+      }catch(err){if(err.status===401)throw err;accountContent={message:tr('Das Kundenkonto ist momentan nicht erreichbar. Bitte erneut laden.','The customer account is temporarily unavailable. Please reload.'),actions:[row('patient-section:account',tr('Erneut laden','Reload'))]};}
     }
     return render(view(p.name,{hero:p.name,heroLabel:tr('PATIENTENAKTE','PATIENT RECORD'),subtitle:[p.email,p.phone].filter(Boolean).join(' · '),
       segments:sections.map(([id,label])=>({...row('patient-section:'+id,label),selected:patientSection===id})),
@@ -292,7 +306,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           row('take-photo',tr('Kamera','Camera')),row('upload-photo',tr('Foto auswählen','Choose photo'))],
         actions:[...(patient.has_more?[row('record-page-next',tr('Nächste Seite','Next page'))]:[]),...(recordPage>1?[row('record-page-prev',tr('Vorherige Seite','Previous page'))]:[])]}:
       patientSection==='account'?accountContent:
-      {rows:[row('',tr('Name','Name'),p.name),row('','E-Mail',p.email||'—'),row('',tr('Telefon','Phone'),p.phone||'—'),
+      {rows:[row('',tr('Name','Name'),p.name),row('','E Mail',p.email||tr('Nicht angegeben','Not provided')),row('',tr('Telefon','Phone'),p.phone||tr('Nicht angegeben','Not provided')),
           ...(p.date_of_birth?[row('',tr('Geburtsdatum','Date of birth'),p.date_of_birth)]:[])]})}));
   }
   async function getAppointment(id) {
@@ -310,7 +324,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     activeTab='calendar';
     appointment=await getAppointment(id);stack.push('appointment:'+id);
     return render(view(appointment.customer_name,{
-      subtitle:appointment.service_name,
+      subtitle:displayCopy(appointment.service_name),
       message:appointment.source_managed
         ? (admin&&appointment.source_editable
            ? tr('Mit SimplyBook synchronisiert. Terminzeit oder Stornierung wird zuerst direkt in SimplyBook bestätigt und danach hier gespeichert. Änderungen an Patient, Behandler und Behandlung bitte weiterhin in SimplyBook vornehmen.',
@@ -347,7 +361,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     ] : [
       value('customer_id',tr('Kunde','Client'),edit?appointment.customer_id:chosenPatient?.id||'',options),
       value('staff_id',tr('Behandler','Provider'),edit?appointment.staff_id:(slot.staff_id && providersForBooking.some(p=>String(p.id)===String(slot.staff_id)) ? slot.staff_id : providersForBooking[0]?.id),optionFor(providersForBooking)),
-      value('service_id',tr('Dienstleistung','Service'),edit?appointment.service_id:'',optionFor(servicesForBooking)),
+      value('service_id',tr('Dienstleistung','Service'),edit?appointment.service_id:'',serviceOptions(servicesForBooking)),
       value('date',tr('Datum (JJJJ-MM-TT)','Date (YYYY-MM-DD)'),edit?appointment.date:(slot.date||date)),
       value('start',tr('Beginn (HH:MM)','Start (HH:MM)'),edit?appointment.start:(slot.start||'10:00')),
       value('notes',tr('Notiz','Notes'),edit?appointment.notes:''),
@@ -357,6 +371,12 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       {layout:'simplybook-form',formType:'booking',fields:syncedEdit?fields:[fields[2],fields[1],fields[0],...fields.slice(3)],actions:[row(edit?'save-edit':'save-new',tr('Speichern','Save'))]}));
   }
   let currentBlock, currentService, pendingUpload, selectedRecord;
+  async function patientLinkForm(query){
+    const p=patient.patient;
+    const result=query.trim().length>=2?await office('customers/?q='+encodeURIComponent(query.trim())):{items:[]};
+    const candidates=(result.items||[]).filter(x=>!x.book_customer_id||Number(x.book_customer_id)===Number(p.id));
+    return render(view(tr('Kundenkonto verknüpfen','Link customer account'),{subtitle:p.name,message:tr('Nur nach persönlicher Prüfung der Identität verknüpfen.','Link only after personally verifying the identity.'),fields:[value('query',tr('Name oder E Mail','Name or email'),query),value('customer_id',tr('Kundenkonto','Customer account'),'',[option('',tr('Auswählen','Select')),...candidates.map(x=>option(x.id,[x.name,x.email].filter(Boolean).join(' · ')))]),value('confirm',tr('Identität persönlich geprüft?','Identity verified in person?'),'no',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))])],actions:[row('patient-link-search',tr('Suchen','Search')),row('patient-link-confirm',tr('Verknüpfen','Link')),row('patient-section:account',tr('Abbrechen','Cancel'))]}));
+  }
   async function blockForm(edit){
     catalog=catalog||await book('catalog/');
     return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Neue Notiz','New note'),{layout:'simplybook-form',formType:'block',fields:[
@@ -583,10 +603,16 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id==='search'||id==='billing-query'){search=fields.query||'';patientPage=1;return await screen(id==='search'?'patients':'billing-search',{push:false});}
       if(id==='patient-page-next'||id==='patient-page-prev'){patientPage=Math.max(1,patientPage+(id.endsWith('next')?1:-1));return await screen('patients',{push:false});}
       if(id.startsWith('patient-section:')&&patient){patientSection=id.slice('patient-section:'.length);return await renderPatient();}
-      if(admin&&id==='patient-link-account'&&patient){search=patient.patient.name||'';return await screen('billing-search');}
+      if(admin&&id==='patient-link-account'&&patient)return await patientLinkForm(patient.patient.email||patient.patient.name||'');
+      if(admin&&id==='patient-link-search'&&patient)return await patientLinkForm(fields.query||'');
+      if(admin&&id==='patient-link-confirm'&&patient){
+        if(fields.confirm!=='yes'||!Number.isInteger(Number(fields.customer_id))||Number(fields.customer_id)<=0)throw new Error(tr('Kundenkonto auswählen und Identität bestätigen.','Select an account and confirm identity.'));
+        await office('link/',{customer_id:Number(fields.customer_id),book_customer_id:patient.patient.id,confirmed_same_patient:true});
+        patientSection='account';return await renderPatient();
+      }
       if(admin&&id==='patient-adjust-points'&&currentPatientAccount){
         return await render(view(tr('Punkte korrigieren','Adjust points'),{subtitle:currentPatientAccount.name,
-          fields:[value('coin_delta',tr('Änderung (+/- Punkte)','Adjustment (+/- points)')),value('confirm',tr('Konto und Änderung geprüft?','Account and adjustment checked?'),'no',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))])],
+          fields:[value('coin_delta',tr('Punkteänderung (positiv oder negativ)','Point adjustment (positive or negative)')),value('confirm',tr('Konto und Änderung geprüft?','Account and adjustment checked?'),'no',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))])],
           actions:[row('patient-save-points',tr('Korrektur bestätigen','Confirm adjustment')),row('patient-section:account',tr('Abbrechen','Cancel'))]}));
       }
       if(admin&&id==='patient-save-points'&&currentPatientAccount){

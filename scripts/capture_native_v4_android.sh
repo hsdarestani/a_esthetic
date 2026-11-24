@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-adb install -r "${APLUS_QA_APK:-artifacts/APlus-Esthetic-V4-1.0.52-B58.apk}"
-mkdir -p screenshots/android
-for fixture in qa-fixtures/*.json; do
+adb install -r "${APLUS_QA_APK:-artifacts/APlus-Esthetic-V4-1.0.53-B59.apk}"
+target=${APLUS_QA_OUTPUT:-screenshots/android}
+mkdir -p "$target"
+fixtures=(qa-fixtures/*.json)
+if [[ -n ${APLUS_QA_FIXTURES:-} ]]; then read -r -a fixtures <<< "$APLUS_QA_FIXTURES"; fi
+for fixture in "${fixtures[@]}"; do
   adb shell am force-stop de.aplusesthetic.app
   payload=$(base64 -w0 "$fixture")
   adb shell am start -W -n de.aplusesthetic.app/.MainActivity --es APLUS_NATIVE_QA_FIXTURE "$payload"
@@ -15,5 +18,5 @@ for fixture in qa-fixtures/*.json; do
     if [[ "$xml" == *"$expected"* ]]; then matched=true; break; fi
   done
   if [ "$matched" != true ]; then echo "Native screen did not load: $(basename "$fixture")" >&2; exit 1; fi
-  adb exec-out screencap -p > "screenshots/android/$(basename "$fixture" .json).png"
+  adb exec-out screencap -p > "$target/$(basename "$fixture" .json).png"
 done

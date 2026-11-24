@@ -221,3 +221,12 @@
   .ma-auth .ma-pair { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap:8px; }
   .ma-auth .ma-panel { padding-inline:18px; }
 }
+/* App typography: no automatic hyphenation or midword line breaks. */
+#app, #app * {
+  hyphens: none !important;
+  -webkit-hyphens: none !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+#app :where(button, .core-nav, .mw-row, .mw-static-row, .card) { min-width: 0; }
+#app :where(button, .core-nav, .mw-row, .mw-static-row) :where(strong, span, small) { max-width: 100%; }

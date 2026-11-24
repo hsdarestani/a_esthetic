@@ -94,7 +94,7 @@ final class NativeStaffV3Calendar {
     }
     private LinearLayout.LayoutParams lp(int w,int h){return new LinearLayout.LayoutParams(w,h);}
     private TextView text(String text,float sp,int color,boolean bold) {
-        TextView out=new TextView(ctx);
+        TextView out=new StaffWordSafeTextView(ctx);
         out.setText(text);out.setTextSize(sp);out.setTextColor(color);
         if(bold)out.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
         out.setGravity(Gravity.CENTER_VERTICAL);
@@ -384,12 +384,12 @@ final class NativeStaffV3Calendar {
             for(String word:words){
                 String next=line.isEmpty()?word:line+" "+word;
                 if(paint.measureText(next)>Math.max(15,maxWidth)&&!line.isEmpty()){
-                    c.drawText(line,x,y+lines*d(size+3),paint);
+                    paint.setTextScaleX(Math.min(1f,Math.max(1,maxWidth)/Math.max(1,paint.measureText(line))));c.drawText(line,x,y+lines*d(size+3),paint);paint.setTextScaleX(1f);
                     lines++;line=word;
                     if(lines>=maxLines)return;
                 }else line=next;
             }
-            if(lines<maxLines)c.drawText(line,x,y+lines*d(size+3),paint);
+            if(lines<maxLines){paint.setTextScaleX(Math.min(1f,Math.max(1,maxWidth)/Math.max(1,paint.measureText(line))));c.drawText(line,x,y+lines*d(size+3),paint);paint.setTextScaleX(1f);}
         }
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);

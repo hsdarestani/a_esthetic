@@ -179,7 +179,7 @@ struct StaffSimplyBookV3: View {
         Button { showActions=false; fire(id) } label: {
             HStack(spacing:14) {
                 Image(systemName:icon).font(.system(size:20,weight:.medium)).foregroundColor(.white).frame(width:42,height:42).background(color,in:RoundedRectangle(cornerRadius:10))
-                VStack(alignment:.leading,spacing:4) { Text(title).font(.system(size:16,weight:.semibold)).foregroundColor(ink); Text(detail).font(.caption).foregroundColor(.gray) }
+                VStack(alignment:.leading,spacing:4) { StaffWordText(title).font(.system(size:16,weight:.semibold)).foregroundColor(ink); StaffWordText(detail).font(.caption).foregroundColor(.gray) }
                 Spacer(); Image(systemName:"chevron.right").font(.caption.weight(.semibold)).foregroundColor(.gray)
             }.padding(14).contentShape(Rectangle())
         }.buttonStyle(.plain)
@@ -386,20 +386,19 @@ struct StaffSimplyBookV3: View {
         let kind = text(event,"kind")
         let isNote = kind == "note"
         let title = text(event,"title")
-        let time = text(event,"start") + " - " + text(event,"end")
+        let time = text(event,"start") + " · " + text(event,"end")
         return Button {
             let id = text(event,"id")
             if !id.isEmpty { fire(id) }
         } label: {
             VStack(spacing: 4) {
-                Text(title)
+                StaffWordText(title)
                     .font(.system(size: 11, weight: .semibold))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
                 if height > 39 {
-                    Text(time == " - " ? text(event,"detail") : time)
+                    Text(time == " · " ? text(event,"detail") : time)
                         .font(.system(size: 9, weight: .regular))
                         .lineLimit(1)
+                        .minimumScaleFactor(0.55)
                 }
                 if isNote && height > 70 {
                     Text(t("Notiz", "Note"))

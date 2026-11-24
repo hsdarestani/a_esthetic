@@ -39,6 +39,24 @@ import org.json.JSONObject;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+// Keep complete words together in all native cards, labels and calendar
+// controls. Scale the oversized token before Android attempts to wrap it.
+final class StaffWordSafeTextView extends TextView {
+    private float basePx=0;
+    private int baseMaxLines=Integer.MAX_VALUE;
+    StaffWordSafeTextView(Context context){super(context);setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);setHyphenationFrequency(android.text.Layout.HYPHENATION_FREQUENCY_NONE);}
+    @Override protected void onMeasure(int widthSpec,int heightSpec){
+        if(basePx==0){basePx=getTextSize();baseMaxLines=getMaxLines();}
+        int mode=MeasureSpec.getMode(widthSpec), width=MeasureSpec.getSize(widthSpec)-getCompoundPaddingLeft()-getCompoundPaddingRight();
+        float target=basePx;boolean truncate=false;
+        if(mode!=MeasureSpec.UNSPECIFIED&&width>0){android.graphics.Paint paint=new android.graphics.Paint(getPaint());paint.setTextSize(basePx);float longest=0;for(String word:getText().toString().split("\\s+"))longest=Math.max(longest,paint.measureText(word));if(longest>width){target=basePx*width/longest;float min=8*getResources().getDisplayMetrics().scaledDensity;if(target<min){target=min;truncate=true;}}}
+        if(Math.abs(getTextSize()-target)>.15f)super.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,target);
+        int maxLines=truncate?1:baseMaxLines;if(getMaxLines()!=maxLines)setMaxLines(maxLines);
+        if(truncate)setEllipsize(android.text.TextUtils.TruncateAt.END);
+        super.onMeasure(widthSpec,heightSpec);
+    }
+}
+
 @CapacitorPlugin(name = "NativeStaff",permissions={@Permission(alias="camera",strings={android.Manifest.permission.CAMERA})})
 public final class NativeStaffPlugin extends Plugin {
     private static final int PAPER = Color.rgb(247,245,240);
@@ -78,12 +96,13 @@ public final class NativeStaffPlugin extends Plugin {
         LinearLayout v = new LinearLayout(getContext()); v.setOrientation(LinearLayout.HORIZONTAL); v.setGravity(Gravity.CENTER_VERTICAL); return v;
     }
     private TextView text(String s, int sp, int color, boolean bold) {
-        TextView v = new TextView(getContext()); v.setText(s); v.setTextSize(sp); v.setTextColor(color);
+        TextView v = new StaffWordSafeTextView(getContext()); v.setText(s); v.setTextSize(sp); v.setTextColor(color);
         if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         return v;
     }
     private Button button(String label, String id, boolean primary) {
         Button v = new Button(getContext()); v.setText(label); v.setAllCaps(false);
+        v.setHyphenationFrequency(android.text.Layout.HYPHENATION_FREQUENCY_NONE);v.setSingleLine(true);v.setEllipsize(android.text.TextUtils.TruncateAt.END);if(android.os.Build.VERSION.SDK_INT>=26)v.setAutoSizeTextTypeUniformWithConfiguration(9,14,1,android.util.TypedValue.COMPLEX_UNIT_SP);
         boolean danger=id.contains("cancel-appointment")||id.contains("confirm-cancel")||id.contains("delete-line")||id.contains("remove-block");
         int tone=danger?Color.rgb(158,45,45):accent;
         v.setTextColor(primary&&!danger ? Color.WHITE : tone); v.setMinHeight(dp(49)); v.setMinimumHeight(dp(49));
@@ -160,7 +179,7 @@ public final class NativeStaffPlugin extends Plugin {
         TextView t=text(title,11,accent==NAVY?MUTED:BRONZE,true); t.setLetterSpacing(.09f);add(parent,t,9);
     }
     private void grid(LinearLayout parent,JSONArray items,boolean metrics) {
-        int count=getContext().getResources().getConfiguration().screenWidthDp>=700?3:2;
+        int available=getContext().getResources().getConfiguration().screenWidthDp;int count=available>=700?3:available<360?1:2;
         for(int i=0;i<items.length();i+=count){
             LinearLayout line=row();line.setGravity(Gravity.TOP);
             for(int k=0;k<count;k++){
@@ -240,7 +259,7 @@ public final class NativeStaffPlugin extends Plugin {
         String section=booking?(english?"Booking info":"Buchungsinformationen"):type.equals("availability")?(english?"Working hours":"Arbeitszeiten"):"Details";sbSection(body,section);
         if(!s.optString("message").isEmpty()){TextView msg=text(s.optString("message"),14,NAVY,false);msg.setPadding(dp(19),dp(12),dp(19),dp(12));msg.setBackgroundColor(SB_SECTION);add(body,msg,0);}
         JSONArray fields=list(s,"fields");Runnable[] reopen={null};
-        if(block){sbDatePair(body,fields,"start",english?"Start date and time":"Startdatum und -uhrzeit",false);sbDatePair(body,fields,"end",english?"End date and time":"Enddatum und -uhrzeit",true);
+        if(block){sbDatePair(body,fields,"start",english?"Start date and time":"Startdatum und Uhrzeit",false);sbDatePair(body,fields,"end",english?"End date and time":"Enddatum und Uhrzeit",true);
             LinearLayout lock=row();lock.setPadding(dp(19),dp(11),dp(19),dp(11));lock.addView(text("♙",21,NAVY,false),new LinearLayout.LayoutParams(dp(28),dp(36)));LinearLayout copy=column();copy.setPadding(dp(14),0,0,0);boolean blocked="block".equals(sbFind(fields,"kind").optString("value"));choices.put("kind",blocked?"block":"note");TextView state=text(blocked?(english?"Time is blocked":"Zeitraum ist geblockt"):(english?"Time is not blocked":"Zeitraum ist nicht geblockt"),16,NAVY,true);add(copy,state,4);add(copy,text(english?"Time is blocked":"Zeitraum ist geblockt",13,MUTED,false),0);lock.addView(copy,new LinearLayout.LayoutParams(0,-2,1));Switch toggle=new Switch(getContext());toggle.setChecked(blocked);toggle.setContentDescription(english?"Time is blocked":"Zeitraum ist geblockt");toggle.setOnCheckedChangeListener((b,on)->{choices.put("kind",on?"block":"note");state.setText(on?(english?"Time is blocked":"Zeitraum ist geblockt"):(english?"Time is not blocked":"Zeitraum ist nicht geblockt"));});lock.addView(toggle);add(body,lock,0);sbSection(body,english?"Apply note to":"Anwendung der Notiz");
             LinearLayout scope=row();String[] scopes=english?new String[]{"Apply to all","Apply to provider","Apply to service"}:new String[]{"Für alle anwenden","Für Dienstleister anwenden","Für Dienstleistung anwenden"};for(int n=0;n<3;n++){TextView tab=text(scopes[n],12,n==1?NAVY:MUTED,n==1);tab.setGravity(Gravity.CENTER);tab.setPadding(dp(5),0,dp(5),0);tab.setBackgroundColor(n==1?Color.WHITE:SB_SECTION);scope.addView(tab,new LinearLayout.LayoutParams(0,dp(64),1));}add(body,scope,0);
         }

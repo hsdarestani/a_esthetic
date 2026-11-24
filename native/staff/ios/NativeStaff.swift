@@ -5,6 +5,39 @@ import UniformTypeIdentifiers
 import Capacitor
 import UIKit
 
+// Wrap at complete words only, even in narrow cards and dynamic type sizes.
+// A single oversized token scales inside the available width, never onto a
+// second line. Keep accessibility text intact (including real identifiers).
+struct StaffWordFlow: Layout {
+    private func arrangement(_ proposal: ProposedViewSize, _ subviews: Subviews) -> (CGSize,[(CGPoint,CGSize)]) {
+        let limit=max(1,proposal.width ?? 10000), gap:CGFloat=3.5
+        var x:CGFloat=0,y:CGFloat=0,lineHeight:CGFloat=0,maxX:CGFloat=0
+        var positions:[(CGPoint,CGSize)]=[]
+        for view in subviews {
+            let natural=view.sizeThatFits(.unspecified)
+            let w=min(limit,natural.width)
+            if x>0 && x+w>limit { x=0;y+=lineHeight+2;lineHeight=0 }
+            let measured=view.sizeThatFits(ProposedViewSize(width:w,height:nil))
+            positions.append((CGPoint(x:x,y:y),CGSize(width:w,height:measured.height)))
+            lineHeight=max(lineHeight,measured.height);maxX=max(maxX,x+w);x+=w+gap
+        }
+        return (CGSize(width:maxX,height:y+lineHeight),positions)
+    }
+    func sizeThatFits(proposal: ProposedViewSize,subviews: Subviews,cache: inout ()) -> CGSize { arrangement(proposal,subviews).0 }
+    func placeSubviews(in bounds:CGRect,proposal: ProposedViewSize,subviews: Subviews,cache: inout ()) {
+        let positions=arrangement(ProposedViewSize(width:bounds.width,height:nil),subviews).1
+        for (i,p) in positions.enumerated() { subviews[i].place(at:CGPoint(x:bounds.minX+p.0.x,y:bounds.minY+p.0.y),anchor:.topLeading,proposal:ProposedViewSize(p.1)) }
+    }
+}
+struct StaffWordText: View {
+    let value:String
+    init(_ value:String){self.value=value}
+    var body:some View {
+        StaffWordFlow { ForEach(Array(value.split(whereSeparator:{$0.isWhitespace}).enumerated()),id:\.offset) { _,word in Text(String(word)).lineLimit(1).minimumScaleFactor(0.45).allowsTightening(true) } }
+            .accessibilityElement(children:.ignore).accessibilityLabel(value)
+    }
+}
+
 final class StaffScreenState: ObservableObject {
     @Published var screen: [String: Any] = [:]
     @Published var calendarScreen: [String: Any] = [:]
@@ -43,7 +76,7 @@ struct StaffNativeScreen: View {
     private var billing: Bool { text(state.screen, "theme") == "billing" }
     private var accent: Color { modal ? Color(red: 32/255,green: 43/255,blue: 61/255) : billing ? Color(red: 98/255,green: 12/255,blue: 14/255) : green }
     private var english: Bool { text(state.screen, "language") == "en" }
-    private func t(_ de: String, _ en: String) -> String { english ? en : de }
+    private func t(_ de: String, _ en: String) -> String { (english ? en : de).replacingOccurrences(of:" – ",with:" · ").replacingOccurrences(of:" - ",with:" · ").replacingOccurrences(of:"-",with:" ") }
     private func action(_ id: String) { state.send?(id, state.values) }
     private func items(_ key: String) -> [[String: Any]] { state.screen[key] as? [[String: Any]] ?? [] }
     private func text(_ item: [String: Any], _ key: String) -> String { item[key] as? String ?? "" }
@@ -95,7 +128,7 @@ struct StaffNativeScreen: View {
         return VStack(spacing:0) {
             HStack(spacing:12) {
                 Button { action(modal ? "calendar" : "back") } label: { Image(systemName:"xmark").font(.system(size:18,weight:.medium)).frame(width:42,height:48) }.accessibilityLabel(t("Schließen","Close"))
-                Text(text(state.screen,"title")).font(.system(size:19,weight:.medium)).lineLimit(2).minimumScaleFactor(0.78)
+                StaffWordText(text(state.screen,"title")).font(.system(size:19,weight:.medium))
                 Spacer(minLength:4)
                 if let primary, !booking { Button { action(text(primary,"id")) } label: { Text(text(primary,"label")).font(.system(size:15,weight:.bold)).padding(.horizontal,13).frame(minHeight:48) } }
             }.foregroundColor(.white).padding(.horizontal,5).background(sbNavy)
@@ -103,10 +136,10 @@ struct StaffNativeScreen: View {
                 VStack(alignment:.leading,spacing:0) {
                     Text(booking ? t("Buchungsinformationen","Booking info") : type == "availability" ? t("Arbeitszeiten","Working hours") : t("Details","Details"))
                         .font(.system(size:17)).foregroundColor(sbNavy).padding(.horizontal,19).frame(maxWidth:.infinity,minHeight:54,alignment:.leading).background(sbSection)
-                    if !text(state.screen,"message").isEmpty { Text(text(state.screen,"message")).font(.footnote).foregroundColor(sbNavy).padding(16).frame(maxWidth:.infinity,alignment:.leading).background(sbSection) }
+                    if !text(state.screen,"message").isEmpty { StaffWordText(text(state.screen,"message")).font(.footnote).foregroundColor(sbNavy).padding(16).frame(maxWidth:.infinity,alignment:.leading).background(sbSection) }
                     sbFormFields(type)
                     ForEach(Array(items("rows").enumerated()),id:\.offset) { _, item in
-                        Text(text(item,"label") + "  " + text(item,"detail")).font(.subheadline).padding(16).frame(maxWidth:.infinity,alignment:.leading)
+                        StaffWordText(text(item,"label") + "  " + text(item,"detail")).font(.subheadline).padding(16).frame(maxWidth:.infinity,alignment:.leading)
                         Divider()
                     }
                     ForEach(Array(items("actions").filter { text($0,"id") != (primary.map { text($0,"id") } ?? "") }.enumerated()),id:\.offset) { _, item in
@@ -135,8 +168,8 @@ struct StaffNativeScreen: View {
     }
     @ViewBuilder private func sbFormFields(_ type:String) -> some View {
         if type == "block" {
-            sbDatePair("start",t("Startdatum und -uhrzeit","Start date and time"))
-            sbDatePair("end",t("Enddatum und -uhrzeit","End date and time"))
+            sbDatePair("start",t("Startdatum und Uhrzeit","Start date and time"))
+            sbDatePair("end",t("Enddatum und Uhrzeit","End date and time"))
             HStack(spacing:15) { Image(systemName:"lock").frame(width:25); VStack(alignment:.leading,spacing:4) { Text(state.values["kind"] == "block" ? t("Zeitraum ist geblockt","Time is blocked") : t("Zeitraum ist nicht geblockt","Time is not blocked")).font(.system(size:16,weight:.bold)); Text(t("Zeitraum ist geblockt","Time is blocked")).font(.caption).foregroundColor(.gray) }; Spacer(); Toggle("",isOn:Binding(get:{state.values["kind"] == "block"},set:{state.values["kind"]=$0 ? "block" : "note"})).labelsHidden().tint(Color(red:0,green:0.60,blue:0.78)) }.foregroundColor(sbNavy).padding(.horizontal,19).frame(minHeight:68)
             sbSectionTitle(t("Anwendung der Notiz","Apply note to"))
             HStack(spacing:0) { ForEach([t("Für alle anwenden","Apply to all"),t("Für Dienstleister anwenden","Apply to provider"),t("Für Dienstleistung anwenden","Apply to service")],id:\.self) { label in let selected = label == t("Für Dienstleister anwenden","Apply to provider"); Text(label).font(.system(size:12,weight:selected ? .bold : .regular)).foregroundColor(selected ? sbNavy : .gray).multilineTextAlignment(.center).frame(maxWidth:.infinity,minHeight:64).background(selected ? Color.white : sbSection.opacity(0.6)) } }
@@ -159,8 +192,8 @@ struct StaffNativeScreen: View {
                     Button { choiceQuery=""; choosing=key } label: {
                         HStack {
                             VStack(alignment:.leading,spacing:4) {
-                                if let selected=options.first(where:{text($0,"value")==binding.wrappedValue}) { Text(text(selected,"label")).font(.system(size:17,weight:.semibold)).foregroundColor(sbNavy); Text(label).font(.system(size:13)).foregroundColor(.gray) }
-                                else { Text(key == "service_id" ? t("Eine Dienstleistung auswählen","Choose a service") : key == "customer_id" ? t("Einen Kunden auswählen","Choose a client") : t("Auswählen","Select")).font(.system(size:16)).foregroundColor(sbNavy) }
+                                if let selected=options.first(where:{text($0,"value")==binding.wrappedValue}) { StaffWordText(text(selected,"label")).font(.system(size:17,weight:.semibold)).foregroundColor(sbNavy); StaffWordText(label).font(.system(size:13)).foregroundColor(.gray) }
+                                else { StaffWordText(key == "service_id" ? t("Eine Dienstleistung auswählen","Choose a service") : key == "customer_id" ? t("Einen Kunden auswählen","Choose a client") : t("Auswählen","Select")).font(.system(size:16)).foregroundColor(sbNavy) }
                             }; Spacer(); Image(systemName:"chevron.down").font(.system(size:15,weight:.medium)).foregroundColor(.gray)
                         }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel(label)
@@ -168,7 +201,7 @@ struct StaffNativeScreen: View {
                     VStack(alignment:.leading,spacing:4) {
                         if kind == "multiline" { TextEditor(text:binding).frame(minHeight:58).font(.system(size:16)).scrollContentBackground(.hidden).accessibilityLabel(label) }
                         else { TextField(label,text:binding).font(.system(size:17,weight:.semibold)).keyboardType(keyboardType(kind)).autocorrectionDisabled().accessibilityLabel(label) }
-                        Text(label).font(.system(size:13)).foregroundColor(.gray)
+                        StaffWordText(label).font(.system(size:13)).foregroundColor(.gray)
                     }.foregroundColor(sbNavy)
                     Image(systemName:"pencil").font(.system(size:18)).foregroundColor(sbNavy)
                 }
@@ -208,13 +241,13 @@ struct StaffNativeScreen: View {
                             .background(modal ? accent.opacity(0.075) : sand, in: RoundedRectangle(cornerRadius: 12))
                     }
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(text(item, "label")).font(.system(size: 16, weight: .semibold)).foregroundColor(ink)
+                        StaffWordText(text(item, "label")).font(.system(size: 16, weight: .semibold)).foregroundColor(ink)
                         if !text(item, "detail").isEmpty {
-                            Text(text(item, "detail")).font(.system(size: 13)).foregroundColor(muted).fixedSize(horizontal: false, vertical: true)
+                            StaffWordText(text(item, "detail")).font(.system(size: 13)).foregroundColor(muted).fixedSize(horizontal: false, vertical: true)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     if !text(item, "badge").isEmpty {
-                        Text(text(item, "badge")).font(.caption2.weight(.semibold)).padding(6)
+                        Text(text(item, "badge")).font(.caption2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.6).padding(6)
                             .background(modal ? accent.opacity(0.08) : sand, in: Capsule()).foregroundColor(modal ? accent : bronze)
                     }
                     if !id.isEmpty { Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundColor(muted).padding(.top, 4) }
@@ -229,7 +262,7 @@ struct StaffNativeScreen: View {
         return Button { action(id) } label: {
             HStack {
                 if primary { Spacer(minLength: 0) }
-                Text(text(item, "label")).font(.system(size: 15, weight: .semibold)).multilineTextAlignment(.leading)
+                StaffWordText(text(item, "label")).font(.system(size: 15, weight: .semibold))
                 Spacer(minLength: 0)
                 if !primary { Image(systemName: "arrow.right").font(.caption.weight(.semibold)).foregroundColor(modal ? tone : bronze) }
             }.padding(.horizontal, 15).frame(minHeight: 49)
@@ -257,8 +290,8 @@ struct StaffNativeScreen: View {
             VStack(alignment:.leading,spacing:12) {
                 Text("A+ ESTHETIC · " + (text(state.screen,"heroLabel").isEmpty ? t("PRAXISMANAGEMENT","PRACTICE MANAGEMENT") : text(state.screen,"heroLabel")))
                     .font(.system(size:10,weight:.semibold)).tracking(1.4).foregroundColor(gold)
-                Text(text(state.screen,"hero")).font(.system(size:34,weight:.regular,design:.serif)).foregroundColor(.white)
-                Text(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(.white.opacity(0.78))
+                StaffWordText(text(state.screen,"hero")).font(.system(size:34,weight:.regular,design:.serif)).foregroundColor(.white)
+                StaffWordText(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(.white.opacity(0.78))
             }.padding(23).frame(maxWidth:.infinity,alignment:.leading)
                 .background(LinearGradient(colors:[green,Color(red:0.19,green:0.29,blue:0.24)],startPoint:.topLeading,endPoint:.bottomTrailing))
                 .overlay(alignment:.trailing) {
@@ -270,8 +303,8 @@ struct StaffNativeScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius:23))
                 .shadow(color:green.opacity(0.18),radius:12,y:5)
         } else {
-            Text(text(state.screen,"title")).font(.system(size:sheet ? 27 : 34,weight:.regular,design:sheet ? .default : .serif))
-            if !text(state.screen,"subtitle").isEmpty { Text(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(muted) }
+            StaffWordText(text(state.screen,"title")).font(.system(size:sheet ? 27 : 34,weight:.regular,design:sheet ? .default : .serif))
+            if !text(state.screen,"subtitle").isEmpty { StaffWordText(text(state.screen,"subtitle")).font(.subheadline).foregroundColor(muted) }
         }
     }
     @ViewBuilder private var metricsView: some View {
@@ -282,7 +315,7 @@ struct StaffNativeScreen: View {
                         panel {
                             VStack(alignment:.leading,spacing:8) {
                                 HStack { Image(systemName:icon(text(item,"id"))).font(.body.weight(.medium)).foregroundColor(bronze).frame(width:35,height:35).background(sand,in:RoundedRectangle(cornerRadius:10)); Spacer(); Image(systemName:"chevron.right").font(.caption2.weight(.semibold)).foregroundColor(bronze) }
-                                Text(text(item,"label").uppercased()).font(.system(size:10,weight:.semibold)).tracking(0.5).foregroundColor(bronze).lineLimit(2)
+                                StaffWordText(text(item,"label").uppercased()).font(.system(size:10,weight:.semibold)).foregroundColor(bronze)
                                 Text(text(item,"detail")).font(.system(size:31,weight:.semibold,design:.serif)).foregroundColor(ink).minimumScaleFactor(0.6).lineLimit(1)
                             }
                         }
@@ -298,7 +331,7 @@ struct StaffNativeScreen: View {
                     ForEach(Array(items("segments").enumerated()),id:\.offset) { _, item in
                         let selected = item["selected"] as? Bool == true
                         Button { action(text(item,"id")) } label: {
-                            Text(text(item,"label")).font(.subheadline.weight(.semibold)).padding(.horizontal,13).padding(.vertical,11)
+                            Text(text(item,"label")).font(.subheadline.weight(.semibold)).lineLimit(1).fixedSize().padding(.horizontal,13).padding(.vertical,11)
                                 .foregroundColor(selected ? green : accent).background(selected ? sand : card,in:Capsule())
                                 .overlay { Capsule().strokeBorder(selected ? gold : edge,lineWidth:1) }
                         }.buttonStyle(.plain)
@@ -311,7 +344,7 @@ struct StaffNativeScreen: View {
         if !text(state.screen,"message").isEmpty {
             panel { HStack(alignment:.top,spacing:10) {
                 Image(systemName:"info.circle").foregroundColor(accent)
-                Text(text(state.screen,"message")).font(.subheadline).foregroundColor(ink)
+                StaffWordText(text(state.screen,"message")).font(.subheadline).foregroundColor(ink)
             } }
         }
         if !items("fields").isEmpty {
@@ -323,12 +356,12 @@ struct StaffNativeScreen: View {
     @ViewBuilder private var shortcutsView: some View {
         if !items("shortcuts").isEmpty {
             sectionTitle(t("SCHNELLZUGRIFF","QUICK ACCESS"))
-            LazyVGrid(columns:[GridItem(.adaptive(minimum:140),spacing:9)],spacing:9) {
+            LazyVGrid(columns:[GridItem(.adaptive(minimum:158),spacing:9)],spacing:9) {
                 ForEach(Array(items("shortcuts").enumerated()),id:\.offset) { _, item in
                     Button { action(text(item,"id")) } label: {
                         HStack(spacing:8) {
                             Image(systemName:icon(text(item,"id"))).font(.system(size:13,weight:.semibold)).foregroundColor(bronze).frame(width:30,height:30).background(sand,in:RoundedRectangle(cornerRadius:9))
-                            Text(text(item,"label")).font(.system(size:13,weight:.semibold)).foregroundColor(ink).multilineTextAlignment(.leading)
+                            StaffWordText(text(item,"label")).font(.system(size:13,weight:.semibold)).foregroundColor(ink).layoutPriority(1)
                             Spacer(minLength:0); Image(systemName:"chevron.right").font(.caption2.weight(.semibold)).foregroundColor(bronze)
                         }.padding(10).frame(minHeight:60).frame(maxWidth:.infinity,alignment:.leading)
                             .background(sand.opacity(0.33),in:RoundedRectangle(cornerRadius:13)).overlay { RoundedRectangle(cornerRadius:13).strokeBorder(edge,lineWidth:1) }
@@ -343,7 +376,7 @@ struct StaffNativeScreen: View {
         if items("rows").isEmpty && !text(state.screen,"empty").isEmpty {
             panel { VStack(alignment:.center,spacing:10) {
                 Image(systemName:"tray").font(.system(size:29)).foregroundColor(muted)
-                Text(text(state.screen,"empty")).font(.subheadline).foregroundColor(muted).multilineTextAlignment(.center)
+                StaffWordText(text(state.screen,"empty")).font(.subheadline).foregroundColor(muted)
             }.frame(maxWidth:.infinity).padding(.vertical,12) }
         }
         if !items("secondaryRows").isEmpty {
@@ -400,13 +433,13 @@ struct StaffNativeScreen: View {
             } else { ZStack(alignment:.bottom) {
                 Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { choosing=nil }
                 VStack(alignment:.leading,spacing:10) {
-                    HStack { Text(text(field,"label")).font(.title2.weight(.semibold)); Spacer(); Button { choosing=nil } label: { Image(systemName:"xmark.circle.fill").font(.title2).foregroundColor(muted) } }
+                    HStack { StaffWordText(text(field,"label")).font(.title2.weight(.semibold)); Spacer(); Button { choosing=nil } label: { Image(systemName:"xmark.circle.fill").font(.title2).foregroundColor(muted) } }
                     ScrollView {
                         VStack(spacing: 5) {
                             ForEach(Array(options.enumerated()),id:\.offset) { _, option in
                                 Button { state.values[key]=text(option,"value"); choosing=nil } label: {
                                     HStack {
-                                        Text(text(option,"label")).font(.body).foregroundColor(ink).multilineTextAlignment(.leading)
+                                        StaffWordText(text(option,"label")).font(.body).foregroundColor(ink)
                                         Spacer()
                                         if state.values[key] == text(option,"value") { Image(systemName:"checkmark.circle.fill").foregroundColor(accent) }
                                     }.padding(14).frame(maxWidth:.infinity,alignment:.leading)
@@ -435,7 +468,7 @@ struct StaffNativeScreen: View {
                             Button { state.values[key]=text(option,"value"); choosing=nil } label: {
                                 HStack(spacing:11) {
                                     if client { Text(String(text(option,"label").prefix(1)).uppercased()).font(.system(size:15,weight:.medium)).foregroundColor(.white).frame(width:36,height:36).background(sbNavy,in:Circle()) }
-                                    VStack(alignment:.leading,spacing:4) { Text(text(option,"label")).font(.system(size:15)).foregroundColor(sbNavy); if !text(option,"detail").isEmpty { Text(text(option,"detail")).font(.system(size:11)).foregroundColor(.gray) } }; Spacer(); if state.values[key]==text(option,"value") { Image(systemName:"checkmark").foregroundColor(sbNavy) }
+                                    VStack(alignment:.leading,spacing:4) { StaffWordText(text(option,"label")).font(.system(size:15)).foregroundColor(sbNavy); if !text(option,"detail").isEmpty { StaffWordText(text(option,"detail")).font(.system(size:11)).foregroundColor(.gray) } }; Spacer(); if state.values[key]==text(option,"value") { Image(systemName:"checkmark").foregroundColor(sbNavy) }
                                 }.frame(maxWidth:.infinity,minHeight:49,alignment:.leading).contentShape(Rectangle())
                             }.buttonStyle(.plain)
                         } }
@@ -461,14 +494,14 @@ struct StaffNativeScreen: View {
         let kind = text(field, "kind")
         let binding = Binding(get: { state.values[key] ?? "" }, set: { state.values[key] = $0 })
         VStack(alignment: .leading, spacing: 7) {
-            Text(text(field, "label")).font(.system(size:13,weight:.semibold)).foregroundColor(muted)
+            StaffWordText(text(field, "label")).font(.system(size:13,weight:.semibold)).foregroundColor(muted)
             if let options = field["options"] as? [[String: Any]], !options.isEmpty {
                 if kind == "choice-grid" {
                     LazyVGrid(columns:[GridItem(.flexible(),spacing:7),GridItem(.flexible(),spacing:7)],spacing:7) {
                         ForEach(Array(options.enumerated()),id:\.offset) { _, option in
                             let selected = binding.wrappedValue == text(option,"value")
                             Button { binding.wrappedValue=text(option,"value") } label: {
-                                Text(text(option,"label")).font(.subheadline.weight(.semibold))
+                                StaffWordText(text(option,"label")).font(.subheadline.weight(.semibold))
                                     .frame(maxWidth:.infinity).frame(minHeight:48)
                                     .foregroundColor(selected ? .white : accent)
                                     .background(selected ? accent : card,in:RoundedRectangle(cornerRadius:10))
@@ -479,7 +512,7 @@ struct StaffNativeScreen: View {
                 } else {
                     Button { choosing=key } label: {
                         HStack {
-                            Text(options.first(where:{ text($0,"value")==binding.wrappedValue }).map{ text($0,"label") } ?? t("Auswählen","Select"))
+                            StaffWordText(options.first(where:{ text($0,"value")==binding.wrappedValue }).map{ text($0,"label") } ?? t("Auswählen","Select"))
                                 .foregroundColor(ink).multilineTextAlignment(.leading)
                             Spacer(); Image(systemName:"chevron.up.chevron.down").font(.caption).foregroundColor(accent)
                         }.padding(12).frame(minHeight:47).frame(maxWidth:.infinity,alignment:.leading)

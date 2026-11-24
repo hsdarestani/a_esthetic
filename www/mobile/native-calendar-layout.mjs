@@ -70,7 +70,7 @@ export function buildNativeCalendarTimeline({date,mode='day',providers=[],servic
         .map(p=>({id:'staff:'+p.id,date,title:p.name,ref:String(p.id)}))
       :mode==='service'
         ?services.filter(s=>s.active && (service==='all'||String(s.id)===service))
-          .map(s=>({id:'service:'+s.id,date,title:s.name,ref:String(s.id)}))
+          .map(s=>({id:'service:'+s.id,date,title:serviceDisplayName(s.name),ref:String(s.id)}))
         :[{id:date,date,title:date,ref:''}];
   const events=[];
   const bands=[];
@@ -85,7 +85,7 @@ export function buildNativeCalendarTimeline({date,mode='day',providers=[],servic
       colEvents.push({
         id:'appointment:'+item.id,kind:'appointment',date:col.date,column:index,
         lower:span.lower,upper:span.upper,
-        title:String(item.customer_name||''),detail:String(item.service_name||''),
+        title:String(item.customer_name||''),detail:serviceDisplayName(item.service_name),
         meta:String(item.staff_name||''),start:clock(item.start)||'',
         end:clock(item.end)||'',status:String(item.status||''),
       });
@@ -127,6 +127,7 @@ export function buildNativeCalendarTimeline({date,mode='day',providers=[],servic
     // actual booking availability remain authoritative for create/update.
     firstHour:VISIBLE_START_HOUR,lastHour:VISIBLE_END_HOUR,provider,service,
     providers:providers.map(p=>({id:String(p.id),label:p.name})),
-    services:services.filter(s=>s.active).map(s=>({id:String(s.id),label:s.name})),
+    services:services.filter(s=>s.active).map(s=>({id:String(s.id),label:serviceDisplayName(s.name)})),
   };
 }
+const serviceDisplayName = name => String(name??'').replace(/\s+[\-–—]\s+/g,' · ').replace(/[\-‐‑–—]/g,' ');

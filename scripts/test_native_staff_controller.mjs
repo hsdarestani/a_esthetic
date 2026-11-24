@@ -3,7 +3,8 @@ import { mock } from 'node:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 mock.timers.enable({apis:['Date'], now: new Date('2026-11-23T12:00:00+01:00')});
-import { mountNativeWorkspace, germanDate, canonicalDate } from '../www/mobile/native-workspace.mjs';
+import { mountNativeWorkspace, germanDate, canonicalDate, displayCopy } from '../www/mobile/native-workspace.mjs';
+assert.equal(displayCopy('Wallet-Verlauf – Test'),'Wallet Verlauf · Test');
 assert.equal(germanDate('2026-11-25 · 16:00'),'25.11.2026 · 16:00');
 assert.equal(canonicalDate('25.11.2026'),'2026-11-25');
 assert.equal(canonicalDate('29.02.2024'),'2024-02-29');
@@ -26,7 +27,7 @@ globalThis.Capacitor={Plugins:{NativeStaff:{
   async pickPhoto(){return {filename:'synthetic-photo.jpg',base64:'AA=='};},
   async addListener(name,fn){assert.equal(name,'action');onAction=fn;return{remove(){onAction=null;}};},
 }}};
-let lastCalendar, lastFinancialUpdate, officeRevision='v1', sourceEditEnabled=false;
+let lastCalendar, lastFinancialUpdate, officeRevision='v1', sourceEditEnabled=false, accountMode='linked', invoiceRequests=0;
 const officeSettings={company_name:'A+ Esthetic Demo',street:'Testweg 1',postal_code:'60313',city:'Frankfurt',
   email:'office@example.test',phone:'0691',tax_number:'',vat_id:'',bank_name:'',iban:'',bic:'',
   invoice_prefix:'RE',next_sequence:1};
@@ -56,11 +57,11 @@ globalThis.fetch=async(url,opts)=>{
   }
   else if(path.endsWith('/patients/'))result={items:[{id:23,name:'Demo patient',email:'demo@example.test'}],has_more:new URL(url).searchParams.get('page')==='1'};
   else if(path.endsWith('/patient/23/'))result={patient:{id:23,name:'Demo patient',email:'demo@example.test',phone:'069000000'},appointments:[{id:46,public_id:'00000000-0000-4000-8000-000000000046',date:'2026-11-20',start:'11:30',service_name:'Consult',staff_name:'Demo clinician',status:'completed'}],records:[{id:'00000000-0000-4000-8000-000000000099',title:'Synthetic clinical note',date:'2026-11-20',note:'Synthetic record for UI testing',kind:'note',has_file:false}]};
-  else if(path.endsWith('/customers/'))result={items:[{id:25,name:'Demo patient',email:'demo@example.test',book_customer_id:23,address:{street:'Testweg 1',postal_code:'60313',city:'Frankfurt'}}]};
-  else if(path.endsWith('/patient-account/23/'))result={customer_id:25};
-  else if(path.endsWith('/customers/25/'))result={customer:{id:25,name:'Demo patient',coins:240,credit_cents:1500},packages:[{id:1,name:'Synthetic package',remaining_sessions:2,expires_at:'2027-01-01',status:'active'}]};
+  else if(path.endsWith('/customers/'))result={items:[{id:25,name:'Demo patient',email:'demo@example.test',book_customer_id:accountMode==='unlinked'?null:23,address:{street:'Testweg 1',postal_code:'60313',city:'Frankfurt'}}]};
+  else if(path.endsWith('/patient-account/23/')){if(accountMode==='fallback'||accountMode==='unlinked')return {ok:false,status:404};result={customer_id:25};}
+  else if(path.endsWith('/customers/25/')){if(accountMode==='missing-detail')return {ok:false,status:404};result={customer:{id:25,name:'Demo patient',coins:240,credit_cents:1500},packages:[{id:1,name:'Synthetic package',remaining_sessions:2,expires_at:'2027-01-01',status:'active'}]};}
   else if(path.endsWith('/record-upload/'))result={ok:true,id:100};
-  else if(path.endsWith('/invoices/25/'))result={items:[]};
+  else if(path.endsWith('/invoices/25/')){invoiceRequests++;return {ok:false,status:404};}
   else if(path.endsWith('/tariff-catalog/'))result={items:[{number:'1',de:'Beratung',en:'Consultation',points:80}],treatments:{},synthetic_reference_available:false};
   else if(path.endsWith('/quote/'))result={subtotal_cents:1072,tax_cents:204,total_cents:1276,items:[{goae_number:'1',description:'Consultation',quantity:'1',factor:'2.30',gross_cents:1276}]};
   else if(path.endsWith('/forms/'))result={items:[{id:17,name:'Synthetic patient',email:'synthetic@example.test',created_at:'2026-11-23T14:00:00Z',status:'review'}]};
@@ -206,6 +207,12 @@ capture('15-record-detail');
 await click('patient-section:account');
 assert.equal(current.metrics[0].detail,'240');
 capture('16-patient-account');
+assert.equal(invoiceRequests,0,'Office invoice request removed from account tab');
+accountMode='fallback';await click('patient-section:contact');await click('patient-section:account');assert.equal(current.metrics[0].detail,'240');assert.equal(current.segments.find(s=>s.selected).id,'patient-section:account');
+accountMode='unlinked';await click('patient-section:account');assert.equal(current.segments.find(s=>s.selected).id,'patient-section:account');assert.ok(!current.message.includes('404'));assert.ok(current.actions.some(a=>a.id==='patient-link-account'));
+await click('patient-link-account');assert.equal(current.title,'Link customer account');assert.equal(current.fields.find(f=>f.id==='customer_id').value,'');assert.equal(current.fields.find(f=>f.id==='confirm').value,'no');
+accountMode='missing-detail';await click('patient-section:account');assert.match(current.message,/no longer available/);assert.equal(current.segments.find(s=>s.selected).id,'patient-section:account');
+accountMode='linked';await click('patient-section:account');
 await click('patient-section:records');
 await click('upload-photo');
 assert.ok(current.actions.some(x=>x.id==='confirm-upload'));
@@ -242,5 +249,8 @@ await click('new-appointment');capture('03-new-appointment');
 await click('calendar-client-search',{...Object.fromEntries(current.fields.map(f=>[f.id,f.value])),_patient_query:'Demo'});capture('03b-client-picker');
 await click('calendar');await click('new-block');capture('04-block');
 await click('calendar');await click('availability');capture('06-working-hours');
+await click('patients');await click('patient:23');capture('13-patient-profile');
+await click('patient-section:contact');capture('16a-patient-contact');
+await click('patient-section:account');capture('16-patient-account');
 await native.destroy();
 console.log('PASS: native controller, SimplyBook form layouts, calendar swipes, German defaults, Office hidden, medical notes and role tabs');

@@ -54,7 +54,7 @@
     }
     if (response.status===401 && path==='/login/') {
       const payload=await response.json().catch(()=>({}));
-      const error=new Error('Die E-Mail-Adresse oder das Passwort ist falsch. Bitte überprüfe deine Eingaben und versuche es erneut.');
+      const error=new Error('Die E Mail Adresse oder das Passwort ist falsch. Bitte überprüfe deine Eingaben und versuche es erneut.');
       error.code=payload?.error || 'invalid_credentials';
       throw error;
     }
@@ -613,7 +613,7 @@
     let html=pageHead('EMPFEHLUNGEN','Freunde einladen','300 Punkte für Sie nach der ersten Buchung Ihrer Empfehlung.');
     html+='<section class="card referral-premium"><h2>Persönlich einladen</h2>'+
       '<p>Die eingeladene Person erhält nach erfolgreicher Registrierung mit Ihrem Code 300 Punkte. Ihre 300 Punkte werden nach der ersten Buchung gutgeschrieben.</p>'+
-      '<form data-referral><label class="field"><span>E-Mail</span><input name="invited_email" type="email" placeholder="name@example.com" autocomplete="email" required></label>'+
+      '<form data-referral><label class="field"><span>E Mail</span><input name="invited_email" type="email" placeholder="name@example.com" autocomplete="email" required></label>'+
       '<button class="primary wide" type="submit">Einladung senden</button>'+
       '<div data-referral-feedback role="status" aria-live="polite" hidden></div></form></section>';
     html+='<div class="section-title"><h2>Bisherige Einladungen</h2><small data-referral-count>'+refs.length+'</small></div>'+
@@ -665,10 +665,10 @@
         if(result.points_awarded)alert('+'+result.points_awarded+' Punkte');
       }catch(error){
         const messages={
-          valid_email_required:'Bitte geben Sie eine gültige E-Mail-Adresse ein.',
+          valid_email_required:'Bitte geben Sie eine gültige E Mail Adresse ein.',
           cannot_refer_yourself:'Sie können sich nicht selbst einladen.',
           already_referred:'Diese Person wurde bereits eingeladen und die Punkte wurden gutgeschrieben.',
-          referral_email_failed:'Die Einladung konnte nicht per E-Mail versendet werden. Bitte versuchen Sie es später erneut.'
+          referral_email_failed:'Die Einladung konnte nicht per E Mail versendet werden. Bitte versuchen Sie es später erneut.'
         };
         showFeedback(messages[error.code]||error.message||'Die Einladung konnte nicht versendet werden.',false);
       }finally{

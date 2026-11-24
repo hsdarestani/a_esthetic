@@ -65,11 +65,11 @@ jobs:
           python3 scripts/install_native_staff.py
           grep -F 'StaffSimplyBookV3(state: state, model: calendar)' ios/App/App/AppDelegate.swift
           grep -F 'PRACTICE MANAGEMENT' ios/App/App/AppDelegate.swift
-      - name: Compile iOS Simulator build 58
+      - name: Compile iOS Simulator build 59
         run: |
           set -euo pipefail
           if [[ -d ios/App/App.xcworkspace ]]; then app=(-workspace ios/App/App.xcworkspace); else app=(-project ios/App/App.xcodeproj); fi
-          xcodebuild -quiet "${app[@]}" -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/admin-v4" ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO IPHONEOS_DEPLOYMENT_TARGET=18.0 MARKETING_VERSION=1.0.52 CURRENT_PROJECT_VERSION=58 build > "$RUNNER_TEMP/native-ios.log" 2>&1 || { grep -nE 'error:|fatal error:|unable to type-check|failed' "$RUNNER_TEMP/native-ios.log" | head -60 || true; tail -n 100 "$RUNNER_TEMP/native-ios.log"; exit 1; }
+          xcodebuild -quiet "${app[@]}" -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/admin-v4" ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO IPHONEOS_DEPLOYMENT_TARGET=18.0 MARKETING_VERSION=1.0.53 CURRENT_PROJECT_VERSION=59 build > "$RUNNER_TEMP/native-ios.log" 2>&1 || { grep -nE 'error:|fatal error:|unable to type-check|failed' "$RUNNER_TEMP/native-ios.log" | head -60 || true; tail -n 100 "$RUNNER_TEMP/native-ios.log"; exit 1; }
       - name: Package Appetize direct ZIP and verify actual source bundle
         if: always()
         run: |
@@ -77,15 +77,15 @@ jobs:
           mkdir -p artifacts
           app="$RUNNER_TEMP/admin-v4/Build/Products/Debug-iphonesimulator/App.app"
           test -s "$app/App"
-          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")" = "1.0.52"
-          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 58
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")" = "1.0.53"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 59
           test ! -e "$app/App.debug.dylib"
           grep -F 'VISIBLE_START_HOUR = 10' "$app/public/mobile/native-calendar-layout.mjs"
           grep -F 'calendar-sheet' "$app/public/mobile/native-workspace.mjs"
-          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-V4-1.0.52-B58-Appetize.zip
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-V4-1.0.53-B59-Appetize.zip
           python3 - <<'PY'
           import zipfile
-          with zipfile.ZipFile('artifacts/APlus-Esthetic-V4-1.0.52-B58-Appetize.zip') as z:
+          with zipfile.ZipFile('artifacts/APlus-Esthetic-V4-1.0.53-B59-Appetize.zip') as z:
               assert 'App.app/App' in z.namelist()
               assert 'App.app/Info.plist' in z.namelist()
               assert not z.testzip()
@@ -94,7 +94,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: APlus-Esthetic-V4-1.0.52-B58-Appetize
+          name: APlus-Esthetic-V4-1.0.53-B59-Appetize
           path: artifacts
           if-no-files-found: error
           retention-days: 30
@@ -108,7 +108,7 @@ jobs:
           xcrun simctl boot "$udid" || true
           xcrun simctl bootstatus "$udid" -b
           xcrun simctl install "$udid" "$app"
-          for fixture in qa-fixtures/01-dashboard.json qa-fixtures/03-new-appointment.json qa-fixtures/03b-client-picker.json qa-fixtures/04-block.json qa-fixtures/06-working-hours.json; do
+          for fixture in qa-fixtures/01-dashboard.json qa-fixtures/13-patient-profile.json qa-fixtures/16a-patient-contact.json qa-fixtures/16-patient-account.json qa-fixtures/03-new-appointment.json; do
             payload=$(base64 -i "$fixture" | tr -d '\n')
             SIMCTL_CHILD_APLUS_NATIVE_QA_FIXTURE="$payload" xcrun simctl launch --terminate-running-process "$udid" de.aplusesthetic.app
             sleep 3
@@ -117,7 +117,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Admin-V4-B58-iOS-visual-QA
+          name: Admin-V4-B59-iOS-visual-QA
           path: screenshots
           if-no-files-found: warn
   android:
@@ -139,14 +139,14 @@ jobs:
           path: qa-fixtures
       - name: Compile and verify Android package
         env:
-          APP_VERSION_NAME: '1.0.52'
-          APP_BUILD_NUMBER: '58'
+          APP_VERSION_NAME: '1.0.53'
+          APP_BUILD_NUMBER: '59'
         run: |
           bash scripts/build-android.sh
           grep -R -F 'registerPlugin(NativeStaffPlugin.class);' android/app/src/main/java
           grep -R -F 'new NativeStaffV3Calendar(' android/app/src/main/java
           (cd android && ./gradlew assembleDebug --no-daemon)
-          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/APlus-Esthetic-V4-1.0.52-B58.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/APlus-Esthetic-V4-1.0.53-B59.apk
           git rev-parse HEAD > artifacts/source-commit.txt
       - name: Enable emulator acceleration
         run: |
@@ -160,7 +160,13 @@ jobs:
           arch: x86_64
           profile: pixel_7
           disable-animations: true
-          script: bash scripts/capture_native_v4_android.sh
+          script: |
+            bash scripts/capture_native_v4_android.sh
+            adb shell wm size 720x1600
+            adb shell wm density 360
+            APLUS_QA_OUTPUT=screenshots/android-narrow APLUS_QA_FIXTURES='qa-fixtures/01-dashboard.json qa-fixtures/13-patient-profile.json qa-fixtures/16a-patient-contact.json qa-fixtures/16-patient-account.json qa-fixtures/03-new-appointment.json' bash scripts/capture_native_v4_android.sh
+            adb shell wm size reset
+            adb shell wm density reset
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -170,7 +176,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: APlus-Esthetic-V4-1.0.52-B58-Android
-          path: artifacts/APlus-Esthetic-V4-1.0.52-B58.apk
+          name: APlus-Esthetic-V4-1.0.53-B59-Android
+          path: artifacts/APlus-Esthetic-V4-1.0.53-B59.apk
           if-no-files-found: error
           retention-days: 30
