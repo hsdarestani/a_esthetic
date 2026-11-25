@@ -26,32 +26,29 @@ jobs:
             done
             free -m
             df -h /
-            cd /opt/a-esthetic-mobile
-            set -a
-            . ./mobile.env
-            set +a
-            ./venv/bin/python manage.py shell -c '
-            import inspect, re
-            from django.urls import resolve
-            for path in ["/api/mobile/staff/book/overview/","/api/mobile/staff/book/calendar/","/api/mobile/staff/book/patients/"]:
-                try:
-                    m=resolve(path); fn=inspect.unwrap(m.func)
-                    print("RESOLVED",path,m.view_name,fn.__module__,inspect.getsourcefile(fn))
-                    src=inspect.getsource(fn)
-                    for line in src.splitlines():
-                        if not re.search(r"secret|password|token|authorization|key",line,re.I): print(line)
-                    for name in fn.__code__.co_names:
-                        obj=fn.__globals__.get(name)
-                        if inspect.isfunction(obj) and obj.__module__==fn.__module__ and ("proxy" in name or "book" in name or "request" in name or "fetch" in name):
-                            print("HELPER",name)
-                            for line in inspect.getsource(obj).splitlines():
-                                if not re.search(r"secret|password|token|authorization|key",line,re.I): print(line)
-                except Exception as e: print("RESOLVE_ERROR",path,type(e).__name__)
-            '
+            ss -lntp | grep -E ':8773 |:8770 |:8017 ' || true
+            systemctl list-units --type=service --all --no-pager | grep -Ei 'esthetic|book|gunicorn' || true
             python3 - <<'PY'
-            import subprocess,re
-            s=subprocess.run(['nginx','-T'],capture_output=True,text=True).stdout
+            import os,re,glob,subprocess
+            s=subprocess.run(['ss','-lntp'],capture_output=True,text=True).stdout
             for line in s.splitlines():
-                if re.search(r'location .*staff|proxy_pass .*127\.0\.0\.1|server_name .*esthetic',line):
-                    print('NGINX_ROUTE',line.strip())
+                if ':8773 ' not in line: continue
+                m=re.search(r'pid=(\d+)',line)
+                if not m: continue
+                pid=m.group(1); root=os.readlink('/proc/'+pid+'/cwd')
+                print('RUNTIME_ROOT',root)
+                print('RUNTIME_UNIT',open('/proc/'+pid+'/cgroup').read().strip())
+                for base, dirs, files in os.walk(root):
+                    dirs[:]=[d for d in dirs if d not in {'venv','.venv','node_modules','.git','media','static','staticfiles','uploads','__pycache__','vendor'}]
+                    for fn in files:
+                        if not fn.endswith('.py'): continue
+                        path=os.path.join(base,fn)
+                        try:
+                            src=open(path,errors='replace').read()
+                        except OSError: continue
+                        if 'staff/book/' in src or 'staff_book' in src:
+                            print('SOURCE',path)
+                            for i,l in enumerate(src.splitlines()):
+                                if ('staff/book/' in l or 'staff_book' in l or '502' in l or 'urlopen' in l or 'requests.' in l or 'httpx.' in l or 'BOOK_' in l or 'def ' in l) and not re.search(r'secret|password|token|authorization|key',l,re.I):
+                                    print('CODE',i+1,l[:240])
             PY
