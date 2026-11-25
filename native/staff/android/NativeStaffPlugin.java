@@ -78,7 +78,7 @@ public final class NativeStaffPlugin extends Plugin {
     private File cameraFile;
     private Dialog dialog;
     // Keeps direction across the asynchronous native -> Book -> native render.
-    private int calendarPageDirection = 0;
+    private NativeStaffV3Calendar liveCalendar;
     private final Map<String, EditText> edits = new LinkedHashMap<>();
     private final Map<String, String> choices = new LinkedHashMap<>();
 
@@ -112,10 +112,6 @@ public final class NativeStaffPlugin extends Plugin {
     }
     private void action(String id) {
         if (id.isEmpty()) return;
-        if(id.equals("day-next") || id.equals("week-next"))calendarPageDirection=1;
-        else if(id.equals("day-prev") || id.equals("week-prev"))calendarPageDirection=-1;
-        // A changed date via the day strip also uses a subtle entry animation.
-        else if(id.startsWith("date:"))calendarPageDirection=1;
         JSObject values = new JSObject();
         for (Map.Entry<String,EditText> entry : edits.entrySet()) values.put(entry.getKey(), entry.getValue().getText().toString());
         for (Map.Entry<String,String> entry : choices.entrySet()) values.put(entry.getKey(),entry.getValue());
@@ -286,17 +282,12 @@ public final class NativeStaffPlugin extends Plugin {
         edits.clear(); choices.clear();
         if(s.optJSONObject("timeline") != null) {
             calendarScreen=s;
-            View calendar=new NativeStaffV3Calendar(getActivity(),s,this::action).build();
-            contentView(calendar);
-            if(calendarPageDirection!=0) {
-                int width=getContext().getResources().getDisplayMetrics().widthPixels;
-                calendar.setTranslationX(calendarPageDirection*width*.42f);
-                calendar.setAlpha(.82f);
-                calendar.animate().translationX(0).alpha(1f).setDuration(290).start();
-                calendarPageDirection=0;
-            }
+            if(liveCalendar!=null){liveCalendar.update(s);return;}
+            liveCalendar=new NativeStaffV3Calendar(getActivity(),s,this::action);
+            contentView(liveCalendar.build());
             return;
         }
+        liveCalendar=null;
         if("simplybook-form".equals(s.optString("layout"))){drawSimplyForm(s);return;}
         boolean sheet="calendar-sheet".equals(s.optString("presentation"));
         boolean english="en".equals(s.optString("language"));
@@ -534,7 +525,7 @@ public final class NativeStaffPlugin extends Plugin {
                 dialog=new Dialog(activity,android.R.style.Theme_Material_Light_NoActionBar);
                 dialog.setCancelable(false);
                 draw(screen);dialog.show();if(dialog.getWindow()!=null)dialog.getWindow().setLayout(-1,-1);
-            }catch(Exception ignored){if(dialog!=null)dialog.dismiss();dialog=null;}
+            }catch(Exception ignored){if(dialog!=null)dialog.dismiss();dialog=null;liveCalendar=null;}
         },700);
     }
     @PluginMethod public void probe(PluginCall call) {
@@ -697,6 +688,6 @@ public final class NativeStaffPlugin extends Plugin {
         });
     }
     @PluginMethod public void dismiss(PluginCall call) {
-        getActivity().runOnUiThread(()->{edits.clear();choices.clear();calendarScreen=null;if(dialog!=null){dialog.dismiss();dialog=null;}call.resolve();});
+        getActivity().runOnUiThread(()->{edits.clear();choices.clear();calendarScreen=null;liveCalendar=null;if(dialog!=null){dialog.dismiss();dialog=null;}call.resolve();});
     }
 }

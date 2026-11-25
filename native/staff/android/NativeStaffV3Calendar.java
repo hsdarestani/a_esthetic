@@ -44,17 +44,21 @@ final class NativeStaffV3Calendar {
     private static final int RULER=Color.rgb(246,247,251);
     private static final int PALE=Color.rgb(255,250,235);
     private final Context ctx;
-    private final JSONObject screen;
-    private final JSONObject model;
+    private JSONObject screen;
+    private JSONObject model;
     private final Action callback;
     private final boolean english;
     private final int hourStart;
     private final int hourEnd;
     private final int hourHeight;
     private final int rulerWidth;
-    private int pendingDirection;
     private View animatedPage;
-    private boolean handlingSwipe;
+    private ScrollView verticalScroll;
+    private FrameLayout dateHost, timelineHost;
+    private TextView headerTitle, monthLabel;
+    private NativeStaffV3Calendar gridRenderer;
+    private View gridView;
+    private int generation;
 
     NativeStaffV3Calendar(Context context, JSONObject screen, Action callback) {
         this.ctx=context;
@@ -133,19 +137,9 @@ final class NativeStaffV3Calendar {
             return printer.format(date);
         }catch(Exception ignored){return iso;}
     }
-    private void navigate(String action,int direction,View mover) {
-        if(handlingSwipe)return;
-        handlingSwipe=true;
-        pendingDirection=direction;
-        if(mover==null){
-            fire(action);return;
-        }
-        mover.animate().translationX(-direction*d(95)).alpha(.77f)
-            .setDuration(165).withEndAction(()->{
-                mover.setTranslationX(0);mover.setAlpha(1);
-                fire(action);
-            }).start();
-    }
+    // Keep the old page opaque and in place while the bridge fetches data.
+    // Only the two grid children participate in the arrival transition.
+    private void navigate(String action,int direction,View mover) { fire(action); }
     private void fadeNavigate(String action,int direction){navigate(action,direction,animatedPage);}
     View build(){
         FrameLayout outer=new FrameLayout(ctx);
@@ -154,11 +148,17 @@ final class NativeStaffV3Calendar {
         outer.addView(page,new FrameLayout.LayoutParams(-1,-1));
         buildHeader(page);
         buildDateBar(page);
-        buildDateStrip(page);
+        dateHost=new FrameLayout(ctx);
+        dateHost.setBackgroundColor(Color.WHITE);
+        page.addView(dateHost,lp(-1,d(60)));
+        renderDateStrip();
         View separator=new View(ctx);separator.setBackgroundColor(LINES);
         page.addView(separator,lp(-1,d(1)));
-        buildTimeline(page);
-        // Same blue floating primary action used on the iOS V3 reference.
+        timelineHost=new FrameLayout(ctx);
+        timelineHost.setBackgroundColor(Color.WHITE);
+        timelineHost.setClipChildren(true);
+        page.addView(timelineHost,new LinearLayout.LayoutParams(-1,0,1));
+        replaceGrid(0,false);
         TextView fab=clickable("+",Color.WHITE,Color.TRANSPARENT,this::showCreationMenu,
             t("Neuen Termin erstellen","New booking"));
         fab.setTextSize(31);
@@ -168,14 +168,83 @@ final class NativeStaffV3Calendar {
         outer.addView(fab,fp);
         return outer;
     }
+    private void renderDateStrip(){
+        LinearLayout staging=vertical();
+        buildDateStrip(staging);
+        View strip=staging.getChildAt(0);
+        staging.removeView(strip);
+        dateHost.removeAllViews();
+        dateHost.addView(strip,new FrameLayout.LayoutParams(-1,-1));
+    }
+    // Calendar-to-calendar updates never replace the dialog, its inset root,
+    // the header, the month controls, or the floating creation action.
+    void update(JSONObject next){
+        JSONObject nextModel=next.optJSONObject("timeline");
+        if(nextModel==null)throw new IllegalArgumentException("Missing calendar timeline");
+        String oldDate=selectedDate(),oldMode=mode();
+        String oldWeek=array("week").toString();
+        String before=model.toString();
+        screen=next;model=nextModel;
+        headerTitle.setText(t("Kalender","Calendar")+" ("+modeTitle()+")");
+        monthLabel.setText(formatted(selectedDate(),"LLLL yyyy"));
+        if(!oldDate.equals(selectedDate())||!oldMode.equals(mode())||!oldWeek.equals(array("week").toString()))
+            renderDateStrip();
+        if(!before.equals(model.toString())){
+            int direction=selectedDate().compareTo(oldDate);
+            replaceGrid(Integer.signum(direction),oldMode.equals(mode()));
+        }
+    }
+    private void replaceGrid(int direction,boolean preserveScroll){
+        int epoch=++generation;
+        View previous=gridView;
+        int scrollY=preserveScroll&&gridRenderer!=null&&gridRenderer.verticalScroll!=null
+            ?gridRenderer.verticalScroll.getScrollY():0;
+        int scrollX=preserveScroll&&previous!=null?previous.getScrollX():0;
+        // Each outgoing renderer keeps its own immutable timeline snapshot.
+        // Cancel interrupted transitions and retain the most recent page only.
+        if(previous!=null){
+            previous.animate().cancel();previous.setTranslationX(0);previous.setAlpha(1);
+        }
+        for(int i=timelineHost.getChildCount()-1;i>=0;i--){
+            View child=timelineHost.getChildAt(i);
+            if(child!=previous){child.animate().cancel();timelineHost.removeViewAt(i);}
+        }
+        NativeStaffV3Calendar nextRenderer=new NativeStaffV3Calendar(ctx,screen,callback);
+        LinearLayout staging=vertical();
+        nextRenderer.buildTimeline(staging);
+        View incoming=staging.getChildAt(0);
+        staging.removeView(incoming);
+        incoming.setBackgroundColor(Color.WHITE);
+        gridRenderer=nextRenderer;gridView=incoming;animatedPage=incoming;
+        int width=timelineHost.getWidth();
+        boolean slide=previous!=null&&direction!=0&&width>0;
+        if(slide)incoming.setTranslationX(direction*width);
+        timelineHost.addView(incoming,new FrameLayout.LayoutParams(-1,-1));
+        final View old=previous;
+        incoming.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener(){
+            @Override public boolean onPreDraw(){
+                if(incoming.getViewTreeObserver().isAlive())incoming.getViewTreeObserver().removeOnPreDrawListener(this);
+                if(epoch!=generation)return true;
+                nextRenderer.verticalScroll.scrollTo(0,scrollY);
+                incoming.scrollTo(scrollX,0);
+                if(slide){
+                    old.animate().translationX(-direction*width).setDuration(240).start();
+                    incoming.animate().translationX(0).setDuration(240).withEndAction(()->{
+                        if(epoch==generation&&old.getParent()==timelineHost)timelineHost.removeView(old);
+                    }).start();
+                }else if(old!=null&&old.getParent()==timelineHost)timelineHost.removeView(old);
+                return true;
+            }
+        });
+    }
     private void buildHeader(LinearLayout page){
         LinearLayout header=horizontal();
         header.setBackgroundColor(NAVY);
         TextView menu=clickable("☰",Color.WHITE,Color.TRANSPARENT,this::showNavigation,
             t("Navigation öffnen","Open navigation"));
         header.addView(menu,lp(d(48),d(48)));
-        TextView title=text(t("Kalender","Calendar")+" ("+modeTitle()+")",15,Color.WHITE,true);
-        header.addView(title,new LinearLayout.LayoutParams(0,d(48),1));
+        headerTitle=text(t("Kalender","Calendar")+" ("+modeTitle()+")",15,Color.WHITE,true);
+        header.addView(headerTitle,new LinearLayout.LayoutParams(0,d(48),1));
         TextView modes=clickable("▦",Color.WHITE,Color.TRANSPARENT,this::showModePicker,
             t("Kalenderansicht ändern","Change calendar view"));
         header.addView(modes,lp(d(46),d(48)));
@@ -191,9 +260,9 @@ final class NativeStaffV3Calendar {
             t("Vorheriger Zeitraum","Previous period"));
         previous.setTextSize(29);
         nav.addView(previous,lp(d(57),d(52)));
-        TextView month=text(formatted(selectedDate(),"LLLL yyyy"),15,INK,false);
-        month.setGravity(Gravity.CENTER);
-        nav.addView(month,new LinearLayout.LayoutParams(0,d(52),1));
+        monthLabel=text(formatted(selectedDate(),"LLLL yyyy"),15,INK,false);
+        monthLabel.setGravity(Gravity.CENTER);
+        nav.addView(monthLabel,new LinearLayout.LayoutParams(0,d(52),1));
         TextView next=clickable("›",INK,Color.TRANSPARENT,
             ()->fadeNavigate("day".equals(mode())?"day-next":"week-next",1),
             t("Nächster Zeitraum","Next period"));
@@ -261,6 +330,7 @@ final class NativeStaffV3Calendar {
         }
         inner.addView(heading,lp(wholeWidth,d(39)));
         ScrollView vertical=new ScrollView(ctx);
+        verticalScroll=vertical;
         vertical.setFillViewport(false);
         vertical.setVerticalScrollBarEnabled(false);
         LinearLayout grid=horizontal();
@@ -455,7 +525,7 @@ final class NativeStaffV3Calendar {
                     if(draggingHorizontal&&"day".equals(mode())){
                         consumingGesture=true;
                         lastDelta=Math.max(-d(185),Math.min(d(185),dx));
-                        setTranslationX(lastDelta);setAlpha(.97f);
+                        setTranslationX(lastDelta);
                     }
                     return true;
                 }
@@ -464,13 +534,10 @@ final class NativeStaffV3Calendar {
                     if("day".equals(mode())&&draggingHorizontal&&Math.abs(dx)>d(60)&&
                         Math.abs(dx)>Math.abs(dy)*1.4f){
                         int dir=dx<0?1:-1;
-                        // Visible follow-finger swipe, then the next fetched
-                        // calendar page animates in from the opposite edge.
-                        animate().translationX(dir<0?d(120):-d(120)).alpha(.7f)
-                            .setDuration(135).withEndAction(()->{
-                                setTranslationX(0);setAlpha(1);
-                                fire(dir>0?"day-next":"day-prev");
-                            }).start();
+                        // Keep the outgoing grid readable until the fetched
+                        // adjacent page is ready; never fade the calendar out.
+                        animate().translationX(0).alpha(1).setDuration(140).start();
+                        fire(dir>0?"day-next":"day-prev");
                         return true;
                     }
                     animate().translationX(0).alpha(1).setDuration(145).start();

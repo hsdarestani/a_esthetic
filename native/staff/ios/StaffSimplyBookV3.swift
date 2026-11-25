@@ -12,8 +12,8 @@ struct StaffSimplyBookV3: View {
     @State private var showActions = false
     @State private var showViewModes = false
     @State private var slideForward = true
-    @State private var releasedSwipe: CGFloat = 0
     @GestureState private var liveSwipe: CGFloat = 0
+    @GestureState private var stripSwipe: CGFloat = 0
 
     private let navy = Color(red: 32/255, green: 43/255, blue: 61/255)
     private let pink = Color(red: 249/255, green: 27/255, blue: 82/255)
@@ -39,7 +39,8 @@ struct StaffSimplyBookV3: View {
     }
     private func swipeGesture(weekNavigation: Bool) -> some Gesture {
         DragGesture(minimumDistance: 18)
-            .updating($liveSwipe) { drag, value, _ in
+            .updating(weekNavigation ? $stripSwipe : $liveSwipe) { drag, value, transaction in
+                transaction.animation = nil
                 if abs(drag.translation.width) > abs(drag.translation.height) * 1.25 {
                     value = max(-220,min(220,drag.translation.width))
                 }
@@ -47,11 +48,9 @@ struct StaffSimplyBookV3: View {
             .onEnded { drag in
                 let dx = drag.translation.width
                 guard abs(dx)>75, abs(dx)>abs(drag.translation.height)*1.4 else {
-                    withAnimation(.interactiveSpring(response:0.25,dampingFraction:0.8)) { releasedSwipe=0 }
                     return
                 }
                 let forward=dx < 0
-                withAnimation(.easeOut(duration:0.16)) { releasedSwipe = forward ? -72 : 72 }
                 navigate(weekNavigation ? (forward ? "week-next":"week-prev")
                                         : (forward ? "day-next":"day-prev"), forward:forward)
             }
@@ -108,9 +107,10 @@ struct StaffSimplyBookV3: View {
                     dateStrip
                         .id(week.first ?? selectedDate)
                         .transition(.asymmetric(
-                            insertion:.move(edge:slideForward ? .trailing : .leading).combined(with:.opacity),
-                            removal:.move(edge:slideForward ? .leading : .trailing).combined(with:.opacity)
+                            insertion:.move(edge:slideForward ? .trailing : .leading),
+                            removal:.move(edge:slideForward ? .leading : .trailing)
                         ))
+                        .offset(x:stripSwipe)
                 }
                 .clipped()
                 .animation(.easeInOut(duration:0.34),value:week.first ?? selectedDate)
@@ -120,17 +120,15 @@ struct StaffSimplyBookV3: View {
                     timeline(availableWidth: geometry.size.width)
                         .id(selectedDate+"-"+mode)
                         .transition(.asymmetric(
-                            insertion:.move(edge:slideForward ? .trailing : .leading).combined(with:.opacity),
-                            removal:.move(edge:slideForward ? .leading : .trailing).combined(with:.opacity)
+                            insertion:.move(edge:slideForward ? .trailing : .leading),
+                            removal:.move(edge:slideForward ? .leading : .trailing)
                         ))
-                        .offset(x:liveSwipe+releasedSwipe)
+                        .offset(x:liveSwipe)
                 }
                 .clipped()
                 .animation(.easeInOut(duration:0.34),value:selectedDate)
                 .animation(.easeInOut(duration:0.34),value:mode)
-                .onChange(of: selectedDate) { _ in
-                    withAnimation(.easeInOut(duration:0.34)) { releasedSwipe=0 }
-                }
+
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.white)

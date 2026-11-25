@@ -111,7 +111,6 @@
         </div>
         <p data-profile-salutation-message aria-live="polite">Damit das passende Startseitenbild angezeigt wird.</p>
       </form>
-      <button type="button" class="settings-link" data-intake>Aufnahmebogen & Rechnungsadresse <span>›</span></button>
       <a class="settings-link" href="${LEGAL.privacy}">Datenschutz <span>›</span></a>
       <a class="settings-link" href="${LEGAL.terms}">Nutzungsbedingungen <span>›</span></a>
       <a class="settings-link" href="${LEGAL.imprint}">Impressum <span>›</span></a>
@@ -121,7 +120,6 @@
     const close=()=>{node.classList.add('is-closing');setTimeout(()=>node.remove(),120);};
     node.addEventListener('click',e=>{if(e.target===node)close();});node.querySelector('[data-close]').onclick=close;
     node.querySelector('[data-logout]').onclick=()=>{node.remove();requestAnimationFrame(()=>logout());};
-    node.querySelector('[data-intake]').onclick=()=>showPatientIntake(node,email);
     node.querySelector('[data-profile-salutation]')?.addEventListener('submit',async event=>{
       event.preventDefault();
       const form=event.currentTarget;
