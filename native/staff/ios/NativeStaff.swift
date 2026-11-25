@@ -819,6 +819,33 @@ class StaffBridgeViewController: CAPBridgeViewController {
 
 #if DEBUG && targetEnvironment(simulator)
     private var syntheticQAHost: UIHostingController<StaffNativeScreen>?
+
+    private func showSyntheticFixture() -> Bool {
+        guard syntheticQAHost == nil,
+              let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return false }
+        let file = documents.appendingPathComponent("native-staff-simulator-fixture.json")
+        let ready = documents.appendingPathComponent("native-staff-simulator-ready")
+        let environmentData = ProcessInfo.processInfo.environment["APLUS_NATIVE_QA_FIXTURE"]
+            .flatMap { $0.count < 160000 ? Data(base64Encoded: $0) : nil }
+        guard let data = (try? Data(contentsOf: file, options: .mappedIfSafe)) ?? environmentData,
+              data.count < 160000,
+              let fixture = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let screen = fixture["screen"] as? [String: Any] else { return false }
+        try? FileManager.default.removeItem(at: file)
+        let state = StaffScreenState()
+        state.calendarScreen = fixture["calendar"] as? [String: Any] ?? [:]
+        state.replace(screen)
+        let host = UIHostingController(rootView: StaffNativeScreen(state: state))
+        host.modalPresentationStyle = .fullScreen
+        syntheticQAHost = host
+        DispatchQueue.main.async { [weak self] in
+            self?.present(host, animated: false) {
+                guard host.viewIfLoaded?.window != nil, let id = fixture["qaId"] as? String else { return }
+                try? id.write(to: ready, atomically: true, encoding: .utf8)
+            }
+        }
+        return true
+    }
 #endif
     override open func capacitorDidLoad() {
         super.capacitorDidLoad()
@@ -829,23 +856,7 @@ class StaffBridgeViewController: CAPBridgeViewController {
     override open func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
 #if targetEnvironment(simulator)
-        // Simulator-only visual fixture, never reads credentials or connects
-        // this view to a real patient's API. Normal app launch is unchanged.
-        if syntheticQAHost == nil,
-           let payload = ProcessInfo.processInfo.environment["APLUS_NATIVE_QA_FIXTURE"],
-           payload.count < 160000,
-           let data = Data(base64Encoded:payload),
-           let fixture = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any],
-           let screen = fixture["screen"] as? [String:Any] {
-            let state=StaffScreenState()
-            state.calendarScreen=fixture["calendar"] as? [String:Any] ?? [:]
-            state.replace(screen)
-            let host=UIHostingController(rootView:StaffNativeScreen(state:state))
-            host.modalPresentationStyle = .fullScreen
-            syntheticQAHost=host
-            present(host,animated:false)
-            return
-        }
+        if showSyntheticFixture() { return }
 #endif
         // Probe the real Capacitor JS-to-Swift bridge in iOS Simulator before
         // signing in. No tokens, account identifiers or patient data involved.

@@ -117,11 +117,25 @@ jobs:
           xcrun simctl boot "$udid" || true
           xcrun simctl bootstatus "$udid" -b
           xcrun simctl install "$udid" "$app"
+          data=$(xcrun simctl get_app_container "$udid" de.aplusesthetic.app data)
+          mkdir -p "$data/Documents"
+          ready="$data/Documents/native-staff-simulator-ready"
           for fixture in qa-fixtures/01-dashboard.json qa-fixtures/02-calendar.json qa-fixtures/13-patient-profile.json qa-fixtures/16a-patient-contact.json qa-fixtures/16-patient-account.json qa-fixtures/03-new-appointment.json; do
-            payload=$(base64 -i "$fixture" | tr -d '\n')
-            SIMCTL_CHILD_APLUS_NATIVE_QA_FIXTURE="$payload" xcrun simctl launch --terminate-running-process "$udid" de.aplusesthetic.app
-            sleep 3
-            xcrun simctl io "$udid" screenshot "screenshots/ios-phone/$(basename "$fixture" .json).png"
+            id=$(basename "$fixture" .json)
+            rm -f "$ready"
+            python3 -c 'import json,sys; f=json.load(open(sys.argv[1])); f["qaId"]=sys.argv[2]; print(json.dumps(f))' "$fixture" "$id" > "$data/Documents/native-staff-simulator-fixture.json"
+            xcrun simctl launch --terminate-running-process "$udid" de.aplusesthetic.app
+            matched=false
+            for attempt in $(seq 1 25); do
+              if [[ -f "$ready" && "$(cat "$ready")" == "$id" ]]; then matched=true; break; fi
+              sleep 1
+            done
+            if [[ "$matched" != true ]]; then
+              xcrun simctl io "$udid" screenshot "screenshots/ios-phone/$id-failed.png"
+              echo "Native fixture did not appear: $id" >&2
+              exit 1
+            fi
+            xcrun simctl io "$udid" screenshot "screenshots/ios-phone/$id.png"
           done
       - uses: actions/upload-artifact@v4
         if: always()
