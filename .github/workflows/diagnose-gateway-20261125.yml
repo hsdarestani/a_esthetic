@@ -27,57 +27,47 @@ jobs:
             free -m
             df -h /
             python3 - <<'PY'
-            import re, subprocess, pathlib, json, urllib.request, urllib.error, shutil
-            def run(*args):
-                return subprocess.check_output(args,text=True).strip()
-            canonical='aesthetic-book.service'
-            candidate='aesthetic-native-book-daf287f613.service'
-            for unit in (canonical,candidate):
-                assert run('systemctl','is-active',unit)=='active'
-                assert '/etc/aesthetic-book.env' in run('systemctl','show',unit,'-p','EnvironmentFiles','--value')
-            listeners=run('ss','-lntp')
-            assert '127.0.0.1:8019' in listeners
-            class NoRedirect(urllib.request.HTTPRedirectHandler):
-                def redirect_request(self,*a): return None
-            opener=urllib.request.build_opener(NoRedirect)
-            def check(base,path,host,expected,require_json=True):
-                req=urllib.request.Request(base+path,headers={'Host':host,'Accept':'application/json'})
-                try: r=opener.open(req,timeout=15)
+            import pathlib, subprocess, urllib.request, urllib.error, json, time, shutil
+            def run(*args): return subprocess.check_output(args,text=True).strip()
+            unit='aesthetic-native-app-daf287f613.service'
+            book='aesthetic-native-book-daf287f613.service'
+            root=pathlib.Path(run('systemctl','show',unit,'-p','WorkingDirectory','--value'))
+            assert root.name=='daf287f613b62c87d385fe7356c8a040ebbdf204'
+            assert run('systemctl','is-active',book)=='active'
+            assert '/etc/aesthetic-book.env' in run('systemctl','show',book,'-p','EnvironmentFiles','--value')
+            def check(url,expected):
+                req=urllib.request.Request(url,headers={'Accept':'application/json'})
+                try: r=urllib.request.urlopen(req,timeout=10)
                 except urllib.error.HTTPError as e: r=e
                 with r:
-                    code=r.code; typ=r.headers.get_content_type()
-                    assert code==expected and (not require_json or typ=='application/json'),f'{path}: HTTP {code} {typ}, expected {expected}'
-                    if require_json: json.loads(r.read(65536))
-                print('PASS',path,code,flush=True)
+                    assert r.code==expected and r.headers.get_content_type()=='application/json',f'{url}: HTTP {r.code} {r.headers.get_content_type()}'
+                    json.loads(r.read(65536))
+                print('PASS',url,expected,flush=True)
             for route in ['overview','calendar','patients']:
-                check('http://127.0.0.1:8019','/api/mobile/staff/'+route+'/','book.a-esthetic.de',401)
-            conf=pathlib.Path('/etc/nginx/sites-available/aesthetic-book.conf')
-            original=conf.read_text()
-            assert 'server_name book.a-esthetic.de' in original,'Unexpected virtual host'
-            assert 'location ^~ /api/mobile/staff/' not in original,'Staff route already present'
-            matches=list(re.finditer(r'(?m)^([ \t]*)location\s+/\s*\{(?=[^}]*proxy_pass\s+http://127\.0\.0\.1:8017\s*;)',original))
-            assert len(matches)==1,'Unexpected canonical proxy configuration'
-            m=matches[0]
-            indent=m.group(1)
-            block=indent+'location ^~ /api/mobile/staff/ {\n'+indent+'    proxy_pass http://127.0.0.1:8019;\n'+indent+'    proxy_set_header Host $host;\n'+indent+'    proxy_set_header X-Forwarded-Proto $scheme;\n'+indent+'    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n'+indent+'    proxy_set_header X-Real-IP $remote_addr;\n'+indent+'}\n'
-            proposed=original[:m.start()]+block+original[m.start():]
-            backup=pathlib.Path('/root/aesthetic-book-nginx-before-staff-20261125.conf')
-            assert not backup.exists(),'Backup already exists'
-            shutil.copy2(conf,backup)
+                check('http://127.0.0.1:8019/api/mobile/staff/'+route+'/',401)
+            path=root/'production_native_settings.py'
+            assert path.is_file()
+            original=path.read_text()
+            backup=root/'production_native_settings.py.before-staff-routing-20261125'
+            assert not backup.exists()
+            proposed=original+'\n# Route the native staff workspace to its matching local Book release.\nMOBILE_STAFF_BOOK_ORIGIN = "http://127.0.0.1:8019"\n'
+            compile(proposed,str(path),'exec')
+            shutil.copy2(path,backup)
+            def reload():
+                subprocess.run(['systemctl','kill','--kill-whom=main','--signal=HUP',unit],check=True)
+                time.sleep(3)
+                assert run('systemctl','is-active',unit)=='active'
             try:
-                conf.write_text(proposed)
-                subprocess.run(['nginx','-t'],check=True)
-                subprocess.run(['systemctl','reload','nginx'],check=True)
+                path.write_text(proposed)
+                reload()
                 for route in ['overview','calendar','patients']:
-                    check('https://book.a-esthetic.de','/api/mobile/staff/'+route+'/','book.a-esthetic.de',401)
-                    check('https://app.a-esthetic.de','/api/mobile/staff/book/'+route+'/','app.a-esthetic.de',401)
-                check('https://book.a-esthetic.de','/api/health/','book.a-esthetic.de',200)
-                check('https://app.a-esthetic.de','/api/mobile/status/','app.a-esthetic.de',200)
+                    check('https://app.a-esthetic.de/api/mobile/staff/book/'+route+'/',401)
+                check('https://app.a-esthetic.de/api/mobile/status/',200)
+                check('https://book.a-esthetic.de/api/health/',200)
+                print('LOCAL_STAFF_ROUTE_REPAIRED=1',flush=True)
             except BaseException:
-                conf.write_text(original)
-                subprocess.run(['nginx','-t'],check=True)
-                subprocess.run(['systemctl','reload','nginx'],check=True)
+                path.write_text(original)
+                reload()
                 print('ROLLED_BACK=1',flush=True)
                 raise
-            print('STAFF_ROUTE_REPAIRED=1',flush=True)
             PY
