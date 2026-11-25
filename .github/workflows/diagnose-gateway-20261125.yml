@@ -1,0 +1,54 @@
+name: Read-only production gateway incident diagnosis
+on:
+  push:
+    branches: ['diagnostics/502-20261125']
+    paths: ['.github/workflows/diagnose-gateway-20261125.yml']
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read safe aggregated incident evidence
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 3m
+          script: |
+            set -eu
+            date -u
+            for svc in a-esthetic-mobile.service aesthetic-book.service nginx.service; do
+              echo "SERVICE $svc"
+              systemctl show "$svc" -p ActiveState -p SubState -p ActiveEnterTimestamp -p NRestarts -p Result -p MemoryCurrent || true
+            done
+            free -m
+            df -h /
+            python3 - <<'PY'
+            import subprocess, re, collections, glob, os
+            since='2026-11-25 14:30:00 UTC'
+            patterns={'worker_timeout':r'WORKER TIMEOUT','worker_boot_failure':r'Worker failed to boot','worker_exit':r'Worker exiting|Worker .* exited|Worker .* was sent SIGKILL','worker_start':r'Booting worker','service_restart':r'Starting |Started |Stopping |Stopped |Scheduled restart','oom':r'Out of memory|oom-kill|Killed process|oom_reaper','db_failure':r'OperationalError|database is locked|connection to server .* failed','upstream_refused':r'connect\(\) failed.*while connecting to upstream','upstream_timeout':r'upstream timed out','upstream_closed':r'upstream prematurely closed connection','no_live_upstreams':r'no live upstreams','bad_gateway':r'Bad Gateway|HTTP/[^"]+" 502 '}
+            def report(label, lines):
+                counts=collections.Counter()
+                for line in lines:
+                    stamp=re.search(r'(?:2026-11-25[T ]|2026/11/25 |25/Nov/2026:)(\d{2}:\d{2})',line)
+                    if not stamp: continue
+                    for kind, pat in patterns.items():
+                        if re.search(pat,line,re.I): counts[(stamp.group(1),kind)]+=1
+                for (minute,kind),n in sorted(counts.items()):
+                    print(label,minute,kind,n)
+                if not counts: print(label,'no matching incidents')
+            for svc in ['a-esthetic-mobile.service','aesthetic-book.service','nginx.service']:
+                p=subprocess.run(['journalctl','--utc','--since',since,'-u',svc,'--no-pager','-o','short-iso'],capture_output=True,text=True)
+                report(svc,p.stdout.splitlines())
+            p=subprocess.run(['journalctl','--utc','--since',since,'-k','--no-pager','-o','short-iso'],capture_output=True,text=True)
+            report('kernel',p.stdout.splitlines())
+            for fn in glob.glob('/var/log/nginx/*error*.log')+glob.glob('/var/log/nginx/*access*.log'):
+                try:
+                    with open(fn,errors='replace') as f:
+                        lines=[line for line in f if re.search(r'2026/11/25 (?:14:[3-5]|15:)|25/Nov/2026:(?:14:[3-5]|15:)',line)]
+                    report(os.path.basename(fn),lines)
+                except OSError: pass
+            PY
