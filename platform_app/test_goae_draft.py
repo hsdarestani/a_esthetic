@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .goae_billing import calculate_goae_lines, create_goae_draft, goae_draft_pdf_bytes
-from .models import Invoice, InvoiceSettings, UserProfile
+from .models import Invoice, InvoiceSettings, UserProfile, SecureDocument
 
 
 class GoaEDraftTests(TestCase):
@@ -140,3 +140,37 @@ class GoaEDraftTests(TestCase):
         self.assertEqual(item["goae_number"], "268 A")
         self.assertEqual(item["net_cents"],758)
         self.assertIn("entsprechend",item["description"])
+
+    def test_four_decimal_factor_is_preserved(self):
+        invoice = create_goae_draft(user=self.patient, actor=self.staff,
+            service_date=date(2026, 10, 20), data={
+                "tariff_source":"official_catalog", "clinical_confirmed":True,
+                "goae_number":"2442", "goae_factor":"2.2993", "goae_vat_rate":"0"})
+        self.assertEqual(invoice.items.first().goae_factor, Decimal("2.2993"))
+        self.assertEqual(invoice.subtotal_cents, 12062)
+
+    def test_signed_agreement_is_required_and_patient_bound(self):
+        service_date = date(2026, 10, 20)
+        doc = SecureDocument.objects.create(user=self.patient, title="Test agreement",
+            category="consent", file="documents/synthetic-test.pdf", uploaded_by=self.staff)
+        line = {"tariff_source":"official_catalog","clinical_confirmed":True,
+                "goae_number":"2442","goae_factor":"6.1439","goae_vat_rate":"19",
+                "agreement_confirmed":True,"agreement_document_id":str(doc.pk),
+                "agreement_date":"2026-10-19","agreement_amount_eur":"322.30"}
+        def calc(payload):
+            return calculate_goae_lines(payload, user=self.patient, service_date=service_date)
+        self.assertEqual(calc(line)[0]["net_cents"], 32230)
+        invoice = create_goae_draft(user=self.patient, actor=self.staff,
+            service_date=service_date, data=line)
+        item = invoice.items.first()
+        self.assertEqual(item.goae_factor, Decimal("6.1439"))
+        self.assertEqual(item.goae_agreement_document_id, doc.pk)
+        self.assertEqual(invoice.status, "draft")
+        for change in [{"agreement_confirmed":False}, {"agreement_date":"2026-10-21"},
+                       {"agreement_amount_eur":"322.31"}, {"agreement_document_id":"0"},
+                       {"goae_number":"250"}, {"analog":True, "analog_confirmed":True}]:
+            with self.assertRaises(ValueError):
+                calc(line | change)
+        other = User.objects.create_user(username="other-goae")
+        with self.assertRaises(ValueError):
+            calculate_goae_lines(line, user=other, service_date=service_date)
