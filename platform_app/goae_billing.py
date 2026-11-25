@@ -178,6 +178,22 @@ def calculate_goae_lines(data, *, user=None, service_date=None):
             vat_rate=vat, net_cents=net, tax_cents=tax, gross_cents=gross,
             **({'goae_agreement_document_id': agreement[0], 'goae_agreement_date': agreement[1]} if agreement else {}),
         ))
+    # Round VAT once per tax rate on the complete net taxable amount,
+    # then distribute exact cent shares by largest remainder. Never force
+    # VAT to match a requested retail amount.
+    for rate in {item["vat_rate"] for item in result}:
+        group = [item for item in result if item["vat_rate"] == rate]
+        target_tax = int((sum(item["net_cents"] for item in group) * rate / 100)
+                         .quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        raw = [Decimal(item["net_cents"]) * rate / 100 for item in group]
+        shares = [int(value) for value in raw]
+        remainder = target_tax - sum(shares)
+        order = sorted(range(len(group)), key=lambda i: (raw[i] - shares[i], -i), reverse=True)
+        for i in order[:remainder]:
+            shares[i] += 1
+        for item, share in zip(group, shares):
+            item["tax_cents"] = share
+            item["gross_cents"] = item["net_cents"] + share
     if sum(row['gross_cents'] for row in result) > 2147483647:
         raise ValueError("Rechnungsbetrag außerhalb des zulässigen Bereichs.")
     return result
@@ -185,6 +201,11 @@ def calculate_goae_lines(data, *, user=None, service_date=None):
 
 def create_goae_draft(*, user, actor, service_date, data):
     items = calculate_goae_lines(data, user=user, service_date=service_date)
+    target = data.get("target_total_cents")
+    if target is not None:
+        target = to_decimal(target)
+        if target != target.to_integral_value() or target != sum(item["gross_cents"] for item in items):
+            raise ValueError("Wunschbetrag und serverseitig berechnete Rechnung stimmen nicht centgenau überein.")
     profile, _ = UserProfile.objects.get_or_create(user=user)
     with transaction.atomic():
         invoice = Invoice.objects.create(
