@@ -27,39 +27,57 @@ jobs:
             free -m
             df -h /
             python3 - <<'PY'
-            import os,re,subprocess,urllib.request,urllib.error
-            units=subprocess.run(['systemctl','list-units','--type=service','--all','--no-legend','--plain'],capture_output=True,text=True).stdout
-            for line in units.splitlines():
-                if not re.search(r'aesthetic-native-(app|book)-',line): continue
-                unit=line.split()[0]
-                print('UNIT',unit)
-                s=subprocess.run(['systemctl','show',unit,'-p','WorkingDirectory','-p','MainPID','-p','ActiveState','-p','EnvironmentFiles'],capture_output=True,text=True).stdout
-                print(s.strip())
-                pid=re.search(r'MainPID=(\d+)',s)
-                if not pid or pid.group(1)=='0': continue
-                pid=pid.group(1)
-                env=dict(x.split('=',1) for x in open('/proc/'+pid+'/environ','rb').read().decode(errors='replace').split('\0') if '=' in x)
-                for k,v in env.items():
-                    if k in ['MOBILE_STAFF_BOOK_ORIGIN','MOBILE_STAFF_APP_ORIGIN','DJANGO_SETTINGS_MODULE','DJANGO_ALLOWED_HOSTS','ALLOWED_HOSTS','BOOK_ORIGIN','APP_ORIGIN']: print('SAFE_ENV',k,v)
-                root=os.readlink('/proc/'+pid+'/cwd')
-                for rel in ['config/settings.py','booking/urls.py','booking/mobile_staff_api.py','booking/staff_mobile_api.py','p0_app/mobile_staff_views.py']:
-                    p=os.path.join(root,rel)
-                    if not os.path.isfile(p): continue
-                    for i,l in enumerate(open(p,errors='replace')):
-                        if re.search(r'MOBILE_STAFF.*ORIGIN|api/mobile/staff/|staff_session|def _verify|def _staff',l) and not re.search(r'password|secret|token',l,re.I):
-                            print('CONFIG',rel,i+1,l.strip()[:240])
-            s=subprocess.run(['ss','-lntp'],capture_output=True,text=True).stdout
-            for line in s.splitlines():
-                if 'gunicorn' in line: print('LISTENER',line.strip())
+            import re, subprocess, pathlib, json, urllib.request, urllib.error, shutil
+            def run(*args):
+                return subprocess.check_output(args,text=True).strip()
+            canonical='aesthetic-book.service'
+            candidate='aesthetic-native-book-daf287f613.service'
+            for unit in (canonical,candidate):
+                assert run('systemctl','is-active',unit)=='active'
+                assert '/etc/aesthetic-book.env' in run('systemctl','show',unit,'-p','EnvironmentFiles','--value')
+            listeners=run('ss','-lntp')
+            assert '127.0.0.1:8019' in listeners
             class NoRedirect(urllib.request.HTTPRedirectHandler):
                 def redirect_request(self,*a): return None
             opener=urllib.request.build_opener(NoRedirect)
-            for base in ['https://book.a-esthetic.de','http://127.0.0.1:8017','http://127.0.0.1:8018','http://127.0.0.1:8019','http://127.0.0.1:8020','http://127.0.0.1:8773']:
-                for route in ['/api/mobile/staff/overview/','/api/health/']:
-                    try:
-                        req=urllib.request.Request(base+route,headers={'Host':'book.a-esthetic.de','Accept':'application/json'})
-                        try: r=opener.open(req,timeout=3)
-                        except urllib.error.HTTPError as e: r=e
-                        with r: print('PROBE',base,route,r.code,r.headers.get_content_type())
-                    except Exception as e: print('PROBE',base,route,type(e).__name__)
+            def check(base,path,host,expected,require_json=True):
+                req=urllib.request.Request(base+path,headers={'Host':host,'Accept':'application/json'})
+                try: r=opener.open(req,timeout=15)
+                except urllib.error.HTTPError as e: r=e
+                with r:
+                    code=r.code; typ=r.headers.get_content_type()
+                    assert code==expected and (not require_json or typ=='application/json'),f'{path}: HTTP {code} {typ}, expected {expected}'
+                    if require_json: json.loads(r.read(65536))
+                print('PASS',path,code,flush=True)
+            for route in ['overview','calendar','patients']:
+                check('http://127.0.0.1:8019','/api/mobile/staff/'+route+'/','book.a-esthetic.de',401)
+            conf=pathlib.Path('/etc/nginx/sites-available/aesthetic-book.conf')
+            original=conf.read_text()
+            assert 'server_name book.a-esthetic.de' in original,'Unexpected virtual host'
+            assert 'location ^~ /api/mobile/staff/' not in original,'Staff route already present'
+            matches=list(re.finditer(r'(?m)^([ \t]*)location\s+/\s*\{(?=[^}]*proxy_pass\s+http://127\.0\.0\.1:8017\s*;)',original))
+            assert len(matches)==1,'Unexpected canonical proxy configuration'
+            m=matches[0]
+            indent=m.group(1)
+            block=indent+'location ^~ /api/mobile/staff/ {\n'+indent+'    proxy_pass http://127.0.0.1:8019;\n'+indent+'    proxy_set_header Host $host;\n'+indent+'    proxy_set_header X-Forwarded-Proto $scheme;\n'+indent+'    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n'+indent+'    proxy_set_header X-Real-IP $remote_addr;\n'+indent+'}\n'
+            proposed=original[:m.start()]+block+original[m.start():]
+            backup=pathlib.Path('/root/aesthetic-book-nginx-before-staff-20261125.conf')
+            assert not backup.exists(),'Backup already exists'
+            shutil.copy2(conf,backup)
+            try:
+                conf.write_text(proposed)
+                subprocess.run(['nginx','-t'],check=True)
+                subprocess.run(['systemctl','reload','nginx'],check=True)
+                for route in ['overview','calendar','patients']:
+                    check('https://book.a-esthetic.de','/api/mobile/staff/'+route+'/','book.a-esthetic.de',401)
+                    check('https://app.a-esthetic.de','/api/mobile/staff/book/'+route+'/','app.a-esthetic.de',401)
+                check('https://book.a-esthetic.de','/api/health/','book.a-esthetic.de',200)
+                check('https://app.a-esthetic.de','/api/mobile/status/','app.a-esthetic.de',200)
+            except BaseException:
+                conf.write_text(original)
+                subprocess.run(['nginx','-t'],check=True)
+                subprocess.run(['systemctl','reload','nginx'],check=True)
+                print('ROLLED_BACK=1',flush=True)
+                raise
+            print('STAFF_ROUTE_REPAIRED=1',flush=True)
             PY
