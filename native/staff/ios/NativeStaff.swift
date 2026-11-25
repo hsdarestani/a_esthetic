@@ -797,6 +797,10 @@ class StaffBridgeViewController: CAPBridgeViewController {
             name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(uncoverForeground(_:)),
             name: UIApplication.willEnterForegroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(coverBackground(_:)),
+            name: UIScene.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(uncoverForeground(_:)),
+            name: UIScene.willEnterForegroundNotification, object: nil)
     }
     @objc private func customerBack(_ gesture: UIScreenEdgePanGestureRecognizer) {
         guard gesture.state == .ended, gesture.translation(in: view).x >= 45, presentedViewController == nil else { return }
@@ -805,6 +809,7 @@ class StaffBridgeViewController: CAPBridgeViewController {
     }
     @objc private func coverBackground(_ notification: Notification) {
         guard let window = viewIfLoaded?.window, privacyCover == nil else { return }
+        if let scene = notification.object as? UIScene, scene !== window.windowScene { return }
         let cover = UIView(frame: window.bounds)
         cover.backgroundColor = UIColor(red: 247/255, green: 245/255, blue: 240/255, alpha: 1)
         cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -813,6 +818,7 @@ class StaffBridgeViewController: CAPBridgeViewController {
         privacyCover = cover
     }
     @objc private func uncoverForeground(_ notification: Notification) {
+        if let scene = notification.object as? UIScene, scene !== viewIfLoaded?.window?.windowScene { return }
         privacyCover?.removeFromSuperview()
         privacyCover = nil
     }

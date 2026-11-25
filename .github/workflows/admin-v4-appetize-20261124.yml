@@ -69,6 +69,9 @@ jobs:
           python3 scripts/install_native_staff.py
           grep -F 'StaffSimplyBookV3(state: state, model: calendar)' ios/App/App/AppDelegate.swift
           grep -F 'PRACTICE MANAGEMENT' ios/App/App/AppDelegate.swift
+          if [[ -f ios/App/App/SceneDelegate.swift ]]; then
+            grep -F '?? StaffBridgeViewController()' ios/App/App/SceneDelegate.swift
+          fi
       - name: Compile iOS Simulator build 63
         run: |
           set -euo pipefail

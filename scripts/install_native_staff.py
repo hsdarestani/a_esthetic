@@ -19,6 +19,25 @@ def ios():
     calendar = (ROOT / 'native/staff/ios/NativeCalendarTimeline.swift').read_text()
     v3 = (ROOT / 'native/staff/ios/StaffSimplyBookV3.swift').read_text()
     delegate.write_text(source + '\n\n' + MARKER + '\n' + native + '\n\n' + calendar + '\n\n' + v3)
+    # Current Capacitor templates create their root controller in SceneDelegate,
+    # which takes precedence over the storyboard's initial controller.
+    scene_delegate = app / 'SceneDelegate.swift'
+    if scene_delegate.is_file():
+        scene_source = scene_delegate.read_text()
+        root_controller = r'(window\?\.rootViewController\s*=\s*)'
+        native_root = '(window?.rootViewController as? StaffBridgeViewController) ?? StaffBridgeViewController()'
+        scene_source, changes = re.subn(
+            root_controller + r'CAPBridgeViewController\(\)',
+            r'\1' + native_root, scene_source,
+        )
+        if native_root not in scene_source:
+            raise RuntimeError('Cannot wire the generated iOS scene to NativeStaff')
+        if changes:
+            scene_source = scene_source.replace(
+                'window = UIWindow(windowScene: windowScene)',
+                'window = window ?? UIWindow(windowScene: windowScene)',
+            )
+            scene_delegate.write_text(scene_source)
     storyboard = app / 'Base.lproj/Main.storyboard'
     tree = ET.parse(storyboard)
     views = [el for el in tree.iter('viewController')
