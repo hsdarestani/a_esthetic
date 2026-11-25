@@ -4,6 +4,7 @@ Never grant internal credentials to a browser. The shared token is checked
 against server configuration and then routed only to billing endpoints.
 """
 import json
+from datetime import date
 
 from django.contrib.auth.models import User
 from django.db.models import Q
@@ -57,7 +58,19 @@ def book_billing(request, operation, item_id=None):
     if operation == "quote" and request.method == "POST":
         try:
             data = json.loads(request.body.decode("utf-8"))
-            lines = calculate_goae_lines(data)
+            if not isinstance(data, dict):
+                raise ValueError("Ungültige Angaben.")
+            customer, service_date = None, None
+            if data.get("customer_id") and data.get("service_date"):
+                raw_id = str(data["customer_id"])
+                if not raw_id.isdigit() or len(raw_id) > 18:
+                    raise ValueError("Ungültige Patienten-ID.")
+                customer = User.objects.filter(pk=int(raw_id), is_active=True,
+                        is_superuser=False, profile__role="customer").first()
+                service_date = date.fromisoformat(str(data["service_date"]))
+                if customer is None:
+                    raise ValueError("Patient nicht gefunden.")
+            lines = calculate_goae_lines(data, user=customer, service_date=service_date)
         except (ValueError, UnicodeError, json.JSONDecodeError, TypeError) as exc:
             return JsonResponse({"ok": False, "error": "invalid_goae",
                                  "message": str(exc)[:200]}, status=400)
