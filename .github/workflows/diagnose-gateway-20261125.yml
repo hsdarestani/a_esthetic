@@ -68,3 +68,30 @@ jobs:
                             counts[(m.group(1),m.group(2),route(m.group(3)),m.group(4))]+=1
                 for key,n in sorted(counts.items()): print('HTTP_INCIDENT',os.path.basename(fn),*key,n)
             PY
+
+            python3 - <<'PY'
+            import re, glob, collections, os, subprocess
+            allowed=set('api admin admins internal proxy book booking bookings overview bootstrap billing billing-catalog calendar calendar-day availability appointments services staff sso auth patient patients record records patient-records patient-intake app app-admin dashboard settings customers customer-sync status health wallet login office desktop goae invoices invoice notifications mobile api-v1 v1 v2 sync verification verify token management integration bridge doctor user users session admin-bootstrap admin-dashboard admin-calendar admin-bookings admin-proxy admin-api book-admin book-proxy'.split())
+            def route(path):
+                path=path.split('?')[0]
+                return '/'+ '/'.join(x if x in allowed else 'REDACTED' for x in path.strip('/').split('/'))+'/'
+            regex=re.compile(r'"(GET|POST|HEAD|PUT|PATCH|DELETE|OPTIONS) ([^ "]*) HTTP/[^"]+" (\d{3})')
+            for fn in glob.glob('/var/log/nginx/*access*.log'):
+                counts=collections.Counter()
+                with open(fn,errors='replace') as f:
+                    for line in f:
+                        t=re.search(r'25/Nov/2026:(15:0[0-9]):\d{2}',line); m=regex.search(line)
+                        if t and m and m.group(3) in ('502','503','504'):
+                            counts[(t.group(1),route(m.group(2)),m.group(3))]+=1
+                for key,n in sorted(counts.items()): print('EXACT_SAFE_ROUTE',*key,n)
+            for svc in ['a-esthetic-mobile.service','aesthetic-book.service']:
+                p=subprocess.run(['journalctl','--utc','--since','2026-11-25 15:00:00 UTC','-u',svc,'--no-pager','-o','short-iso'],capture_output=True,text=True)
+                counts=collections.Counter()
+                for line in p.stdout.splitlines():
+                    m=regex.search(line)
+                    if m and m.group(3) in ('502','503','504'):
+                        counts[(route(m.group(2)),m.group(3))]+=1
+                    for typ in ['invalid_book_admin_response','book_admin_unavailable','Bad Gateway','Service Unavailable','Gateway Timeout']:
+                        if typ in line: counts[(typ,'application')]+=1
+                print('APPLICATION',svc,dict(counts))
+            PY
