@@ -34,3 +34,5 @@
 - B62 QA follow-up: actual failed emulator screenshot showed the native dashboard loaded behind an unrelated Quickstep launcher ANR. Retry handles only that launcher dialog, still asserts each expected screen, and adds a synthetic in-place calendar day/week update identity gate. No application ANR is ignored.
 
 - 2026-11-25 — 1.0.57 (B63): match SimplyBook event semantics on both native platforms: patient appointments teal-blue RGB(0,125,166) with white text; note/block colors and text unchanged, cyan add button unchanged. Includes B62 navigation fixes. Regression checks palette parity, contrast and actual Android calendar fixture pixels. Native QA and signed delivery tracked separately.
+
+- B63 calendar follow-up before signed release: remove stale Office menu from both native calendar menus; show patient / treatment as a combined label, use full start/end time where space permits, draw strictly within actual booking duration to avoid short adjacent appointments spilling into each other, align date headings and language. Visual comparison limited to supplied reference and synthetic fixture; full SimplyBook functional parity not established.

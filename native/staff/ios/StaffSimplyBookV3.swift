@@ -192,7 +192,7 @@ struct StaffSimplyBookV3: View {
                     .frame(width: 44, height: 48)
             }
             .accessibilityLabel(t("Navigation öffnen", "Open navigation"))
-            Text("Kalender (\(modeName))")
+            Text(t("Kalender","Calendar")+" (\(modeName))")
                 .font(.system(size: 15, weight: .semibold))
                 .lineLimit(1)
                 .padding(.leading, 5)
@@ -310,7 +310,7 @@ struct StaffSimplyBookV3: View {
 
     private func columnHeading(_ column: [String: Any]) -> String {
         if mode == "week" {
-            return formatDate(text(column, "date"), "dd.MM.yyyy")
+            return formatDate(text(column, "date"), "EEE dd.MM")
         }
         if mode == "day" {
             return formatDate(selectedDate, "EEEE, dd.MM.yyyy")
@@ -381,36 +381,40 @@ struct StaffSimplyBookV3: View {
         let laneCount = max(number(event,"lanes"),1)
         let lane = number(event,"lane")
         let width = columnWidth / CGFloat(laneCount)
-        let height = max(25, CGFloat(max(1,finish-start)) * hourHeight / 60)
+        let height = max(1, CGFloat(max(1,finish-start)) * hourHeight / 60)
         let kind = text(event,"kind")
         let isNote = kind == "note"
         let isAppointment = kind == "appointment"
         let title = text(event,"title")
-        let time = text(event,"start") + " · " + text(event,"end")
+        let detail = text(event,"detail")
+        let displayTitle = isAppointment && !detail.isEmpty ? title+" / "+detail : title
+        let time = text(event,"start") + " – " + text(event,"end")
         return Button {
             let id = text(event,"id")
             if !id.isEmpty { fire(id) }
         } label: {
-            VStack(spacing: 4) {
-                StaffWordText(title)
-                    .font(.system(size: 11, weight: .semibold))
-                if height > 39 {
-                    Text(time == " · " ? text(event,"detail") : time)
-                        .font(.system(size: 9, weight: .regular))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.55)
+            VStack(alignment: isAppointment ? .leading : .center, spacing: 2) {
+                if height >= 14 {
+                    Text(displayTitle)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(height >= 39 ? 2 : 1)
+                        .truncationMode(.tail)
                 }
-                if isNote && height > 70 {
-                    Text(t("Notiz", "Note"))
-                        .font(.system(size: 9))
+                if height >= 55 {
+                    Text(time)
+                        .font(.system(size: 10, weight: .regular))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 Spacer(minLength: 0)
             }
             .foregroundStyle(isAppointment ? Color.white : ink)
-            .padding(.top, 6)
-            .frame(width: max(16,width-1), height: height)
+            .padding(.horizontal, 4)
+            .padding(.top, 2)
+            .frame(width: max(1,width-1), height: height, alignment: .topLeading)
             .background(isAppointment ? appointmentBlue : isNote ? Color(red: 1, green: 214.0/255, blue: 133.0/255) : kind == "block" ? Color(red: 227.0/255, green: 171.0/255, blue: 91.0/255) : amber)
             .overlay(Rectangle().stroke(.white.opacity(0.55), lineWidth: 0.6))
+            .clipped()
         }
         .buttonStyle(.plain)
         .offset(x: CGFloat(lane) * width, y: CGFloat(start-firstMinute) * hourHeight / 60)
@@ -461,7 +465,6 @@ struct StaffSimplyBookV3: View {
                 Button(t("Übersicht", "Home")) { showNavigation=false;fire("home") }
                 Button(t("Kalender", "Calendar")) { showNavigation=false;fire("calendar") }
                 Button(t("Patienten", "Patients")) { showNavigation=false;fire("patients") }
-                Button("Office") { showNavigation=false;fire("office") }
                 Button(t("Einstellungen", "Settings")) { showNavigation=false;fire("settings") }
             }
             .navigationTitle("A+ ESTHETIC")

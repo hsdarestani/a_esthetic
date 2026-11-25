@@ -8,8 +8,13 @@ ios = (root/'native/staff/ios/StaffSimplyBookV3.swift').read_text()
 assert 'APPOINTMENT_BLUE=Color.rgb(0,125,166)' in android
 assert 'int color=isAppointment?APPOINTMENT_BLUE:AMBER;' in android
 assert 'int textColor=isAppointment?Color.WHITE:INK;' in android
-assert android.count('labelWidth,10,false,1,textColor);') == 2
-assert '11,true,h>=d(60)?2:1,textColor);' in android
+assert 'labelWidth,10,false,1,textColor);' in android
+assert '11,true,h>=d(39)?2:1,textColor);' in android
+assert 'title+" / "+detail' in android and 'title+" / "+detail' in ios
+assert 'float h=Math.max(1f,yFor(end)-y);' in android
+assert 'let height = max(1, CGFloat(max(1,finish-start)) * hourHeight / 60)' in ios
+assert 'canvas.clipRect(left+1,y+1,right-1,y+h-1);' in android
+assert '"office"' not in android and 'fire("office")' not in ios
 assert 'color=Color.rgb(255,214,133)' in android
 assert 'color=Color.rgb(227,171,91)' in android
 assert 'appointmentBlue = Color(red: 0.0/255, green: 125.0/255, blue: 166.0/255)' in ios

@@ -325,7 +325,7 @@ final class NativeStaffV3Calendar {
         for(int i=0;i<cols.length();i++){
             JSONObject col=at(cols,i);
             String label="week".equals(mode())?formatted(str(col,"date"),"EEE dd.MM")
-                : "day".equals(mode())?formatted(selectedDate(),"EEEE dd.MM.yyyy")
+                : "day".equals(mode())?formatted(selectedDate(),"EEEE, dd.MM.yyyy")
                 :str(col,"title");
             TextView v=text(label,12,INK,true);
             v.setGravity(Gravity.CENTER);
@@ -362,8 +362,8 @@ final class NativeStaffV3Calendar {
     }
     private void showNavigation(){
         String[] labels={t("Übersicht","Home"),t("Kalender","Calendar"),
-            t("Patienten","Patients"),"Office",t("Einstellungen","Settings")};
-        String[] ids={"home","calendar","patients","office","settings"};
+            t("Patienten","Patients"),t("Einstellungen","Settings")};
+        String[] ids={"home","calendar","patients","settings"};
         new AlertDialog.Builder(ctx).setTitle("A+ ESTHETIC")
             .setItems(labels,(d,index)->fire(ids[index]))
             .setNegativeButton(t("Schließen","Close"),null).show();
@@ -490,7 +490,7 @@ final class NativeStaffV3Calendar {
                 if(event.optInt("column",-1)!=index)continue;
                 int start=event.optInt("lower"),end=event.optInt("upper");
                 float y=yFor(start);
-                float h=Math.max(d(25),yFor(end)-y);
+                float h=Math.max(1f,yFor(end)-y);
                 int lanes=Math.max(1,event.optInt("lanes",1));
                 int lane=event.optInt("lane",0);
                 float laneWidth=w/lanes;
@@ -505,11 +505,15 @@ final class NativeStaffV3Calendar {
                 fill(canvas,color,left,y+1,right,y+h-1,d(2));
                 String title=str(event,"title");
                 String detail=str(event,"detail");
-                String time=str(event,"start");
+                String time=str(event,"start")+" – "+str(event,"end");
+                String displayTitle=isAppointment&&!detail.isEmpty()?title+" / "+detail:title;
                 float tx=left+d(5),labelWidth=right-left-d(10);
-                if(h>=d(27))label(canvas,title,tx,y+d(17),labelWidth,11,true,h>=d(60)?2:1,textColor);
-                if(h>=d(56))label(canvas,time,tx,y+h-d(17),labelWidth,10,false,1,textColor);
-                if(h>=d(86))label(canvas,detail,tx,y+d(52),labelWidth,10,false,1,textColor);
+                // Paint strictly within the actual time interval, including short and adjacent bookings.
+                int saved=canvas.save();
+                canvas.clipRect(left+1,y+1,right-1,y+h-1);
+                if(h>=d(14))label(canvas,displayTitle,tx,y+d(13),labelWidth,11,true,h>=d(39)?2:1,textColor);
+                if(h>=d(55))label(canvas,time,tx,y+h-d(7),labelWidth,10,false,1,textColor);
+                canvas.restoreToCount(saved);
                 String id=str(event,"id");
                 if(!id.isEmpty())hitTargets.add(new TouchTarget(new RectF(left,y,right,y+h),id));
             }
