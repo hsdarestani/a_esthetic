@@ -52,3 +52,19 @@ jobs:
                     report(os.path.basename(fn),lines)
                 except OSError: pass
             PY
+
+            python3 - <<'PY'
+            import re, glob, collections, os
+            routes=['/api/mobile/admin/book/overview/','/api/mobile/admin/book/calendar/','/api/mobile/admin/book/bookings/','/api/mobile/admin/book/customers/','/api/mobile/admin/book/services/','/api/mobile/admin/book/settings/','/api/mobile/admin/billing/','/api/mobile/admin/','/api/mobile/app-admin/','/api/mobile/status/','/api/health/','/verwaltung/app-sso/','/verwaltung/app/','/verwaltung/dashboard/','/verwaltung/kalender/','/verwaltung/','/admin/','/api/','/static/']
+            def route(p):
+                if p=='/': return 'root'
+                return next((s for s in routes if p.startswith(s)),'other')
+            for fn in glob.glob('/var/log/nginx/*access*.log'):
+                counts=collections.Counter()
+                with open(fn,errors='replace') as f:
+                    for line in f:
+                        m=re.search(r'25/Nov/2026:((?:14:[3-5][0-9]|15:[0-9][0-9])):[0-9]{2}[^\]]*\].*?"(GET|POST|HEAD|PUT|PATCH|DELETE|OPTIONS) ([^ ?"]+)(?:\?[^ "]*)? HTTP/[^"]+" (\d{3}) ',line)
+                        if m and m.group(4) in ('502','503','504'):
+                            counts[(m.group(1),m.group(2),route(m.group(3)),m.group(4))]+=1
+                for key,n in sorted(counts.items()): print('HTTP_INCIDENT',os.path.basename(fn),*key,n)
+            PY
