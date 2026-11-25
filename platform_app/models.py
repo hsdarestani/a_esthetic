@@ -217,7 +217,9 @@ class Invoice(models.Model):
 class InvoiceItem(models.Model):
     invoice=models.ForeignKey(Invoice,on_delete=models.CASCADE,related_name='items')
     goae_number=models.CharField(max_length=24,blank=True)
-    goae_factor=models.DecimalField(max_digits=4,decimal_places=2,blank=True,null=True)
+    goae_factor=models.DecimalField(max_digits=7,decimal_places=4,blank=True,null=True)
+    goae_agreement_document=models.ForeignKey(SecureDocument,null=True,blank=True,on_delete=models.PROTECT,related_name='goae_agreed_items')
+    goae_agreement_date=models.DateField(null=True,blank=True)
     goae_base_cents=models.PositiveIntegerField(blank=True,null=True)
     goae_justification=models.TextField(blank=True)
     service=models.ForeignKey(Service,null=True,blank=True,on_delete=models.SET_NULL)
