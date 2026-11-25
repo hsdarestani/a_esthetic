@@ -174,3 +174,25 @@ class GoaEDraftTests(TestCase):
         other = User.objects.create_user(username="other-goae")
         with self.assertRaises(ValueError):
             calculate_goae_lines(line, user=other, service_date=service_date)
+
+    def test_reference_hyaluron_exact_total_with_signed_agreement(self):
+        doc = SecureDocument.objects.create(user=self.patient, title="Test agreement",
+            category="consent", file="documents/synthetic-reference.pdf", uploaded_by=self.staff)
+        def service(code, factor, **extra):
+            return {"tariff_source":"official_catalog","clinical_confirmed":True,
+                    "goae_number":code,"goae_factor":factor,"goae_vat_rate":"19", **extra}
+        rows = [
+            service("2442", "6.1439", agreement_confirmed=True,
+                    agreement_document_id=str(doc.pk), agreement_date="2026-10-19",
+                    agreement_amount_eur="322.30"),
+            service("5","2.3"), service("1","2.3"),
+            {"kind":"material","goae_description":"Hyaluron Testmaterial","goae_base_eur":"76.43",
+             "quantity":"1","goae_vat_rate":"19","material_eligible":True,"material_receipt_reference":"SYNTHETIC"},
+        ]
+        kwargs = {"user":self.patient,"actor":self.staff,"service_date":date(2026,10,20)}
+        invoice = create_goae_draft(**kwargs, data={"lines":rows,"target_total_cents":50000})
+        self.assertEqual((invoice.subtotal_cents,invoice.tax_cents,invoice.total_cents),(42017,7983,50000))
+        self.assertEqual(sum(item.gross_cents for item in invoice.items.all()),50000)
+        with self.assertRaises(ValueError):
+            create_goae_draft(**kwargs, data={"lines":rows,"target_total_cents":50001})
+        self.assertEqual(Invoice.objects.count(),1)
