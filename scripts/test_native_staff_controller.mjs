@@ -11,6 +11,16 @@ assert.equal(canonicalDate('29.02.2024'),'2024-02-29');
 assert.equal(canonicalDate('29.02.2026'),null);
 
 let current, onAction, closed = false, lastTimelineScreen;
+let choose = async()=>({cancelled:true});
+let confirm = async()=>({confirmed:false});
+let preview = async()=>{};
+const uploads=[];
+let uploadFailures=0, patientRequests=0, loggedOut=0, sessionExpired=false;
+const checkpoints=new Map();
+const navigation={
+  async read(scope){return checkpoints.get(scope);},
+  save(scope,state){checkpoints.set(scope,structuredClone(state));}
+};
 const fixtureDir=process.env.APLUS_NATIVE_QA_FIXTURES;
 function capture(name){
   if(!fixtureDir)return;
@@ -24,7 +34,11 @@ globalThis.Capacitor={Plugins:{NativeStaff:{
   async present({screen}){current=screen;},
   async render({screen}){current=screen;if(screen.timeline)lastTimelineScreen=screen;},
   async dismiss(){closed=true;},
-  async pickPhoto(){return {filename:'synthetic-photo.jpg',base64:'AA=='};},
+  async pickPhoto(){return choose();},
+  async pickPDF(){return choose();},
+  async takePhoto(){return choose();},
+  async confirmUpload(options){return confirm(options);},
+  async previewPDF(options){return preview(options);},
   async addListener(name,fn){assert.equal(name,'action');onAction=fn;return{remove(){onAction=null;}};},
 }}};
 let lastCalendar, lastFinancialUpdate, officeRevision='v1', sourceEditEnabled=false, accountMode='linked', invoiceRequests=0, invoiceMode='error';
@@ -35,6 +49,7 @@ globalThis.fetch=async(url,opts)=>{
   assert.match(opts.headers.Authorization,/^Bearer synthetic-test-token$/);
   const path=new URL(url).pathname;
   let result;
+  if(sessionExpired)return {ok:false,status:401};
   if(path.endsWith('/overview/'))result={today:3,upcoming_count:14,patient_count:37,provider_count:2,intake_review_count:1,
     provider_today:[{id:1,name:'Demo clinician',count:3}],upcoming:[{id:44,customer_name:'Synthetic patient',date:'2026-11-23',start:'10:00',staff_name:'Demo clinician',service_name:'Consult',status:'confirmed'}]};
   else if(path.endsWith('/catalog/'))result={
@@ -56,11 +71,16 @@ globalThis.fetch=async(url,opts)=>{
     };
   }
   else if(path.endsWith('/patients/'))result={items:[{id:23,name:'Demo patient',email:'demo@example.test'}],has_more:new URL(url).searchParams.get('page')==='1'};
-  else if(path.endsWith('/patient/23/'))result={patient:{id:23,name:'Demo patient',email:'demo@example.test',phone:'069000000'},appointments:[{id:46,public_id:'00000000-0000-4000-8000-000000000046',date:'2026-11-20',start:'11:30',service_name:'Consult',staff_name:'Demo clinician',status:'completed'}],records:[{id:'00000000-0000-4000-8000-000000000099',title:'Synthetic clinical note',date:'2026-11-20',note:'Synthetic record for UI testing',kind:'note',has_file:false}]};
+  else if(path.endsWith('/patient/23/')){patientRequests++;result={patient:{id:23,name:'Demo patient',email:'demo@example.test',phone:'069000000'},appointments:[{id:46,public_id:'00000000-0000-4000-8000-000000000046',date:'2026-11-20',start:'11:30',service_name:'Consult',staff_name:'Demo clinician',status:'completed'}],records:[{id:'00000000-0000-4000-8000-000000000099',title:'Synthetic clinical note',date:'2026-11-20',note:'Synthetic record for UI testing',kind:'note',has_file:false}]};}
   else if(path.endsWith('/customers/'))result={items:[{id:25,name:'Demo patient',email:'demo@example.test',book_customer_id:accountMode==='unlinked'?null:23,address:{street:'Testweg 1',postal_code:'60313',city:'Frankfurt'}}]};
   else if(path.endsWith('/patient-account/23/')){if(accountMode==='fallback'||accountMode==='unlinked')return {ok:false,status:404};result={customer_id:accountMode==='null-verified'?null:25};}
   else if(path.endsWith('/customers/25/')){if(accountMode==='missing-detail')return {ok:false,status:404};result={customer:{id:25,name:'Demo patient',coins:240,credit_cents:1500},packages:[{id:1,name:'Synthetic package',remaining_sessions:2,expires_at:'2027-01-01',status:'active'}]};}
-  else if(path.endsWith('/record-upload/'))result={ok:true,id:100};
+  else if(path.endsWith('/records/99/'))return new Response('%PDF-1.7 synthetic');
+  else if(path.endsWith('/record-upload/')){
+    uploads.push(JSON.parse(opts.body));
+    if(uploadFailures-->0)throw new TypeError('Synthetic connection loss after upload request');
+    result={ok:true,id:100};
+  }
   else if(path.endsWith('/invoices/25/')){invoiceRequests++;if(invoiceMode==='error')return {ok:false,status:404};result={items:[{id:7,customer_id:25,number:'RE-TEST',status:'issued',service_date:'2026-11-20',total_cents:4200},{id:8,customer_id:99,number:'OTHER-PATIENT',status:'issued',total_cents:9000}]};}
   else if(path.endsWith('/tariff-catalog/'))result={items:[{number:'1',de:'Beratung',en:'Consultation',points:80}],treatments:{},synthetic_reference_available:false};
   else if(path.endsWith('/quote/'))result={subtotal_cents:1072,tax_cents:204,total_cents:1276,items:[{goae_number:'1',description:'Consultation',quantity:'1',factor:'2.30',gross_cents:1276}]};
@@ -74,9 +94,9 @@ globalThis.fetch=async(url,opts)=>{
   return {ok:true,json:async()=>result};
 };
 const pause=()=>new Promise(r=>setTimeout(r,20));
-const click=async(id,values={})=>{onAction({id,values});await pause();};
+const click=async(id,values={},extra={})=>{onAction({id,values,...extra});await pause();};
 let native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'admin',name:'Demo Admin'},
-  origin:'https://example.test',logout:()=>{}});
+  origin:'https://example.test',navigation,logout:()=>{loggedOut++;}});
 assert.equal(current.title,'Welcome');
 assert.equal(current.hero,'Practice overview');
 assert.match(current.rows[0].detail,/23\.11\.2026/);
@@ -223,16 +243,73 @@ await click('patient-link-account');assert.equal(current.title,'Link patient acc
 accountMode='missing-detail';await click('patient-section:account');assert.match(current.message,/no longer available/);assert.equal(current.segments.find(s=>s.selected).id,'patient-section:account');
 accountMode='linked';await click('patient-section:account');
 await click('patient-section:records');
+const recordView=current, beforePatientRequests=patientRequests;
+for(const id of ['upload-pdf','upload-photo','take-photo','upload-pdf','take-photo']){
+  await click(id);
+  assert.equal(current,recordView,'native picker cancellation leaves the exact rendered screen in place');
+}
+choose=async()=>({filename:'synthetic-photo.jpg',base64:'AA=='});
+let confirmations=0;
+confirm=async options=>{
+  assert.match(options.message,/Demo patient/);
+  assert.match(options.message,/synthetic-photo.jpg/);
+  confirmations++;
+  return {confirmed:false};
+};
+await click('upload-photo',{}, {scroll:287});
+assert.equal(confirmations,1);
+assert.equal(patientRequests,beforePatientRequests,'discard must not reload the patient record');
+assert.equal(current,recordView,'discard must not replace the view or its native scroll state');
+assert.equal(uploads.length,0);
+
+let finishPreview;
+preview=options=>new Promise(resolve=>{assert.match(options.base64,/^JVBERi/);finishPreview=resolve;});
+await click('record:99');
+await click('home');
+assert.equal(current,recordView);
+finishPreview();
+await pause();
+assert.equal(current,recordView,'closing the PDF must not reload the patient record');
+
+let confirmSelection;
+confirm=()=>new Promise(resolve=>{confirmSelection=resolve;});
 await click('upload-photo');
-assert.ok(current.actions.some(x=>x.id==='confirm-upload'));
-await click('discard-upload');
-await click('patient-section:records');
+await click('upload-photo');
+await click('patient:24');
+assert.equal(uploads.length,0);
+uploadFailures=1;
+confirm=async options=>{assert.match(options.message,/Unable to upload/);return {confirmed:true};};
+confirmSelection({confirmed:true});
+await pause();
+assert.equal(uploads.length,2,'retry makes one additional request');
+assert.deepEqual(uploads[1],uploads[0],'retry uses the same idempotency key, patient and file');
+assert.equal(uploads[0].customer_id,23);
+assert.equal(current.segments.find(x=>x.selected).id,'patient-section:records');
+
 await click('note');
 assert.equal(current.title,'New note');
 assert.equal(current.fields.find(x=>x.id==='note').kind,'multiline');
 assert.equal(current.fields.find(x=>x.id==='title').kind,'text');
+await click('back');
+assert.equal(current.segments.find(x=>x.selected).id,'patient-section:records','one Back closes the editor');
+await click('note');
+const saved=checkpoints.get('staff');
+assert.equal(saved.action,'note');
+checkpoints.set('staff',{...saved,values:{title:'Draft',note:'Synthetic unsaved entry'},scroll:217});
 await native.destroy();
 assert.ok(closed);
+native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'admin',name:'Demo Admin'},
+  origin:'https://example.test',navigation,logout:()=>{loggedOut++;}});
+assert.equal(current.title,'New note');
+assert.equal(current.fields.find(x=>x.id==='note').value,'Synthetic unsaved entry');
+assert.equal(current.scroll,217);
+await click('back');
+assert.equal(current.segments.find(x=>x.selected).id,'patient-section:records','rehydrated Back returns to the patient subsection');
+sessionExpired=true;
+await click('patients');
+assert.equal(loggedOut,1,'confirmed authentication failure closes the workspace');
+assert.equal(onAction,null);
+sessionExpired=false;
 sourceEditEnabled=true;
 native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'admin',name:'Demo Admin'},
   origin:'https://example.test',logout:()=>{}});

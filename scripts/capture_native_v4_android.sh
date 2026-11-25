@@ -28,4 +28,22 @@ for fixture in "${fixtures[@]}"; do
     adb logcat -d -s APlusCalendarQA:I '*:S' | grep -F 'PASS B62 calendar header and native root retained across day/week updates'
   fi
   adb exec-out screencap -p > "$target/$(basename "$fixture" .json).png"
+  if [[ "$(basename "$fixture")" == "13-patient-profile.json" ]]; then
+    adb shell input keyevent KEYCODE_HOME
+    adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n de.aplusesthetic.app/.MainActivity
+    adb shell uiautomator dump /sdcard/aplus-qa.xml >/dev/null
+    adb exec-out cat /sdcard/aplus-qa.xml | grep -Fq "$expected"
+    adb exec-out screencap -p > "$target/13-patient-profile-resumed.png"
+    python3 - "$target/13-patient-profile.png" "$target/13-patient-profile-resumed.png" <<'PY'
+import sys
+from PIL import Image, ImageStat
+
+for filename in sys.argv[1:]:
+    with Image.open(filename) as image:
+        crop = image.crop((0, image.height // 8, image.width, image.height * 7 // 8)).convert('L')
+        stats = ImageStat.Stat(crop)
+        assert stats.median[0] > 120 and stats.stddev[0] > 8, f'Native screenshot is blank: {filename}'
+print('PASS: foreground staff screenshots before and after switching apps')
+PY
+  fi
 done

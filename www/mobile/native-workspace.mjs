@@ -42,17 +42,19 @@ const isSyncedProvider = p => Boolean(p?.source_managed || String(p?.name||'').s
 const isSyncedService = s => Boolean(s?.source_managed || String(s?.slug||'').startsWith('simplybook-event-'));
 const uuid = () => globalThis.crypto.randomUUID();
 
-export async function mountNativeWorkspace({token, identity, origin, logout, initialPatient, initialCalendar}) {
+export async function mountNativeWorkspace({token, identity, origin, logout, initialPatient, initialCalendar, navigation, signal}) {
   const plugin = globalThis.APlusNativeStaff || globalThis.Capacitor?.Plugins?.NativeStaff;
   if (!plugin) throw new Error('Native staff renderer unavailable');
   const admin = identity.role === 'admin';
   let language = localStorage.getItem('aplus_language') === 'en' ? 'en' : 'de';
   const tr = (de,en) => displayCopy(language === 'en' ? en : de);
   let locale = language === 'en' ? 'en-GB' : 'de-DE';
-  const stack = [];
+  const history = [];
+  const requests = new AbortController();
+  let transition, location, routeTarget, calendarScreen, queuedRoute, closing;
   const appointmentsById = new Map();
   const rememberAppointments = items => { for(const a of items||[]) appointmentsById.set(a.id,a); };
-  let date = today(), search = '', calendarMode='day', providerFilter='all', serviceFilter='all', active = true, busy = false, listener, patient, catalog, appointment;
+  let date = today(), search = '', calendarMode='day', providerFilter='all', serviceFilter='all', active = true, busy = true, listener, patient, catalog, appointment;
   let activeTab = 'home';
   let patientPage=1, recordPage=1, patientSection='overview', intakeSearch='', intakeStatus='', intakePage=1, intakeFrom='', intakeTo='', submission, canonicalForms=true;
   let current = {title:'A+ Esthetic',busy:true,tabs:[]};
@@ -93,9 +95,10 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     {...row('settings',tr('Einstellungen','Settings')),icon:'gearshape'},
   ];
   async function request(path, data, prefix='/api/mobile/staff/') {
+    requests.signal.throwIfAborted();
     const response = await fetch(origin+prefix+path,{
       method:data ? 'POST':'GET', headers:{Authorization:'Bearer '+token,Accept:'application/json','Content-Type':'application/json'},
-      cache:'no-store', ...(data?{body:JSON.stringify(data)}:{}),
+      cache:'no-store', signal:requests.signal, ...(data?{body:JSON.stringify(data)}:{}),
     });
     if(!response.ok){const err=new Error(tr('Vorgang konnte nicht abgeschlossen werden.','Unable to complete request.')+' (HTTP '+response.status+')');err.status=response.status;throw err;}
     return response.json();
@@ -117,10 +120,64 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     tabs:tabs().map(tab=>({...tab,selected:tab.id===activeTab})), ...content,
     ...(content.subtitle?{subtitle:displayData(content.subtitle)}:{}),
     ...Object.fromEntries(['rows','secondaryRows'].filter(key=>content[key]).map(key=>[key,content[key].map(item=>({...item,...(item.badge?{badge:localizedStatus(item.badge)}:{})}))]))});
-  async function render(screen) { if(!active)return; current=screen; await plugin.render({screen}); }
-  async function screen(name, {push=true}={}) {
+  const datePattern=/^\d{4}-\d{2}-\d{2}$/;
+  const subviews=/^(appointment:\d+|record-detail:[\w-]+|block(?:-info)?:\d+|service:\d+|patient-(?:link-account|adjust-points|invoices)|note|record-edit|new-patient-appointment|new-appointment|slot:\d{4}-\d{2}-\d{2}:\d{2}:\d{2}(?::\w+)?|edit-appointment|new-block|availability|language|services|identity-review)$/;
+  const updates=/^(date:|cal-(?:today|mode:|provider:|service:)|(?:day|week)-(?:next|prev)|search$|patient-section:|(?:patient|record)-page-|apply-calendar-filter$|calendar-client-search$|load-availability$|patient-link-search$)/;
+  function routeState(action){
+    return {action,activeTab,date,search,calendarMode,providerFilter,serviceFilter,patientPage,recordPage,patientSection,
+      patientId:activeTab==='patients'?patient?.patient.id:undefined,
+      appointmentId:appointment?.id,blockId:currentBlock?.id,recordId:selectedRecord?.id};
+  }
+  function applyRoute(saved){
+    ({activeTab,date,search,calendarMode,providerFilter,serviceFilter,patientPage,recordPage,patientSection}=saved);
+  }
+  function snapshot(event={}){
+    const values=event.values||{};
+    const screen={...current,scroll:event.scroll??current.scroll,scrollX:event.scrollX??current.scrollX,
+      ...(current.fields?{fields:current.fields.map(f=>({...f,value:values[f.id]??f.value}))}:{})};
+    return {screen,location,models:{patient,appointment,currentBlock,currentService,selectedRecord,currentPatientAccount},calendarScreen};
+  }
+  const checkpoint=()=>{
+    if(active && location)navigation?.save('staff',{...location,screenKey:current.screenKey,
+      scroll:current.scroll,scrollX:current.scrollX,values:Object.fromEntries((current.fields||[]).map(f=>[f.id,f.value])),
+      history:history.map(({location,screen})=>screen?{...location,scroll:screen.scroll,scrollX:screen.scrollX,
+        values:Object.fromEntries((screen.fields||[]).map(f=>[f.id,f.value]))}:location)});
+  };
+  function destination(screen,action){
+    if(screen.timeline)return 'calendar';
+    if(screen.segments && patient)return 'patient:'+patient.patient.id;
+    const tab=screen.tabs?.find(tab=>tab.selected)?.id;
+    if(['home','patients','settings'].includes(action) && action===tab)return action;
+    if(subviews.test(action))return action;
+    if(updates.test(action))return location?.action||tab;
+    return action;
+  }
+  async function render(screen,{replace=false,keepKey=false}={}) {
+    if(!active)return;
+    const previous=transition?.from;
+    const action=routeTarget||destination(screen,transition?.action||location?.action||activeTab);
+    const next={...screen,screenKey:keepKey?current.screenKey:uuid()};
+    await plugin.render({screen:next});
+    if(!active)return;
+    if(!replace && previous?.location && previous.location.action!==action){
+      if(history.at(-1)?.location.action===action)history.pop();
+      else if(!updates.test(transition.action)){
+        history.push(previous);
+        if(history.length>20)history.shift();
+      }
+    }
+    current=next;
+    if(next.timeline)calendarScreen=next;
+    location=routeState(action);
+  }
+  async function screen(name) {
+    const previous=routeTarget;
+    routeTarget=name;
+    try{return await renderRoute(name);}
+    finally{routeTarget=previous;}
+  }
+  async function renderRoute(name) {
     if(['home','calendar','patients','settings'].includes(name))activeTab=name;
-    if(push && stack.at(-1)!==name)stack.push(name);
     if(name==='home'){
       const r=await book('overview/');
       rememberAppointments(r.upcoming);
@@ -249,15 +306,15 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     }
   }
 
-  async function showPatient(id,{reset=true}={}) {
+  async function showPatient(id,{reset=true,scroll}={}) {
+    const loaded=await book('patient/'+id+'/?page='+(reset?1:recordPage));
     activeTab='patients';
     if(reset){patientSection='overview';recordPage=1;currentPatientAccount=null;selectedRecord=null;}
-    patient=await book('patient/'+id+'/?page='+recordPage);
+    patient=loaded;
     rememberAppointments(patient.appointments);
-    if(stack.at(-1)!=='patient:'+id)stack.push('patient:'+id);
-    return renderPatient();
+    return renderPatient(scroll);
   }
-  async function renderPatient(){
+  async function renderPatient(scroll){
     const p=patient.patient;
     const sections=[['overview',tr('Übersicht','Overview')],['appointments',tr('Termine','Appointments')],['records',tr('Patientenakte','Records')],['contact',tr('Kontakt','Contact')],
       ...(admin?[['account',tr('Patientenkonto','Patient account')]]:[])];
@@ -305,7 +362,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       }catch(err){if(err.status===401)throw err;accountContent={message:tr('Das Patientenkonto ist momentan nicht erreichbar. Bitte erneut laden.','The patient account is temporarily unavailable. Please reload.'),actions:[row('patient-section:account',tr('Erneut laden','Reload'))]};}
     }
     return render(view(p.name,{hero:p.name,heroLabel:tr('PATIENTENAKTE','PATIENT RECORD'),subtitle:[p.email,p.phone].filter(Boolean).join(' · '),
-      segments:sections.map(([id,label])=>({...row('patient-section:'+id,label),selected:patientSection===id})),
+      scroll,segments:sections.map(([id,label])=>({...row('patient-section:'+id,label),selected:patientSection===id})),
       ...(patientSection==='overview'?{metrics:[row('patient-section:appointments',tr('Termine (Auszug)','Appointments (shown)'),String(appointments.length)),row('patient-section:records',tr('Akteneinträge (Auszug)','Records (shown)'),String(records.length))],
         shortcuts:[row('new-patient-appointment',tr('Termin hinzufügen','Book appointment')),row('note',tr('Notiz hinzufügen','Add note')),row('upload-pdf',tr('PDF hinzufügen','Add PDF'))],
         sectionTitle:tr('LETZTE TERMINE','RECENT APPOINTMENTS'),rows:timeline.slice(0,3),empty:tr('Keine Termine.','No appointments.')}:
@@ -331,7 +388,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   }
   async function showAppointment(id) {
     activeTab='calendar';
-    appointment=await getAppointment(id);stack.push('appointment:'+id);
+    appointment=await getAppointment(id);
     return render(view(appointment.customer_name,{
       subtitle:displayCopy(appointment.service_name),
       message:appointment.source_managed
@@ -375,11 +432,10 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       value('start',tr('Beginn (HH:MM)','Start (HH:MM)'),edit?appointment.start:(slot.start||'10:00')),
       value('notes',tr('Notiz','Notes'),edit?appointment.notes:''),
     ];
-    stack.push(edit?'edit-appointment':'new-appointment');
     return render(view(edit?tr('Termin bearbeiten','Edit appointment'):tr('Neuen Termin buchen','Book new appointment'),
       {layout:'simplybook-form',formType:'booking',fields:syncedEdit?fields:[fields[2],fields[1],fields[0],...fields.slice(3)],actions:[row(edit?'save-edit':'save-new',tr('Speichern','Save'))]}));
   }
-  let currentBlock, currentService, pendingUpload, selectedRecord;
+  let currentBlock, currentService, selectedRecord;
   async function patientLinkForm(query){
     const p=patient.patient;
     const result=query.trim().length>=2?await office('customers/?q='+encodeURIComponent(query.trim())):{items:[]};
@@ -430,7 +486,6 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     const r=await office('customers/?q='+encodeURIComponent(search));
     billingUser=r.items.find(u=>u.id===id);
     if(!billingUser)throw new Error(tr('Patient nicht verfügbar','Patient unavailable'));
-    stack.push('billing:'+id);
     const list=await office('invoices/'+id+'/');
     return render(view(billingUser.name,{theme:'billing',subtitle:billingUser.email,
       rows:list.items.map(i=>row('invoice-detail:'+i.id,(i.number?i.number+' · ':'')+i.service_date+' · '+(i.total_cents/100).toFixed(2)+' EUR',i.status)),
@@ -529,25 +584,74 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   }
 
   async function showPDF(path,title,allowImage=false){
-    const response=await fetch(origin+'/api/mobile/staff/'+path,{headers:{Authorization:'Bearer '+token},cache:'no-store'});
-    if(!response.ok)throw new Error(tr('Datei nicht verfügbar','File unavailable'));
+    const response=await fetch(origin+'/api/mobile/staff/'+path,{headers:{Authorization:'Bearer '+token},cache:'no-store',signal:requests.signal});
+    if(!response.ok)throw Object.assign(new Error(tr('Datei nicht verfügbar','File unavailable')),{status:response.status});
     const blob=await response.blob();
     if(blob.size>8000000)throw new Error(tr('Datei zu groß','File too large'));
     const bytes=new Uint8Array(await blob.arrayBuffer());
     let chunk='';for(let i=0;i<bytes.length;i+=16384)chunk+=String.fromCharCode(...bytes.subarray(i,i+16384));
     if(String.fromCharCode(...bytes.slice(0,5))!=='%PDF-'){
       if(allowImage&&((bytes[0]===0xff&&bytes[1]===0xd8)||(bytes[0]===0x89&&String.fromCharCode(...bytes.slice(1,4))==='PNG'))){
-        return render(view(title,{image:btoa(chunk),actions:[row('patient-section:records',tr('Zur Patientenakte','Back to patient record'))]}));
+        return render(view(title,{image:btoa(chunk),actions:[row('back',tr('Zurück','Back'))]}));
       }
       throw new Error(tr('Dieses Dateiformat wird noch nicht unterstützt','This file type is not supported'));
     }
-    await plugin.previewPDF({title,base64:btoa(chunk)});
+    if(active)await plugin.previewPDF({title,base64:btoa(chunk)});
   }
-  async function handle(event) {
-    if(!active || busy) return;
+  async function restoreRoute(saved){
+    if(!saved || !['home','calendar','patients','settings'].includes(saved.activeTab) || !datePattern.test(saved.date))return false;
+    applyRoute(saved);
+    await screen(saved.activeTab);
+    if(saved.activeTab==='patients' && Number(saved.patientId)>0)await showPatient(saved.patientId,{reset:false});
+    if(subviews.test(saved.action)){
+      if(saved.action==='edit-appointment' && Number(saved.appointmentId)>0)await showAppointment(saved.appointmentId);
+      if(saved.action==='record-edit' && saved.recordId)await handle({id:'record-detail:'+saved.recordId},{restoring:true});
+      await handle({id:saved.action,values:saved.values},{restoring:true});
+    }
+    const fields=current.fields?.map(field=>({...field,value:saved.values?.[field.id]??field.value}));
+    const restored={...current,...(fields?{fields}:{}),scroll:saved.scroll,scrollX:saved.scrollX};
+    await plugin.render({screen:restored});
+    current=restored;
+    location=routeState(saved.action);
+    return true;
+  }
+  async function upload(id, event){
+    const owner=patient?.patient;
+    if(!owner)return;
+    const screenKey=current.screenKey;
+    const valid=()=>active && current.screenKey===screenKey && patient?.patient.id===owner.id;
+    const chosen=await (id==='upload-pdf'?plugin.pickPDF():id==='take-photo'?plugin.takePhoto():plugin.pickPhoto());
+    if(!valid() || chosen?.cancelled)return;
+    if(!chosen?.filename || !chosen.base64)throw new Error(tr('Datei nicht verfügbar','File unavailable'));
+    const payload={customer_id:owner.id,filename:chosen.filename,base64:chosen.base64,key:uuid()};
+    const description=owner.name+'\n'+chosen.filename;
+    let failure='';
+    while(valid()){
+      const {confirmed}=await plugin.confirmUpload({title:tr('Datei hinzufügen','Add document'),
+        message:failure?description+'\n\n'+failure:description,
+        confirm:failure?tr('Erneut versuchen','Try again'):tr('Datei hochladen','Upload file'),
+        cancel:tr('Abbrechen','Cancel')});
+      if(!valid() || !confirmed)return;
+      try{
+        await request('book/record-upload/',payload);
+        break;
+      }catch(error){
+        if(error.status===401 || !valid())throw error;
+        failure=tr('Datei konnte nicht hochgeladen werden.','Unable to upload the file.');
+      }
+    }
+    if(!valid())return;
+    patientSection='records';
+    await showPatient(owner.id,{reset:false,scroll:transition?.from?.location?.patientSection==='records'?event.scroll:undefined});
+  }
+  async function handle(event,{restoring=false}={}) {
+    if(!active || (busy && !restoring) || (event.screenKey && event.screenKey!==current.screenKey))return;
     const id=event.id, fields={...(event.values||{})};
     // Office is deliberately unavailable in the mobile workspace; retain web/API business logic.
     if(/^(office$|intakes$|intake-(?:next|prev|reviews|review|link)|filter-intakes$|submission(?:-|:)|billing(?:-|:)|invoice-(?!pdf:)|add-(?:invoice|manual|material)-line|save-(?:billing-settings|verified-line|manual-line|material-line)|delete-line)/.test(id))return;
+    const wasBusy=busy, previousTransition=transition;
+    const origin=snapshot(event);
+    transition={action:id,from:restoring?null:origin};
     busy=true;
     try {
       if(id==='calendar-client-search'&&current.layout==='simplybook-form'&&current.formType==='booking'){
@@ -565,13 +669,29 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         else if(/^(save-|load-availability|filter-intakes|invoice-)/.test(id))throw new Error(tr('Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben.','Enter a valid date in DD.MM.YYYY format.'));
       }
       if(id==='logout'){await destroy();logout();return;}
-      if(id==='retry-initial')return await screen('home',{push:false});
+      if(id==='retry-initial')return await openInitial();
       if(id==='back'){
-        stack.pop();const back=stack.pop()||'home';
-        if(back.startsWith('patient:'))return await showPatient(Number(back.split(':')[1]));
-        if(back.startsWith('billing:'))return await showBilling(Number(back.split(':')[1]));
-        if(back.startsWith('appointment:'))return await showAppointment(Number(back.split(':')[1]));
-        return await screen(['home','calendar','patients','identity-review','settings','services'].includes(back)?back:'home');
+        const previous=history.at(-1);
+        if(!previous){
+          if(location?.action==='home'){
+            if(globalThis.Capacitor?.getPlatform?.()==='android')await globalThis.Capacitor?.Plugins?.App?.minimizeApp?.();
+            return;
+          }
+          transition=null;
+          return await screen('home');
+        }
+        transition=null;
+        if(previous.screen){
+          await plugin.render({screen:previous.screen,calendar:previous.calendarScreen});
+          if(!active)return;
+          current=previous.screen;
+          location=previous.location;
+          calendarScreen=previous.calendarScreen;
+          applyRoute(location);
+          ({patient,appointment,currentBlock,currentService,selectedRecord,currentPatientAccount}=previous.models);
+        }else await restoreRoute(previous.location);
+        history.pop();
+        return;
       }
       if(['home','calendar','patients','identity-review','settings','services'].includes(id)){
         if(id==='patients'||id==='billing-search')search='';
@@ -579,19 +699,19 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         if(id==='intakes'){intakeSearch='';intakeStatus='';intakePage=1;intakeFrom='';intakeTo='';}
         return await screen(id);
       }
-      if(id==='cal-today'){date=today();return await screen('calendar',{push:false});}
+      if(id==='cal-today'){date=today();return await screen('calendar');}
       if(id.startsWith('cal-mode:')){
         calendarMode=id.slice('cal-mode:'.length);
         if(!['day','week','provider','service'].includes(calendarMode))return;
-        return await screen('calendar',{push:false});
+        return await screen('calendar');
       }
       if(id.startsWith('cal-provider:')){
         providerFilter=id.slice('cal-provider:'.length);
-        return await screen('calendar',{push:false});
+        return await screen('calendar');
       }
       if(id.startsWith('cal-service:')){
         serviceFilter=id.slice('cal-service:'.length);
-        return await screen('calendar',{push:false});
+        return await screen('calendar');
       }
       if(id.startsWith('slot:')){
         const parts=id.split(':');
@@ -601,16 +721,16 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         search='';
         return await appendForm(false,null,{date:day,start:time,staff_id:parts[4]||providerFilter});
       }
-      if(id==='week-next'||id==='week-prev'){date=shiftDay(date,id==='week-next'?7:-7);return await screen('calendar',{push:false});}
+      if(id==='week-next'||id==='week-prev'){date=shiftDay(date,id==='week-next'?7:-7);return await screen('calendar');}
       if(id==='day-next'||id==='day-prev'){
         // Swipe the appointment body by a day, or by a week in weekly mode.
         const delta=calendarMode==='week'?7:1;
         date=shiftDay(date,id==='day-next'?delta:-delta);
-        return await screen('calendar',{push:false});
+        return await screen('calendar');
       }
-      if(id.startsWith('date:')){date=id.slice(5);return await screen('calendar',{push:false});}
-      if(id==='search'||id==='billing-query'){search=fields.query||'';patientPage=1;return await screen(id==='search'?'patients':'billing-search',{push:false});}
-      if(id==='patient-page-next'||id==='patient-page-prev'){patientPage=Math.max(1,patientPage+(id.endsWith('next')?1:-1));return await screen('patients',{push:false});}
+      if(id.startsWith('date:')){date=id.slice(5);return await screen('calendar');}
+      if(id==='search'||id==='billing-query'){search=fields.query||'';patientPage=1;return await screen(id==='search'?'patients':'billing-search');}
+      if(id==='patient-page-next'||id==='patient-page-prev'){patientPage=Math.max(1,patientPage+(id.endsWith('next')?1:-1));return await screen('patients');}
       if(id.startsWith('patient-section:')&&patient){patientSection=id.slice('patient-section:'.length);return await renderPatient();}
       if(admin&&id==='patient-link-account'&&patient)return await patientLinkForm(patient.patient.email||patient.patient.name||'');
       if(admin&&id==='patient-link-search'&&patient)return await patientLinkForm(fields.query||'');
@@ -651,8 +771,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           empty:tr('Keine Transaktionen.','No transactions.'),actions:[row('patient-section:account',tr('Zurück zum Konto','Back to account'))]}));
       }
       if((id==='record-page-next'||id==='record-page-prev')&&patient){recordPage=Math.max(1,recordPage+(id.endsWith('next')?1:-1));return await showPatient(patient.patient.id,{reset:false});}
-      if(admin&&id==='filter-intakes'){intakeSearch=fields.query||'';intakeStatus=fields.status||'';intakeFrom=fields.from||'';intakeTo=fields.to||'';intakePage=1;return await screen('intakes',{push:false});}
-      if(admin&&(id==='intake-next'||id==='intake-prev')){intakePage=Math.max(1,intakePage+(id.endsWith('next')?1:-1));return await screen('intakes',{push:false});}
+      if(admin&&id==='filter-intakes'){intakeSearch=fields.query||'';intakeStatus=fields.status||'';intakeFrom=fields.from||'';intakeTo=fields.to||'';intakePage=1;return await screen('intakes');}
+      if(admin&&(id==='intake-next'||id==='intake-prev')){intakePage=Math.max(1,intakePage+(id.endsWith('next')?1:-1));return await screen('intakes');}
       if(admin&&id.startsWith('submission:')){
         const formId=Number(id.slice(11));
         submission=(canonicalForms?await book('forms/'+formId+'/'):await office('submission/'+formId+'/')).submission;
@@ -686,24 +806,24 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(admin&&id==='submission-confirm'&&submission&&canonicalForms){
         if(fields.confirm!=='yes'||!fields.customer_id)throw new Error(tr('Identität bestätigen.','Confirm identity.'));
         await book('forms/'+submission.id+'/link/',{customer_id:Number(fields.customer_id),confirmed_same_patient:true});
-        return await screen('intakes',{push:false});
+        return await screen('intakes');
       }
       if(admin&&id==='save-billing-settings'){
         // Optimistic revision protects concurrent edits made in the original Office admin.
         await office('invoice-settings/',{...fields,next_sequence:Number(fields.next_sequence),
           revision:officeSettingsRevision,confirmed_financial_update:true});
-        return await screen('billing-settings',{push:false});
+        return await screen('billing-settings');
       }
       if(id.startsWith('patient:'))return await showPatient(Number(id.split(':')[1]));
       if(id.startsWith('appointment:'))return await showAppointment(Number(id.split(':')[1]));
       if(id==='apply-calendar-filter'){
         calendarMode=fields.calendar_mode;providerFilter=fields.provider_filter;serviceFilter=fields.service_filter;
-        return await screen('calendar',{push:false});
+        return await screen('calendar');
       }
       if(id==='new-block')return await blockForm(false);
       if(id.startsWith('block:')||id.startsWith('block-info:')){
         currentBlock=blockById.get(Number(id.split(':').at(-1)));
-        if(!currentBlock)return await screen('calendar',{push:false});
+        if(!currentBlock)return await screen('calendar');
         if(currentBlock.editable && id.startsWith('block:'))return await blockForm(true);
         const owner=sourceOfBlock(currentBlock);
         const viaSimplyBook=owner==='SimplyBook';
@@ -766,7 +886,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         locale=language==='en'?'en-GB':'de-DE';
         localStorage.setItem('aplus_language',language);
         // Keep navigation and screen labels in sync without an app restart.
-        return await screen('settings',{push:false});
+        return await screen('settings');
       }
       if(id==='new-appointment'){search='';return await appendForm(false);}
       if(id==='new-patient-appointment')return await appendForm(false,patient.patient);
@@ -811,21 +931,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id==='cancel-appointment')return await render(view(tr('Absage bestätigen','Confirm cancellation'),{
         subtitle:appointment.customer_name,actions:[row('confirm-cancel',tr('Termin absagen','Cancel appointment'))]}));
       if(id==='confirm-cancel'){await command('book/appointment/',{operation:'cancel',id:appointment.id,revision:appointment.revision});appointmentsById.clear();return await screen('calendar');}
-      if(['upload-pdf','upload-photo','take-photo'].includes(id)){
-        const chosen=await (id==='upload-pdf'?plugin.pickPDF():id==='take-photo'?plugin.takePhoto():plugin.pickPhoto());
-        if(chosen.cancelled)return;
-        // Never upload until the clinician confirms the exact patient and file.
-        pendingUpload={...chosen,customer_id:patient.patient.id};
-        return await render(view(tr('Datei hinzufügen','Add document'),{subtitle:patient.patient.name,
-          rows:[row('',chosen.filename,tr('Privater Akteneintrag','Private clinical record'))],
-          actions:[row('confirm-upload',tr('Datei hochladen','Upload file')),row('discard-upload',tr('Abbrechen','Cancel'))]}));
-      }
-      if(id==='discard-upload'){pendingUpload=null;return await showPatient(patient.patient.id);}
-      if(id==='confirm-upload'){
-        if(!pendingUpload||pendingUpload.customer_id!==patient.patient.id)throw new Error(tr('Patient erneut auswählen.','Select the patient again.'));
-        await command('book/record-upload/',{customer_id:pendingUpload.customer_id,filename:pendingUpload.filename,base64:pendingUpload.base64});
-        pendingUpload=null;patientSection='records';return await showPatient(patient.patient.id,{reset:false});
-      }
+      if(['upload-pdf','upload-photo','take-photo'].includes(id))return await upload(id,event);
       if(id==='note')return await render(view(tr('Neue Notiz','New note'),{fields:[value('title',tr('Titel','Title')),value('note',tr('Notiz','Note'))],actions:[row('save-note',tr('Speichern','Save'))]}));
       if(id==='save-note'){await command('book/record-note/',{customer_id:patient.patient.id,...fields});patientSection='records';recordPage=1;return await showPatient(patient.patient.id,{reset:false});}
       if(admin && id.startsWith('review:')){
@@ -845,7 +951,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         if(approve&&fields.confirm!=='yes')throw new Error(tr('Identität bestätigen.','Confirm identity.'));
         await book('identity-review/',{left_id:reviewPair.left.id,right_id:reviewPair.right.id,primary_id:Number(fields.primary_id),
           action:approve?'approve':'reject',confirmed_same_patient:approve?'on':'',fingerprint:reviewPair.fingerprint});
-        return await screen('identity-review',{push:false});
+        return await screen('identity-review');
       }
       if(admin&&id.startsWith('intake:')){
         const result=await office('intake-reviews/');intakeRecord=result.items.find(x=>x.id===Number(id.split(':')[1]));
@@ -922,22 +1028,89 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         return await showBilling(billingUser.id);
       }
     } catch(err) {
+      if(!active)return;
       if(err.status===401){await destroy();logout();return;}
-      await render({...current,message:err.message||tr('Bitte erneut versuchen.','Please try again.'),fields:(current.fields||[]).map(f=>({...f,value:fields[f.id]??f.value}))});
-    } finally {busy=false;}
+      if(restoring)throw err;
+      if(origin.location)applyRoute(origin.location);
+      ({patient,appointment,currentBlock,currentService,selectedRecord,currentPatientAccount}=origin.models);
+      calendarScreen=origin.calendarScreen;
+      location=origin.location;
+      current={...origin.screen,message:err.message||tr('Bitte erneut versuchen.','Please try again.')};
+      await plugin.render({screen:current,calendar:calendarScreen});
+    } finally {
+      transition=previousTransition;
+      busy=wasBusy;
+      if(!busy && active){
+        if(current.screenKey===origin.screen.screenKey)current=snapshot(event).screen;
+        checkpoint();
+        if(queuedRoute){const route=queuedRoute;queuedRoute=null;void handle({id:route});}
+      }
+    }
   }
-  async function destroy(){if(!active)return;active=false;pendingUpload=null;appointmentsById.clear();pendingCommands.clear();blockById.clear();calendarCache.clear();await listener?.remove();await plugin.dismiss();}
   let presented = false;
+  let initialSnapshot;
+  const openInitial=async()=>{
+    if(initialPatient)await showPatient(initialPatient);
+    else if(initialCalendar)await screen('calendar');
+    else if(!await restoreRoute(initialSnapshot))await screen('home');
+    if(initialSnapshot && !initialPatient && !initialCalendar)
+      history.splice(0,history.length,...(initialSnapshot.history||[]).map(location=>({location})));
+    initialSnapshot=null;
+  };
+  function destroy(){
+    if(closing)return closing;
+    active=false;
+    requests.abort();
+    signal?.removeEventListener('abort',cancel);
+    queuedRoute=null;
+    history.length=0;
+    initialSnapshot=null;
+    location=null;
+    current={};
+    calendarScreen=null;
+    patient=null;
+    selectedRecord=null;
+    appointment=null;
+    currentPatientAccount=null;
+    currentBlock=null;
+    submission=null;
+    billingUser=null;
+    billingVisits=null;
+    selectedInvoice=null;
+    invoiceMeta={};
+    invoiceLines=[];
+    transition=null;
+    appointmentsById.clear();
+    pendingCommands.clear();
+    blockById.clear();
+    calendarCache.clear();
+    closing=(async()=>{
+      try { await listener?.remove(); }
+      finally { if(presented)await plugin.dismiss(); }
+    })();
+    return closing;
+  }
+  function cancel(){
+    requests.abort();
+    if(presented)void destroy().catch(()=>{});
+  }
   try {
+    signal?.throwIfAborted();
+    signal?.addEventListener('abort',cancel,{once:true});
+    initialSnapshot=await navigation?.read('staff');
+    requests.signal.throwIfAborted();
     listener = await plugin.addListener('action',event=>void handle(event));
+    requests.signal.throwIfAborted();
     await plugin.present({screen:current});
     presented = true;
+    requests.signal.throwIfAborted();
     // Failure of the first data API must never tear down a successfully
     // presented native interface and trap the user in the WebView login boot.
     try {
-      if(initialPatient)await showPatient(initialPatient);
-      else await screen(initialCalendar?'calendar':'home');
+      await openInitial();
+      checkpoint();
     } catch(error) {
+      if(!active || requests.signal.aborted)throw error;
       if(error.status===401){
         await destroy();
         logout();
@@ -948,11 +1121,19 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           (error.status?' (HTTP '+error.status+')':''),
         actions:[row('retry-initial',tr('Erneut versuchen','Try again')),row('logout',tr('Abmelden','Sign out'))],
       }));
+      location=null;
     }
   } catch(error) {
-    try { if(presented)await destroy(); else { active=false;await listener?.remove(); } }
+    try { await destroy(); }
     catch (_) { /* Preserve the original initialization failure. */ }
     throw error;
+  } finally {
+    busy=false;
   }
-  return {destroy,openPatient:id=>void showPatient(id),openCalendar:()=>void screen('calendar'),back:()=>{void handle({id:'back'});return true;}};
+  function open(route){
+    if(!active)return;
+    if(busy)queuedRoute=route;
+    else void handle({id:route});
+  }
+  return {destroy,openPatient:id=>open('patient:'+id),openCalendar:()=>open('calendar'),back:()=>{void handle({id:'back'});return active;}};
 }

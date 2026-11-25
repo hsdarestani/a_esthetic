@@ -31,6 +31,8 @@
   const root = document.getElementById('app');
   const routeHistory = [];
   let nativeBackListenerRegistered = false;
+  let navigation, routeGeneration=0;
+  let customerScreenReady=false, checkpointFrame=0;
 
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
   const fmt = value => value ? new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)) : '—';
@@ -44,14 +46,19 @@
   };
 
   async function request(path, options={}) {
+    const generation=bootGeneration;
+    const token=state.token;
     const headers = new Headers(options.headers || {});
-    if (state.token && path!=='/login/') headers.set('Authorization', `Bearer ${state.token}`);
+    if (token && path!=='/login/') headers.set('Authorization', `Bearer ${token}`);
     if (options.json !== undefined) { headers.set('Content-Type','application/json'); options.body=JSON.stringify(options.json); }
     let response = await fetch(`${API}${path}`, {...options,headers,cache:'no-store'});
-    if (response.status===401 && path!=='/login/' && state.token && !options._authRetried) {
+    const stillCurrent=()=>generation===bootGeneration && token===state.token;
+    if (response.status===401 && path!=='/login/' && token && !options._authRetried && stillCurrent()) {
       await new Promise(resolve => setTimeout(resolve, 700));
+      if(!stillCurrent()) throw new Error('session_changed');
       response = await fetch(`${API}${path}`, {...options,headers,cache:'no-store'});
     }
+    if(!stillCurrent()) throw new Error('session_changed');
     if (response.status===401 && path==='/login/') {
       const payload=await response.json().catch(()=>({}));
       const error=new Error('Die E Mail Adresse oder das Passwort ist falsch. Bitte überprüfe deine Eingaben und versuche es erneut.');
@@ -67,6 +74,7 @@
     }
     const type=response.headers.get('content-type')||'';
     const data=type.includes('application/json')?await response.json():await response.text();
+    if(!stillCurrent()) throw new Error('session_changed');
     if(!response.ok||data?.ok===false){const error=new Error(data?.message||data?.error||`HTTP ${response.status}`);error.code=data?.error;throw error;}
     return data;
   }
@@ -184,7 +192,20 @@
     }
   }
 
-  function logout(render=true){bootGeneration++;lastStaffRole=null;window.APlusAdminMode?.unmount();document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
+  function logout(render=true){
+    bootGeneration++;
+    routeGeneration++;
+    bootPhase='idle';
+    lastStaffRole=null;
+    window.APlusAdminMode?.unmount();
+    navigation?.clear();
+    navigation=null;
+    document.querySelectorAll('.settings-overlay,.contact-overlay').forEach(n=>n.remove());
+    localStorage.removeItem('aplus_token');
+    state.token='';state.me=null;state.cache={};state.route='dashboard';state.screen='dashboard';state.recordsFlash=null;
+    routeHistory.length=0;
+    if(render)showLogin();
+  }
 
   function showContactPicker(){
     document.querySelectorAll('.contact-overlay').forEach(node=>node.remove());
@@ -238,14 +259,27 @@
       button.textContent='Webverwaltung wird geöffnet …';
       try {
         await window.APlusAdminMode.mount(root,state.token,lastStaffRole,()=>logout(),{forceWeb:true});
+        if(lastStaffRole && state.token)bootPhase='ready';
       } catch(error) {
+        if(!button.isConnected)return;
         showReconnect('Auch die Webverwaltung konnte nicht geöffnet werden.',
           {failed:true,stage:'staff-web-fallback',code:String(error?.name||'ERROR').slice(0,40)});
       }
     });
   }
   let bootGeneration = 0;
-  let booting = false;
+  let bootPhase = 'idle';
+  async function nativeNavigation(token){
+    const bridge=window.APlusNativeStaff;
+    if(window.Capacitor?.getPlatform?.()!=='android' || !bridge || !globalThis.crypto?.subtle)return;
+    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token));
+    const session=Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('');
+    return {
+      async read(scope){return (await bridge.readNavigation({session,scope}).catch(()=>null))?.state;},
+      save(scope,state){void bridge.saveNavigation({session,scope,state}).catch(()=>{});},
+      clear(){void bridge.clearNavigation({session}).catch(()=>{});},
+    };
+  }
   async function readAuthProfile(){
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
@@ -263,21 +297,25 @@
     }
   }
   async function boot(identity = null){
-    if (booting) return;
+    if (bootPhase==='booting' || bootPhase==='ready') return;
     identity = identity?.role ? identity : null;
     const generation = ++bootGeneration;
     state.token = localStorage.getItem('aplus_token') || '';
     if(!state.token) return showLogin();
-    booting = true;
+    bootPhase = 'booting';
     let stage = 'staff-session';
     showReconnect('Anmeldung wird überprüft …');
     try {
       const role = identity || await window.APlusAdminMode.resolve(state.token);
       if (generation !== bootGeneration) return;
+      const sessionNavigation = await nativeNavigation(state.token);
+      if (generation !== bootGeneration) return;
+      navigation=sessionNavigation;
       lastStaffRole = role && (role.role==='admin'||role.role==='doctor') ? role : null;
       if (role.role === 'admin' || role.role === 'doctor') {
         stage = 'native-staff-mount';
-        await window.APlusAdminMode.mount(root, state.token, role, () => logout());
+        await window.APlusAdminMode.mount(root, state.token, role, () => logout(), {navigation});
+        if(generation===bootGeneration)bootPhase='ready';
         return;
       }
       stage = 'patient-profile';
@@ -286,16 +324,22 @@
       state.me = profile;
       if(profile?.account?.locked){
         stage = 'patient-onboarding';
+        bootPhase='onboarding';
         if(window.APlusOnboarding?.start) await window.APlusOnboarding.start();
         else showReconnect('Die Registrierung wird geladen …');
         return;
       }
       stage = 'patient-dashboard';
-      await go(new URLSearchParams(window.location.search).get('bereich')==='termine'?'appointments':'dashboard',{resetHistory:true});
+      const saved=await navigation?.read('customer');
+      if(generation!==bootGeneration)return;
+      const defaultRoute=new URLSearchParams(window.location.search).get('bereich')==='termine'?'appointments':'dashboard';
+      bootPhase='ready';
+      await go(saved?.route || defaultRoute,{restore:saved,resetHistory:true});
     } catch(err) {
       if(generation !== bootGeneration) return;
       if(err?.code === 'staff_session_expired'){ logout(); return; }
       if(err?.code === 'profile_completion_required'){
+        bootPhase='onboarding';
         if(window.APlusOnboarding?.start) await window.APlusOnboarding.start();
         else showReconnect('Die Registrierung wird geladen …');
         return;
@@ -308,46 +352,98 @@
         showReconnect(safeMessage,{failed:true,stage,code:safeCode});
       } else showLogin('Bitte melden Sie sich erneut an.');
     } finally {
-      booting = false;
+      if(generation===bootGeneration && bootPhase==='booting')bootPhase='idle';
     }
   }
   // The SMS verification flow can refresh the verified session in-place,
   // without a fragile native WebView location.reload().
   window.APlusRefreshAuth = boot;
-  function recoverBlankNativeView(){
-    if(!state.token || document.visibilityState === 'hidden') return;
-    // Do not auto-retry an already reported native-bootstrap error. On iOS,
-    // repeated appStateChange/pageshow notifications previously hid the cause.
-    if(root?.querySelector?.('[data-staff-error]')) return;
-    const noScreen = !root?.firstElementChild;
-    const reconnect = Boolean(root?.querySelector?.('[data-reconnect]'));
-    if(noScreen || reconnect) boot();
+  window.APlusSignOut = logout;
+
+  const draftControls = 'input[name]:not([type=file]):not([type=password]):not([type=hidden]),select[name],textarea[name]';
+  function customerDraftInputs(){
+    return Array.from(document.querySelectorAll('.core-main :is('+draftControls+'),.settings-overlay :is('+draftControls+')'))
+      .filter(input=>!input.closest('.book-booking-card-host'));
   }
-  document.addEventListener('visibilitychange', recoverBlankNativeView);
-  window.addEventListener('pageshow', recoverBlankNativeView);
-  try {
-    window.Capacitor?.Plugins?.App?.addListener?.('appStateChange', event => {
-      if(event?.isActive) recoverBlankNativeView();
-    });
-  } catch(_) { /* Web fallback remains available. */ }
+  function saveCustomerNavigation(){
+    if(!navigation || !state.me || !customerScreenReady)return;
+    const booking=root.querySelector('.book-embedded-canonical');
+    navigation.save('customer',{route:state.screen||state.route,history:routeHistory,
+      scroll:window.scrollY,mainScroll:root.querySelector('.core-main')?.scrollTop,
+      recordFilter:root.querySelector('[data-record-filter].is-active')?.dataset.recordFilter,
+      settings:Boolean(document.querySelector('.settings-overlay:not(.is-closing)')),
+      booking:booking?.aplusBookingDraft?.()||(typeof booking?.aplusRestoreBooking==='object'?booking.aplusRestoreBooking:undefined),
+      values:customerDraftInputs().map(input=>[input.name,input.type==='checkbox'||input.type==='radio'?input.checked:input.value])});
+  }
+  function scheduleCustomerCheckpoint(){
+    if(!navigation || checkpointFrame || !customerScreenReady)return;
+    checkpointFrame=requestAnimationFrame(()=>{checkpointFrame=0;saveCustomerNavigation();});
+  }
+  for(const event of ['input','change','click','scroll','aplus-booking-navigation']){
+    document.addEventListener(event,scheduleCustomerCheckpoint,{capture:true,passive:true});
+  }
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='hidden')saveCustomerNavigation();
+  });
+  function restoreCustomerNavigation(saved){
+    if(!saved)return;
+    if(saved.settings)root.querySelector('[data-settings]')?.click();
+    if(saved.recordFilter)Array.from(root.querySelectorAll('[data-record-filter]')).find(button=>button.dataset.recordFilter===saved.recordFilter)?.click();
+    const booking=root.querySelector('.book-embedded-canonical');
+    if(booking && saved.booking){
+      if(typeof booking.aplusRestoreBooking==='function')void booking.aplusRestoreBooking(saved.booking);
+      else booking.aplusRestoreBooking=saved.booking;
+    }
+    for(const [i,input] of customerDraftInputs().entries()){
+      const entry=saved.values?.[i];
+      if(entry?.[0]!==input.name)continue;
+      if(input.type==='checkbox'||input.type==='radio')input.checked=entry[1]===true;
+      else if(typeof entry[1]==='string')input.value=entry[1];
+    }
+    const main=root.querySelector('.core-main');
+    if(main)main.scrollTop=Number(saved.mainScroll)||0;
+    window.scrollTo(0,Number(saved.scroll)||0);
+  }
   async function go(route, options={}){
+    const generation=++routeGeneration;
+    const session=bootGeneration;
+    const current=()=>generation===routeGeneration&&session===bootGeneration;
     const displayRoute=route==='reviews'?'points':route;
     const nextRoute=routes.some(item=>item[0]===displayRoute)?displayRoute:'dashboard';
+    const nextScreen=route==='reviews'?'reviews':nextRoute;
+    const previous=state.screen||state.route;
     if(options.resetHistory)routeHistory.length=0;
-    else if(!options.fromBack && state.me && nextRoute!==state.route){
-      routeHistory.push(state.route);
+    else if(!options.fromBack && state.me && nextScreen!==previous){
+      routeHistory.push(previous);
       if(routeHistory.length>25)routeHistory.shift();
     }
+    if(options.resetHistory && Array.isArray(options.restore?.history))
+      routeHistory.push(...options.restore.history.filter(r=>r==='reviews'||routes.some(([id])=>id===r)).slice(-25));
     state.route=nextRoute;
+    state.screen=nextScreen;
+    customerScreenReady=false;
     shell(loader());
+    const renderShell=content=>{
+      if(!current())return false;
+      shell(content);
+      return true;
+    };
     try{
-      if(route==='reviews'){await renderReviews();return;}
-      if(nextRoute==='dashboard')await renderDashboard();
-      if(nextRoute==='appointments')await renderAppointments();
-      if(nextRoute==='records')await renderRecords();
-      if(nextRoute==='points')await renderPoints();
-      if(nextRoute==='friends')await renderFriends();
-    }catch(err){shell(`${pageHead('A+ Esthetic','Fehler')} ${errorBox(err)}`);}
+      if(route==='reviews')await renderReviews(renderShell);
+      else if(nextRoute==='dashboard')await renderDashboard(renderShell);
+      else if(nextRoute==='appointments')await renderAppointments(renderShell);
+      else if(nextRoute==='records')await renderRecords(renderShell);
+      else if(nextRoute==='points')await renderPoints(renderShell);
+      else if(nextRoute==='friends')await renderFriends(renderShell);
+      if(!current())return;
+      restoreCustomerNavigation(options.restore);
+      customerScreenReady=true;
+      saveCustomerNavigation();
+    }catch(err){
+      if(!current())return;
+      renderShell(`${pageHead('A+ Esthetic','Fehler')} ${errorBox(err)} <button class="secondary wide" data-route-retry>Erneut versuchen</button>`);
+      root.querySelector('[data-route-retry]')?.addEventListener('click',()=>void go(route,{...options,resetHistory:false}));
+    }
   }
 
   function handleNativeBack(){
@@ -368,13 +464,15 @@
     if(state.token && state.me){
       while(routeHistory.length){
         const previous=routeHistory.pop();
-        if(previous!==state.route){void go(previous,{fromBack:true});return;}
+        if(previous!==(state.screen||state.route)){void go(previous,{fromBack:true});return;}
       }
       if(state.route!=='dashboard'){void go('dashboard',{fromBack:true});return;}
     }
     // Exit only after returning to the home screen, consistent with Android.
-    window.Capacitor?.Plugins?.App?.exitApp?.();
+    if(window.Capacitor?.getPlatform?.()!=='ios')window.Capacitor?.Plugins?.App?.exitApp?.();
   }
+
+  window.APlusNativeBack = handleNativeBack;
 
   function registerNativeBackButton(){
     if(nativeBackListenerRegistered)return;
@@ -391,7 +489,7 @@
   document.addEventListener('DOMContentLoaded',registerNativeBackButton,{once:true});
   window.addEventListener('pageshow',registerNativeBackButton);
 
-  async function renderDashboard(){
+  async function renderDashboard(renderShell=shell){
     const [dash,booking]=await Promise.all([request('/dashboard/'),request('/booking/')]);
     const all=Array.isArray(booking.appointments)?booking.appointments:[];
     const upcoming=all.filter(a=>!isPast(a)&&String(a.status_code||a.status||'').toLowerCase()!=='cancelled').sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
@@ -453,7 +551,7 @@
       </article>`).join('')}</div>`;
     }
 
-    shell(html);
+    if(renderShell(html)===false)return;
     root.querySelectorAll('[data-dash-book]').forEach(button=>button.addEventListener('click',()=>go('appointments')));
     root.querySelector('[data-dash-call]')?.addEventListener('click',showContactPicker);
     root.querySelector('[data-dash-points]')?.addEventListener('click',()=>go('points'));
@@ -461,17 +559,17 @@
   }
 
 
-  async function renderAppointments(){
+  async function renderAppointments(renderShell=shell){
     const data=await request('/booking/');const all=data.appointments||[];const upcoming=all.filter(a=>!isPast(a)).sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
     let html=pageHead('RESERVIERUNG','Termin reservieren','Behandlung, Behandler und Wunschzeit direkt auswählen.');
     if(upcoming[0]){const d=dateBits(upcoming[0].starts_at);html+=`<section class="card appointment-feature"><div class="eyebrow">Nächster Termin</div><div class="appointment-time">${d.full} · ${d.time}</div><div class="appointment-meta">${esc(upcoming[0].service)} · ${esc(upcoming[0].staff||'')}</div></section>`;}
     html+=`<section class="booking-request-card book-embedded-canonical"><form id="booking-form" data-booking></form></section>`;
-    shell(html);
+    if(renderShell(html)===false)return;
   }
 
   function pointRows(items){const tx=(items||[]).filter(x=>x.kind==='coin');if(!tx.length)return '<div class="empty">Noch keine Punktebewegungen.</div>';return tx.map(t=>{const incoming=t.direction==='in';const amount=Math.abs(Number(t.coin_amount)||0);return `<article class="point-row"><div class="point-mark ${incoming?'is-in':'is-out'}">${incoming?'+':'−'}</div><div><strong>${esc(t.description||'A+ Punkte')}</strong><span>${fmt(t.created_at)}</span></div><b>${incoming?'+':'−'}${amount}</b></article>`;}).join('');}
 
-  async function renderPoints(){
+  async function renderPoints(renderShell=shell){
     const [wallet,reviews,pass]=await Promise.all([request('/wallet/'),request('/reviews/'),request('/wallet-pass/').catch(()=>({}))]);
     const verified=(reviews.activities||[]).filter(x=>x.status==='verified');
     const card=pass.card||{};
@@ -510,7 +608,7 @@
     html+=`<section class="approved-quote">“ Schönheit ist die beste<br>Form der Selbstliebe. ”</section>`;
     html+=`<div class="approved-section-head"><h2>Punkteverlauf</h2><span>${(wallet.transactions||[]).filter(x=>x.kind==='coin').length}</span></div>${pointRows(wallet.transactions)}`;
     if(verified.length)html+=`<div class="notice success">${verified.length} Google-Bewertung${verified.length===1?'':'en'} verifiziert.</div>`;
-    shell(html);
+    if(renderShell(html)===false)return;
     root.querySelector('[data-review-route]')?.addEventListener('click',()=>go('reviews'));
     root.querySelector('[data-friends-route]')?.addEventListener('click',()=>go('friends'));
     const exclusiveButton=root.querySelector('[data-exclusive-benefits]');
@@ -585,13 +683,13 @@
   }
 
 
-  async function renderReviews(){
+  async function renderReviews(renderShell=shell){
     const data=await request('/reviews/');const items=data.activities||[];
     let html=pageHead('PUNKTE SAMMELN','Google Bewertung',`Nach erfolgreicher Verifizierung erhalten Sie ${Number(data.verified_review_points||250)} Punkte.`);
     html+=`<section class="review-cta"><div class="eyebrow">Google</div><h2>Erfahrung teilen</h2><p class="row-sub">Punkte werden erst gutgeschrieben, nachdem die Bewertung tatsächlich geprüft und verifiziert wurde.</p><button class="primary wide" data-open-review>Bei Google bewerten</button></section>`;
     html+=`<section class="card"><h2 style="margin-bottom:14px">Bewertung zur Prüfung melden</h2><form data-review-submit><label class="field"><span>Sterne (optional)</span><select name="rating"><option value="">Nicht angeben</option>${[5,4,3,2,1].map(n=>`<option value="${n}">${'★'.repeat(n)}</option>`).join('')}</select></label><button class="secondary wide">Zur Verifizierung einreichen</button></form></section>`;
     html+=`<div class="section-title"><h2>Status</h2><small>${items.length}</small></div>${items.length?items.map(r=>`<article class="review-row"><div class="review-row-head"><strong>${r.rating?`${'★'.repeat(r.rating)}`:'Google Bewertung'}</strong><span class="status ${r.status}">${esc(r.status_label)}</span></div><div class="row-sub">${fmt(r.submitted_at||r.opened_at||r.created_at)}</div>${r.points_awarded?`<div class="point-earned">+${r.points_value} Punkte</div>`:''}</article>`).join(''):'<div class="empty">Noch keine Bewertung eingereicht.</div>'}`;
-    shell(html);root.querySelector('[data-open-review]').onclick=async()=>{try{await request('/reviews/',{method:'POST',json:{action:'opened'}});}catch(_){}window.open(data.review_url,'_blank','noopener');};root.querySelector('[data-review-submit]').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);try{await request('/reviews/',{method:'POST',json:{action:'submitted',rating:fd.get('rating')||null}});await renderReviews();}catch(err){e.currentTarget.insertAdjacentHTML('beforebegin',errorBox(err));}};
+    if(renderShell(html)===false)return;root.querySelector('[data-open-review]').onclick=async()=>{try{await request('/reviews/',{method:'POST',json:{action:'opened'}});}catch(_){}window.open(data.review_url,'_blank','noopener');};root.querySelector('[data-review-submit]').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);try{await request('/reviews/',{method:'POST',json:{action:'submitted',rating:fd.get('rating')||null}});await renderReviews(renderShell);}catch(err){e.currentTarget.insertAdjacentHTML('beforebegin',errorBox(err));}};
   }
 
 
@@ -605,7 +703,7 @@
     ).join(''):'<div class="empty">Noch keine Empfehlungen.</div>';
   }
 
-  async function renderFriends(){
+  async function renderFriends(renderShell=shell){
     const data=await request('/club/');
     const refs=Array.isArray(data.referrals)?data.referrals:[];
     let html=pageHead('EMPFEHLUNGEN','Freunde einladen','300 Punkte für Sie nach der ersten Buchung Ihrer Empfehlung.');
@@ -616,7 +714,7 @@
       '<div data-referral-feedback role="status" aria-live="polite" hidden></div></form></section>';
     html+='<div class="section-title"><h2>Bisherige Einladungen</h2><small data-referral-count>'+refs.length+'</small></div>'+
       '<div data-referral-list aria-live="polite">'+referralRows(refs)+'</div>';
-    shell(html);
+    if(renderShell(html)===false)return;
     const form=root.querySelector('[data-referral]');
     const emailField=form.querySelector('[name=invited_email]');
     const button=form.querySelector('button[type=submit]');
@@ -677,7 +775,7 @@
     });
   }
 
-  async function renderRecords(){
+  async function renderRecords(renderShell=shell){
     const data=await request('/patient-records/');
     const records=(data.records||[]).sort((a,b)=>new Date(b.captured_at||b.created_at)-new Date(a.captured_at||a.created_at));
     let html=`<section class="approved-page-head"><h1>Meine Akte</h1><p>Deine Dokumente, Fotos und Notizen.<br>Sicher. Persönlich. Jederzeit verfügbar.</p></section>`;
@@ -708,7 +806,7 @@
     </div>`;
     html+=`<div class="approved-section-head records-head"><h2>Zuletzt gespeichert</h2><span>${records.length}</span></div>
       <section class="approved-record-timeline">${records.length?records.map(recordRow).join(''):'<div class="empty">Ihre Patientenakte enthält noch keine Einträge.</div>'}</section>`;
-    shell(html);
+    if(renderShell(html)===false)return;
     bindRecordActions();
     root.querySelectorAll('[data-record-filter]').forEach(button=>button.addEventListener('click',()=>{
       const filter=button.dataset.recordFilter;

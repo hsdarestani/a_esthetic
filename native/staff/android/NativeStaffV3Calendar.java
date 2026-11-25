@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.function.Consumer;
 
 final class NativeStaffV3Calendar {
     interface Action {
@@ -48,6 +49,7 @@ final class NativeStaffV3Calendar {
     private JSONObject screen;
     private JSONObject model;
     private final Action callback;
+    private final Consumer<Dialog> trackDialog;
     private final boolean english;
     private final int hourStart;
     private final int hourEnd;
@@ -61,11 +63,12 @@ final class NativeStaffV3Calendar {
     private View gridView;
     private int generation;
 
-    NativeStaffV3Calendar(Context context, JSONObject screen, Action callback) {
+    NativeStaffV3Calendar(Context context, JSONObject screen, Action callback, Consumer<Dialog> trackDialog) {
         this.ctx=context;
         this.screen=screen;
         this.model=screen.optJSONObject("timeline");
         this.callback=callback;
+        this.trackDialog=trackDialog;
         this.english="en".equals(model.optString("language"));
         this.hourStart=Math.max(0,Math.min(23,model.optInt("firstHour",10)));
         this.hourEnd=Math.max(hourStart+1,Math.min(24,model.optInt("lastHour",20)));
@@ -212,7 +215,7 @@ final class NativeStaffV3Calendar {
             View child=timelineHost.getChildAt(i);
             if(child!=previous){child.animate().cancel();timelineHost.removeViewAt(i);}
         }
-        NativeStaffV3Calendar nextRenderer=new NativeStaffV3Calendar(ctx,screen,callback);
+        NativeStaffV3Calendar nextRenderer=new NativeStaffV3Calendar(ctx,screen,callback,trackDialog);
         LinearLayout staging=vertical();
         nextRenderer.buildTimeline(staging);
         View incoming=staging.getChildAt(0);
@@ -239,6 +242,14 @@ final class NativeStaffV3Calendar {
                 return true;
             }
         });
+    }
+    int scrollY(){return gridRenderer==null?0:gridRenderer.verticalScroll.getScrollY();}
+    int scrollX(){return gridView==null?0:gridView.getScrollX();}
+    void restoreScroll(int x,int y){
+        if(gridView==null || gridRenderer==null)return;
+        View horizontal=gridView;
+        ScrollView vertical=gridRenderer.verticalScroll;
+        horizontal.post(()->{horizontal.scrollTo(x,0);vertical.scrollTo(0,y);});
     }
     private void buildHeader(LinearLayout page){
         LinearLayout header=horizontal();
@@ -355,23 +366,23 @@ final class NativeStaffV3Calendar {
         String[] names={t("Tagesansicht","Day view"),t("Woche","Week"),
             t("Behandler","Provider"),t("Behandlung","Service")};
         String[] ids={"day","week","provider","service"};
-        new AlertDialog.Builder(ctx)
+        showPopup(new AlertDialog.Builder(ctx)
             .setTitle(t("Kalenderansicht","Calendar view"))
             .setItems(names,(d,index)->fire("cal-mode:"+ids[index]))
-            .setNegativeButton(t("Abbrechen","Cancel"),null).show();
+            .setNegativeButton(t("Abbrechen","Cancel"),null).create());
     }
     private void showNavigation(){
         String[] labels={t("Übersicht","Home"),t("Kalender","Calendar"),
             t("Patienten","Patients"),t("Einstellungen","Settings")};
         String[] ids={"home","calendar","patients","settings"};
-        new AlertDialog.Builder(ctx).setTitle("A+ ESTHETIC")
+        showPopup(new AlertDialog.Builder(ctx).setTitle("A+ ESTHETIC")
             .setItems(labels,(d,index)->fire(ids[index]))
-            .setNegativeButton(t("Schließen","Close"),null).show();
+            .setNegativeButton(t("Schließen","Close"),null).create());
     }
     private void showFilters(){
         String[] names={t("Behandler","Provider"),t("Behandlung","Service"),
             t("Heute","Today"),t("Arbeitszeiten","Availability")};
-        new AlertDialog.Builder(ctx).setTitle(t("Filter","Filter"))
+        showPopup(new AlertDialog.Builder(ctx).setTitle(t("Filter","Filter"))
             .setItems(names,(d,which)->{
                 if(which==2){fire("cal-today");return;}
                 if(which==3){fire("availability");return;}
@@ -384,11 +395,12 @@ final class NativeStaffV3Calendar {
                     JSONObject row=at(choices,i);
                     labels[i+1]=str(row,"label");ids[i+1]=str(row,"id");
                 }
-                new AlertDialog.Builder(ctx).setTitle(names[which])
+                showPopup(new AlertDialog.Builder(ctx).setTitle(names[which])
                     .setItems(labels,(dialog,index)->fire((provider?"cal-provider:":"cal-service:")+ids[index]))
-                    .setNegativeButton(t("Abbrechen","Cancel"),null).show();
-            }).setNegativeButton(t("Fertig","Done"),null).show();
+                    .setNegativeButton(t("Abbrechen","Cancel"),null).create());
+            }).setNegativeButton(t("Fertig","Done"),null).create());
     }
+    private void showPopup(Dialog popup){trackDialog.accept(popup);popup.show();}
     private void showCreationMenu(){
         String[] names={t("Termin buchen","Add booking"),t("Notiz / Sperrzeit","Note / Block"),
             t("Arbeitszeiten","Availability")};
@@ -407,7 +419,7 @@ final class NativeStaffV3Calendar {
             entry.setOnClickListener(v->{menu.dismiss();fire(id);});entry.setFocusable(true);panel.addView(entry,lp(-1,-2));
             if(i<ids.length-1){View line=new View(ctx);line.setBackgroundColor(LINES);panel.addView(line,lp(-1,d(1)));}
         }
-        menu.setContentView(panel);menu.show();Window window=menu.getWindow();if(window!=null){window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));window.setLayout(Math.min(d(360),ctx.getResources().getDisplayMetrics().widthPixels-d(32)),-2);window.setGravity(Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);android.view.WindowManager.LayoutParams attrs=window.getAttributes();attrs.y=d(18);window.setAttributes(attrs);}
+        menu.setContentView(panel);showPopup(menu);Window window=menu.getWindow();if(window!=null){window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));window.setLayout(Math.min(d(360),ctx.getResources().getDisplayMetrics().widthPixels-d(32)),-2);window.setGravity(Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);android.view.WindowManager.LayoutParams attrs=window.getAttributes();attrs.y=d(18);window.setAttributes(attrs);}
     }
 
     private final class RulerView extends View {

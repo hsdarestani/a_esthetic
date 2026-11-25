@@ -15,6 +15,7 @@ jobs:
           node-version: '22'
       - run: |
           node --check www/core-app.js
+          node --test scripts/test-mobile-lifecycle.js scripts/test-android-system-back.js scripts/test-ios-onboarding-recovery.js scripts/test-booking-details-login.js
           if grep -F 'data-intake>Aufnahmebogen & Rechnungsadresse' www/core-app.js; then exit 1; fi
           python3 scripts/test_native_calendar_colors.py
           node scripts/test_native_calendar_layout.mjs

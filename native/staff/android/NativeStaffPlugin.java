@@ -1,6 +1,7 @@
 package NATIVE_STAFF_PACKAGE;
 
 import android.app.Dialog;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.app.Activity;
@@ -17,6 +18,7 @@ import android.graphics.Color;
 import android.graphics.Bitmap;
 import android.graphics.pdf.PdfRenderer;
 import android.os.ParcelFileDescriptor;
+import android.os.Build;
 import android.util.Base64;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -37,7 +39,9 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 // Keep complete words together in all native cards, labels and calendar
 // controls. Scale the oversized token before Android attempts to wrap it.
@@ -77,6 +81,16 @@ public final class NativeStaffPlugin extends Plugin {
     private JSONObject calendarScreen;
     private File cameraFile;
     private Dialog dialog;
+    private final Set<Dialog> windows = new LinkedHashSet<>();
+    private PluginCall pickerCall;
+    private String pickerCallback;
+    private ScrollView screenScroll;
+    private String screenKey = "";
+    private static long navigationOwner;
+    private long owner;
+    private static String navigationSession;
+    private static final Map<String, JSONObject> navigation = new LinkedHashMap<>();
+    private boolean backgrounded;
     // Keeps direction across the asynchronous native -> Book -> native render.
     private NativeStaffV3Calendar liveCalendar;
     private final Map<String, EditText> edits = new LinkedHashMap<>();
@@ -110,13 +124,76 @@ public final class NativeStaffPlugin extends Plugin {
         v.setMinWidth(0);v.setMinimumWidth(0);v.setStateListAnimator(null);v.setElevation(0);
         v.setBackground(primary&&!danger?background(tone,13):outlined(accent==NAVY?Color.WHITE:Color.rgb(249,243,231),13,EDGE)); v.setOnClickListener(x -> action(id)); return v;
     }
-    private void action(String id) {
-        if (id.isEmpty()) return;
+    private JSObject fieldValues() {
         JSObject values = new JSObject();
         for (Map.Entry<String,EditText> entry : edits.entrySet()) values.put(entry.getKey(), entry.getValue().getText().toString());
         for (Map.Entry<String,String> entry : choices.entrySet()) values.put(entry.getKey(),entry.getValue());
+        return values;
+    }
+    private void action(String id) {
+        if (id.isEmpty() || pickerCall!=null) return;
+        JSObject values=fieldValues();
         JSObject event = new JSObject(); event.put("id", id); event.put("values", values);
+        event.put("screenKey",screenKey);
+        event.put("scroll",scrollY());
+        if(liveCalendar!=null)event.put("scrollX",liveCalendar.scrollX());
         notifyListeners("action", event);
+    }
+    private int scrollY(){return liveCalendar!=null?liveCalendar.scrollY():screenScroll==null?0:screenScroll.getScrollY();}
+    private void setBackgroundPrivacy(Window window, boolean hidden) {
+        if(window==null || Build.VERSION.SDK_INT>=33)return;
+        if(hidden)window.addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+    }
+    private void track(Dialog popup, Dialog.OnDismissListener onDismiss) {
+        windows.add(popup);
+        setBackgroundPrivacy(popup.getWindow(),backgrounded);
+        popup.setOnDismissListener(closed->{windows.remove(popup);if(onDismiss!=null)onDismiss.onDismiss(closed);});
+    }
+    private void setBackgrounded(boolean hidden) {
+        backgrounded=hidden;
+        setBackgroundPrivacy(getActivity().getWindow(),hidden);
+        for(Dialog popup:windows)setBackgroundPrivacy(popup.getWindow(),hidden);
+    }
+    @Override protected void handleOnPause() {
+        setBackgrounded(true);
+        JSONObject staff=navigation.get("staff");
+        if(owner!=navigationOwner || staff==null || !screenKey.equals(staff.optString("screenKey")))return;
+        try{
+            staff.put("values",fieldValues());
+            staff.put("scroll",scrollY());
+            if(liveCalendar!=null)staff.put("scrollX",liveCalendar.scrollX());
+        }catch(org.json.JSONException ignored){}
+    }
+    @Override protected void handleOnResume() {setBackgrounded(false);}
+    @Override protected void handleOnDestroy() {closeWorkspace();}
+    @PluginMethod public void saveNavigation(PluginCall call) {
+        getActivity().runOnUiThread(()->{
+            String session=call.getString("session"), scope=call.getString("scope");
+            JSObject state=call.getObject("state");
+            if(owner==navigationOwner && session!=null && state!=null && ("staff".equals(scope)||"customer".equals(scope))){
+                if(!session.equals(navigationSession)){navigation.clear();navigationSession=session;}
+                navigation.put(scope,state);
+            }
+            call.resolve();
+        });
+    }
+    @PluginMethod public void readNavigation(PluginCall call) {
+        getActivity().runOnUiThread(()->{
+            JSObject result=new JSObject();
+            if(owner==navigationOwner && navigationSession!=null && navigationSession.equals(call.getString("session")))
+                result.put("state",navigation.get(call.getString("scope")));
+            call.resolve(result);
+        });
+    }
+    @PluginMethod public void clearNavigation(PluginCall call) {
+        getActivity().runOnUiThread(()->{
+            if(owner==navigationOwner && navigationSession!=null && navigationSession.equals(call.getString("session"))){
+                navigation.clear();
+                navigationSession=null;
+            }
+            call.resolve();
+        });
     }
     private void add(LinearLayout layout, View view, int margin) {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1,-2);
@@ -199,7 +276,6 @@ public final class NativeStaffPlugin extends Plugin {
     private void choiceDialog(String key,String title,JSONArray options,TextView control) {
         Dialog choice=new Dialog(getActivity(),android.R.style.Theme_Material_Light_NoActionBar);
         if(choice.getWindow()!=null){
-            choice.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
             choice.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
         }
         LinearLayout wrap=column();wrap.setPadding(dp(18),dp(18),dp(18),dp(20));wrap.setBackground(background(PAPER,24));
@@ -216,7 +292,7 @@ public final class NativeStaffPlugin extends Plugin {
         }
         int maxHeight=Math.min(dp(500),getContext().getResources().getDisplayMetrics().heightPixels/2);
         wrap.addView(scroll,new LinearLayout.LayoutParams(-1,maxHeight));
-        choice.setContentView(wrap);choice.show();
+        choice.setContentView(wrap);track(choice,null);choice.show();
         if(choice.getWindow()!=null){choice.getWindow().setLayout(-1,-2);choice.getWindow().setGravity(Gravity.BOTTOM);}
     }
     private void sbDivider(LinearLayout parent){View line=new View(getContext());line.setBackgroundColor(SB_LINE);parent.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));}
@@ -228,7 +304,7 @@ public final class NativeStaffPlugin extends Plugin {
     private void refreshSbSave(){if(sbBookingSave!=null){boolean ready=!choices.getOrDefault("service_id","").isEmpty()&&!choices.getOrDefault("staff_id","").isEmpty()&&!choices.getOrDefault("customer_id","").isEmpty();sbBookingSave.setEnabled(ready);sbBookingSave.setAlpha(ready?1f:.45f);}}
     private void sbChoice(String key,String title,JSONArray options,TextView control,String initialQuery){
         Dialog chooser=new Dialog(getActivity(),android.R.style.Theme_Material_Light_NoActionBar);
-        boolean client=key.equals("customer_id");if(chooser.getWindow()!=null){chooser.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);chooser.getWindow().setBackgroundDrawableResource(android.R.color.transparent);}
+        boolean client=key.equals("customer_id");if(chooser.getWindow()!=null){chooser.getWindow().setBackgroundDrawableResource(android.R.color.transparent);}
         LinearLayout root=column();root.setBackground(background(Color.WHITE,12));root.setPadding(dp(17),dp(17),dp(17),dp(14));root.setFocusableInTouchMode(true);
         TextView heading=text(client?(sbEnglish?"Choose patient":"Patient auswählen"):title,17,NAVY,true);add(root,heading,14);
         LinearLayout search=row();search.setBackground(background(SB_SECTION,5));EditText query=new EditText(getContext());query.setSingleLine(true);query.setText(initialQuery);query.setHint(sbEnglish?"Search...":"Suchen...");query.setTextSize(15);query.setBackgroundColor(Color.TRANSPARENT);query.setPadding(dp(10),0,dp(5),0);query.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);search.addView(query,new LinearLayout.LayoutParams(0,dp(44),1));TextView find=text("⌕",23,NAVY,true);find.setGravity(Gravity.CENTER);search.addView(find,new LinearLayout.LayoutParams(dp(42),dp(44)));add(root,search,18);
@@ -236,7 +312,7 @@ public final class NativeStaffPlugin extends Plugin {
         ScrollView scroll=new ScrollView(getContext());LinearLayout values=column();scroll.addView(values);
         Runnable populate=()->{values.removeAllViews();for(int i=0;i<options.length();i++){JSONObject option=options.optJSONObject(i);if(option==null)continue;String value=option.optString("value"),name=option.optString("label");if(!client&&!name.toLowerCase(java.util.Locale.ROOT).contains(query.getText().toString().toLowerCase(java.util.Locale.ROOT)))continue;LinearLayout entry=row();entry.setMinimumHeight(dp(49));if(client){TextView initials=text(name.isEmpty()?"?":name.substring(0,1).toUpperCase(java.util.Locale.ROOT),15,Color.WHITE,true);initials.setGravity(Gravity.CENTER);initials.setBackground(background(NAVY,22));entry.addView(initials,new LinearLayout.LayoutParams(dp(35),dp(35)));}LinearLayout copy=column();copy.setPadding(dp(10),dp(5),0,dp(5));add(copy,text(name+(value.equals(choices.get(key))?"  ✓":""),15,NAVY,false),2);if(!option.optString("detail").isEmpty())add(copy,text(option.optString("detail"),11,MUTED,false),0);entry.addView(copy,new LinearLayout.LayoutParams(0,-2,1));values.addView(entry,new LinearLayout.LayoutParams(-1,-2));entry.setOnClickListener(v->{choices.put(key,value);control.setText(name);control.setTypeface(Typeface.DEFAULT,Typeface.BOLD);refreshSbSave();chooser.dismiss();});entry.setFocusable(true);}};
         populate.run();Runnable remote=()->{if(client){choices.put("_patient_query",query.getText().toString());chooser.dismiss();action("calendar-client-search");}else populate.run();};find.setOnClickListener(v->remote.run());query.setOnEditorActionListener((v,id,event)->{remote.run();return true;});query.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){if(!client)populate.run();}public void afterTextChanged(android.text.Editable e){}});
-        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));TextView cancel=text(sbEnglish?"Cancel":"Abbrechen",15,NAVY,true);cancel.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);cancel.setMinHeight(dp(45));cancel.setOnClickListener(v->chooser.dismiss());add(root,cancel,0);chooser.setContentView(root);chooser.show();if(chooser.getWindow()!=null){chooser.getWindow().setLayout(Math.min(dp(390),getContext().getResources().getDisplayMetrics().widthPixels-dp(44)),Math.min(dp(640),getContext().getResources().getDisplayMetrics().heightPixels-dp(100)));chooser.getWindow().setGravity(Gravity.CENTER);chooser.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);}
+        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));TextView cancel=text(sbEnglish?"Cancel":"Abbrechen",15,NAVY,true);cancel.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);cancel.setMinHeight(dp(45));cancel.setOnClickListener(v->chooser.dismiss());add(root,cancel,0);chooser.setContentView(root);track(chooser,null);chooser.show();if(chooser.getWindow()!=null){chooser.getWindow().setLayout(Math.min(dp(390),getContext().getResources().getDisplayMetrics().widthPixels-dp(44)),Math.min(dp(640),getContext().getResources().getDisplayMetrics().heightPixels-dp(100)));chooser.getWindow().setGravity(Gravity.CENTER);chooser.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);}
     }
     private JSONObject sbFind(JSONArray fields,String key){for(int i=0;i<fields.length();i++){JSONObject f=fields.optJSONObject(i);if(f!=null&&key.equals(f.optString("id")))return f;}return new JSONObject();}
     private void sbSection(LinearLayout body,String title){TextView label=text(title,17,NAVY,false);label.setGravity(Gravity.CENTER_VERTICAL);label.setPadding(dp(19),0,dp(19),0);label.setBackgroundColor(SB_SECTION);body.addView(label,new LinearLayout.LayoutParams(-1,dp(54)));}
@@ -276,14 +352,17 @@ public final class NativeStaffPlugin extends Plugin {
         JSONArray rows=list(s,"rows");for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item==null)continue;TextView r=text(item.optString("label")+"  "+item.optString("detail"),15,NAVY,false);r.setPadding(dp(19),dp(16),dp(19),dp(16));add(body,r,0);sbDivider(body);}
         for(int i=0;i<actions.length();i++){JSONObject item=actions.optJSONObject(i);if(item==null||primaryId.equals(item.optString("id")))continue;String actionId=item.optString("id");TextView link=text(item.optString("label"),15,actionId.contains("remove")?Color.RED:Color.rgb(0,153,200),true);link.setBackgroundColor(SB_SECTION);link.setGravity(Gravity.CENTER);link.setMinHeight(dp(53));link.setOnClickListener(v->action(actionId));add(body,link,0);}
         if(booking&&primary!=null){TextView save=text(primary.optString("label"),16,Color.WHITE,true);save.setGravity(Gravity.CENTER);save.setBackground(background(Color.rgb(0,153,200),28));save.setOnClickListener(v->action(primaryId));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(49));p.setMargins(dp(20),dp(12),dp(20),dp(12));root.addView(save,p);if(primaryId.equals("save-new")){sbBookingSave=save;refreshSbSave();}}
+        screenScroll=scroll;
         contentView(root);if(reopen[0]!=null)root.post(reopen[0]);
     }
     private void draw(JSONObject s) {
         edits.clear(); choices.clear();
+        screenKey=s.optString("screenKey");
+        screenScroll=null;
         if(s.optJSONObject("timeline") != null) {
             calendarScreen=s;
             if(liveCalendar!=null){liveCalendar.update(s);return;}
-            liveCalendar=new NativeStaffV3Calendar(getActivity(),s,this::action);
+            liveCalendar=new NativeStaffV3Calendar(getActivity(),s,this::action,popup->track(popup,null));
             contentView(liveCalendar.build());
             return;
         }
@@ -500,9 +579,10 @@ public final class NativeStaffPlugin extends Plugin {
                 tab.setOnClickListener(v->action(id));tab.setFocusable(true);weight(nav,tab);
             }}add(root,nav,0);
         }
+        screenScroll=scroll;
         if(sheet&&calendarScreen!=null){
             FrameLayout frame=new FrameLayout(getContext());
-            View calendar=new NativeStaffV3Calendar(getActivity(),calendarScreen,id->{}).build();frame.addView(calendar,new FrameLayout.LayoutParams(-1,-1));
+            View calendar=new NativeStaffV3Calendar(getActivity(),calendarScreen,id->{},popup->track(popup,null)).build();frame.addView(calendar,new FrameLayout.LayoutParams(-1,-1));
             View dim=new View(getContext());dim.setBackgroundColor(0x66000000);dim.setOnClickListener(v->action("calendar"));frame.addView(dim,new FrameLayout.LayoutParams(-1,-1));
             FrameLayout.LayoutParams sheetParams=new FrameLayout.LayoutParams(-1,-1,Gravity.BOTTOM);
             sheetParams.topMargin=dp(100);frame.addView(root,sheetParams);contentView(frame);
@@ -510,6 +590,8 @@ public final class NativeStaffPlugin extends Plugin {
     }
     @Override public void load() {
         super.load();
+        owner=++navigationOwner;
+        if(Build.VERSION.SDK_INT>=33)getActivity().setRecentsScreenshotEnabled(false);
         // ADB-only synthetic visual fixture on a debuggable emulator. This
         // dialog has no authenticated controller or server interaction.
         Activity activity=getActivity();
@@ -521,10 +603,7 @@ public final class NativeStaffPlugin extends Plugin {
             try{
                 JSONObject fixture=new JSONObject(new String(Base64.decode(payload,Base64.DEFAULT),java.nio.charset.StandardCharsets.UTF_8));
                 JSONObject screen=fixture.getJSONObject("screen");
-                calendarScreen=fixture.optJSONObject("calendar");
-                dialog=new Dialog(activity,android.R.style.Theme_Material_Light_NoActionBar);
-                dialog.setCancelable(false);
-                draw(screen);dialog.show();if(dialog.getWindow()!=null)dialog.getWindow().setLayout(-1,-1);
+                openWorkspace(screen,fixture.optJSONObject("calendar"));
                 JSONArray transitions=fixture.optJSONArray("transitions");
                 if(transitions!=null&&transitions.length()>0){
                     NativeStaffV3Calendar initial=liveCalendar;
@@ -539,7 +618,7 @@ public final class NativeStaffPlugin extends Plugin {
                     }
                     android.util.Log.i("APlusCalendarQA","PASS B62 calendar header and native root retained across day/week updates");
                 }
-            }catch(Exception ignored){if(dialog!=null)dialog.dismiss();dialog=null;liveCalendar=null;}
+            }catch(Exception ignored){closeWorkspace();}
         },700);
     }
     @PluginMethod public void probe(PluginCall call) {
@@ -550,55 +629,133 @@ public final class NativeStaffPlugin extends Plugin {
         getActivity().runOnUiThread(()->{
             if(dialog!=null){call.reject("Native screen already active");return;}
             JSObject screen=call.getObject("screen");if(screen==null){call.reject("Missing screen");return;}
-            dialog=new Dialog(getActivity(),android.R.style.Theme_Material_Light_NoActionBar);
-            Window win=dialog.getWindow();
-            if(win!=null){win.addFlags(WindowManager.LayoutParams.FLAG_SECURE);win.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);}
-            dialog.setCancelable(false);
-            draw(screen);dialog.show();if(dialog.getWindow()!=null)dialog.getWindow().setLayout(-1,-1);call.resolve();
+            try{
+                openWorkspace(screen,call.getObject("calendar"));
+                call.resolve();
+            }catch(RuntimeException error){
+                closeWorkspace();
+                call.reject("Native screen could not be opened");
+            }
         });
+    }
+    private void openWorkspace(JSONObject screen, JSONObject calendar){
+        dialog=new Dialog(getActivity(),android.R.style.Theme_Material_Light_NoActionBar);
+        Window win=dialog.getWindow();
+        if(win!=null)win.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        dialog.setCancelable(false);
+        track(dialog,null);
+        calendarScreen=calendar;
+        draw(screen);
+        dialog.show();
+        if(dialog.getWindow()!=null)dialog.getWindow().setLayout(-1,-1);
+        if(Build.VERSION.SDK_INT>=33){
+            dialog.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,this::back);
+        }
+        dialog.setOnKeyListener((d,key,event)->{
+            if(key!=android.view.KeyEvent.KEYCODE_BACK)return false;
+            if(event.getAction()==android.view.KeyEvent.ACTION_UP && !event.isCanceled())back();
+            return true;
+        });
+        restoreScroll(screen);
     }
     @PluginMethod public void render(PluginCall call) {
-        getActivity().runOnUiThread(()->{JSObject s=call.getObject("screen");if(dialog==null||s==null){call.reject("Native screen unavailable");return;}draw(s);call.resolve();});
-    }
-    @PluginMethod public void pickPDF(PluginCall call) {
         getActivity().runOnUiThread(()->{
+            JSObject screen=call.getObject("screen");
+            if(dialog==null||screen==null){call.reject("Native screen unavailable");return;}
+            JSONObject calendar=call.getObject("calendar");
+            if(calendar!=null)calendarScreen=calendar;
+            draw(screen);
+            restoreScroll(screen);
+            call.resolve();
+        });
+    }
+    private void restoreScroll(JSONObject screen) {
+        ScrollView scroll=screenScroll;
+        if(!screen.has("scroll"))return;
+        if(scroll!=null)scroll.post(()->scroll.scrollTo(0,screen.optInt("scroll")));
+        if(liveCalendar!=null)liveCalendar.restoreScroll(screen.optInt("scrollX"),screen.optInt("scroll"));
+    }
+    private void back() {
+        Window window=dialog==null?null:dialog.getWindow();
+        if(window==null)return;
+        WindowInsets insets=window.getDecorView().getRootWindowInsets();
+        if(Build.VERSION.SDK_INT>=30 && insets!=null && insets.isVisible(WindowInsets.Type.ime())){
+            WindowInsetsController insetsController=window.getInsetsController();
+            if(insetsController!=null)insetsController.hide(WindowInsets.Type.ime());
+            return;
+        }
+        action("back");
+    }
+    private boolean available(PluginCall call) {
+        if(dialog!=null && pickerCall==null && windows.size()==1)return true;
+        call.reject("Native workspace is busy");
+        return false;
+    }
+    private void openDocument(PluginCall call, String mime, String callback) {
+        getActivity().runOnUiThread(()->{
+            if(!available(call))return;
+            pickerCall=call;
+            pickerCallback=callback;
             Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.setType("application/pdf");
+            intent.setType(mime);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            startActivityForResult(call,intent,"pickPDFResult");
+            try{startActivityForResult(call,intent,callback);}
+            catch(RuntimeException error){finishPicker(call,callback);call.reject("Picker unavailable");}
         });
     }
-    @PluginMethod public void pickPhoto(PluginCall call) {
-        getActivity().runOnUiThread(()->{
-            Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.setType("image/*");intent.addCategory(Intent.CATEGORY_OPENABLE);
-            startActivityForResult(call,intent,"pickPhotoResult");
-        });
-    }
+    @PluginMethod public void pickPDF(PluginCall call) {openDocument(call,"application/pdf","pickPDFResult");}
+    @PluginMethod public void pickPhoto(PluginCall call) {openDocument(call,"image/*","pickPhotoResult");}
     @PluginMethod public void takePhoto(PluginCall call) {
-        if(getPermissionState("camera")!=PermissionState.GRANTED){requestPermissionForAlias("camera",call,"cameraPermissionResult");return;}
-        launchCamera(call);
+        getActivity().runOnUiThread(()->{
+            if(!available(call))return;
+            pickerCall=call;
+            pickerCallback="cameraResult";
+            if(getPermissionState("camera")!=PermissionState.GRANTED){
+                try{requestPermissionForAlias("camera",call,"cameraPermissionResult");}
+                catch(RuntimeException error){finishPicker(call,"cameraResult");call.reject("Camera permission unavailable");}
+            }else launchCamera(call);
+        });
     }
     @PermissionCallback private void cameraPermissionResult(PluginCall call) {
-        if(getPermissionState("camera")==PermissionState.GRANTED)launchCamera(call);else call.reject("Camera permission denied");
+        if(call==null || pickerCall!=call || !"cameraResult".equals(pickerCallback))return;
+        if(getPermissionState("camera")==PermissionState.GRANTED)launchCamera(call);
+        else {finishPicker(call,"cameraResult");cancelled(call);}
     }
     private void launchCamera(PluginCall call) {
-        getActivity().runOnUiThread(()->{
-            if(cameraFile!=null){call.reject("Camera already active");return;}
-            try{
-                File folder=new File(getContext().getCacheDir(),"staff-photos");
-                if(!folder.exists()&&!folder.mkdirs())throw new java.io.IOException("Unable to prepare photo");
-                cameraFile=File.createTempFile("staff-",".jpg",folder);
-                android.net.Uri uri=androidx.core.content.FileProvider.getUriForFile(getContext(),getContext().getPackageName()+".fileprovider",cameraFile);
-                Intent capture=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
-                capture.putExtra(android.provider.MediaStore.EXTRA_OUTPUT,uri);
-                capture.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                startActivityForResult(call,capture,"cameraResult");
-            }catch(Exception e){if(cameraFile!=null)cameraFile.delete();cameraFile=null;call.reject("Camera unavailable");}
-        });
+        try{
+            File folder=new File(getContext().getCacheDir(),"staff-photos");
+            if(!folder.exists()&&!folder.mkdirs())throw new java.io.IOException("Unable to prepare photo");
+            cameraFile=File.createTempFile("staff-",".jpg",folder);
+            android.net.Uri uri=androidx.core.content.FileProvider.getUriForFile(getContext(),getContext().getPackageName()+".fileprovider",cameraFile);
+            Intent capture=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+            capture.putExtra(android.provider.MediaStore.EXTRA_OUTPUT,uri);
+            capture.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(call,capture,"cameraResult");
+        }catch(Exception e){
+            clearCameraFile();
+            finishPicker(call,"cameraResult");
+            call.reject("Camera unavailable");
+        }
+    }
+    private void clearCameraFile() {
+        if(cameraFile!=null)cameraFile.delete();
+        cameraFile=null;
+    }
+    private boolean finishPicker(PluginCall call,String callback) {
+        if(call==null || pickerCall!=call || !callback.equals(pickerCallback))return false;
+        pickerCall=null;
+        pickerCallback=null;
+        return true;
+    }
+    private void cancelled(PluginCall call) {
+        JSObject result=new JSObject();
+        result.put("cancelled",true);
+        call.resolve(result);
     }
     @ActivityCallback private void pickPhotoResult(PluginCall call,ActivityResult result) {
-        if(call==null)return;
-        if(result.getResultCode()!=Activity.RESULT_OK||result.getData()==null||result.getData().getData()==null){JSObject cancelled=new JSObject();cancelled.put("cancelled",true);call.resolve(cancelled);return;}
+        if(!finishPicker(call,"pickPhotoResult"))return;
+        if(result.getResultCode()!=Activity.RESULT_OK||result.getData()==null||result.getData().getData()==null){cancelled(call);return;}
         final android.net.Uri uri=result.getData().getData();
         new Thread(()->{
             try(InputStream in=getContext().getContentResolver().openInputStream(uri)){
@@ -608,9 +765,10 @@ public final class NativeStaffPlugin extends Plugin {
         }).start();
     }
     @ActivityCallback private void cameraResult(PluginCall call,ActivityResult result) {
-        File photo=cameraFile;cameraFile=null;
-        if(call==null){if(photo!=null)photo.delete();return;}
-        if(result.getResultCode()!=Activity.RESULT_OK||photo==null){if(photo!=null)photo.delete();JSObject cancelled=new JSObject();cancelled.put("cancelled",true);call.resolve(cancelled);return;}
+        if(!finishPicker(call,"cameraResult"))return;
+        File photo=cameraFile;
+        cameraFile=null;
+        if(result.getResultCode()!=Activity.RESULT_OK||photo==null){if(photo!=null)photo.delete();cancelled(call);return;}
         new Thread(()->{
             try(InputStream in=new java.io.FileInputStream(photo)){resolvePhoto(call,in);}
             catch(Exception e){call.reject("Unable to read photo");}finally{photo.delete();}
@@ -638,9 +796,9 @@ public final class NativeStaffPlugin extends Plugin {
         JSObject response=new JSObject();response.put("filename","patient-photo.jpg");response.put("base64",Base64.encodeToString(output.toByteArray(),Base64.NO_WRAP));call.resolve(response);
     }
     @ActivityCallback private void pickPDFResult(PluginCall call, ActivityResult result) {
-        if(call==null)return;
+        if(!finishPicker(call,"pickPDFResult"))return;
         if(result.getResultCode()!=Activity.RESULT_OK||result.getData()==null||result.getData().getData()==null){
-            JSObject response=new JSObject();response.put("cancelled",true);call.resolve(response);return;
+            cancelled(call);return;
         }
         final android.net.Uri uri=result.getData().getData();
         new Thread(()->{
@@ -663,10 +821,29 @@ public final class NativeStaffPlugin extends Plugin {
             } catch(Exception e){call.reject("Unable to read PDF");}
         }).start();
     }
+    @PluginMethod public void confirmUpload(PluginCall call) {
+        getActivity().runOnUiThread(()->{
+            if(!available(call))return;
+            boolean[] confirmed={false};
+            AlertDialog confirmation=new AlertDialog.Builder(getActivity())
+                .setTitle(call.getString("title"))
+                .setMessage(call.getString("message"))
+                .setNegativeButton(call.getString("cancel"),null)
+                .setPositiveButton(call.getString("confirm"),(popup,which)->confirmed[0]=true)
+                .create();
+            track(confirmation,popup->{
+                JSObject result=new JSObject();
+                result.put("confirmed",confirmed[0]);
+                call.resolve(result);
+            });
+            confirmation.show();
+        });
+    }
     @PluginMethod public void previewPDF(PluginCall call) {
         getActivity().runOnUiThread(()->{
             String base64=call.getString("base64");
-            if(dialog==null||base64==null||base64.length()>11000000){call.reject("PDF unavailable");return;}
+            if(!available(call))return;
+            if(base64==null||base64.length()>11000000){call.reject("PDF unavailable");return;}
             File temp=null;
             try {
                 temp=File.createTempFile("staff-pdf-", ".pdf", getContext().getCacheDir());
@@ -674,7 +851,6 @@ public final class NativeStaffPlugin extends Plugin {
                 final File privateFile=temp;
                 final PdfRenderer pdf=new PdfRenderer(ParcelFileDescriptor.open(temp,ParcelFileDescriptor.MODE_READ_ONLY));
                 final Dialog preview=new Dialog(getActivity(),android.R.style.Theme_Material_Light_NoActionBar);
-                if(preview.getWindow()!=null)preview.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
                 LinearLayout root=column();root.setBackgroundColor(PAPER);root.setPadding(dp(12),dp(12),dp(12),dp(12));
                 add(root,text(call.getString("title","PDF"),20,GREEN,true),10);
                 ScrollView scroll=new ScrollView(getContext()); ImageView image=new ImageView(getContext());image.setAdjustViewBounds(true);
@@ -696,12 +872,36 @@ public final class NativeStaffPlugin extends Plugin {
                 Button next=button("›","",false);next.setOnClickListener(v->{if(index[0]+1<pdf.getPageCount()){index[0]++;drawPage.run();}});
                 Button close=button("OK","",true);close.setOnClickListener(v->preview.dismiss());
                 weight(buttons,prev);weight(buttons,next);weight(buttons,close);add(root,buttons,0);
-                preview.setOnDismissListener(d->{image.setImageDrawable(null);if(bitmap[0]!=null)bitmap[0].recycle();pdf.close();privateFile.delete();});
-                preview.setContentView(root);drawPage.run();preview.show();if(preview.getWindow()!=null)preview.getWindow().setLayout(-1,-1);call.resolve();
+                preview.setContentView(root);
+                try{drawPage.run();}
+                catch(RuntimeException error){pdf.close();throw error;}
+                track(preview,d->{
+                    image.setImageDrawable(null);
+                    if(bitmap[0]!=null)bitmap[0].recycle();
+                    pdf.close();
+                    privateFile.delete();
+                    call.resolve();
+                });
+                preview.show();
+                if(preview.getWindow()!=null)preview.getWindow().setLayout(-1,-1);
             } catch(Exception e){if(temp!=null)temp.delete();call.reject("PDF unavailable");}
         });
     }
+    private void closeWorkspace() {
+        if(pickerCall!=null){cancelled(pickerCall);pickerCall=null;}
+        pickerCallback=null;
+        clearCameraFile();
+        for(Dialog popup:new LinkedHashSet<>(windows))popup.dismiss();
+        windows.clear();
+        edits.clear();
+        choices.clear();
+        calendarScreen=null;
+        liveCalendar=null;
+        screenScroll=null;
+        screenKey="";
+        dialog=null;
+    }
     @PluginMethod public void dismiss(PluginCall call) {
-        getActivity().runOnUiThread(()->{edits.clear();choices.clear();calendarScreen=null;liveCalendar=null;if(dialog!=null){dialog.dismiss();dialog=null;}call.resolve();});
+        getActivity().runOnUiThread(()->{closeWorkspace();call.resolve();});
     }
 }

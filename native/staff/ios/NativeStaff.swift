@@ -4,6 +4,7 @@ import PDFKit
 import UniformTypeIdentifiers
 import Capacitor
 import UIKit
+import AVFoundation
 
 // Wrap at complete words only, even in narrow cards and dynamic type sizes.
 // A single oversized token scales inside the available width, never onto a
@@ -42,12 +43,20 @@ final class StaffScreenState: ObservableObject {
     @Published var screen: [String: Any] = [:]
     @Published var calendarScreen: [String: Any] = [:]
     @Published var values: [String: String] = [:]
+    @Published var choosing: String?
+    @Published var choiceQuery = ""
+    func back() {
+        if choosing != nil { choosing = nil; return }
+        send?("back", values)
+    }
     var send: ((String, [String: String]) -> Void)?
     func replace(_ next: [String: Any]) {
         values = [:]
         for field in (next["fields"] as? [[String: Any]] ?? []) {
             if let key = field["id"] as? String { values[key] = field["value"] as? String ?? "" }
         }
+        choosing = next["openChoice"] as? String
+        choiceQuery = next["choiceQuery"] as? String ?? ""
         screen = next
         if next["timeline"] != nil { calendarScreen = next }
         if next.isEmpty { calendarScreen = [:] }
@@ -56,9 +65,6 @@ final class StaffScreenState: ObservableObject {
 
 struct StaffNativeScreen: View {
     @ObservedObject var state: StaffScreenState
-    @State private var privacyCover = false
-    @State private var choosing: String? = nil
-    @State private var choiceQuery = ""
     private let paper = Color(red: 247/255, green: 245/255, blue: 240/255)
     private let card = Color(red: 255/255, green: 252/255, blue: 248/255)
     private let ink = Color(red: 23/255, green: 41/255, blue: 35/255)
@@ -104,10 +110,7 @@ struct StaffNativeScreen: View {
             }
         }
             .overlay { choiceOverlay }
-            .overlay { if privacyCover { paper.ignoresSafeArea() } }
-            .onAppear { if simplyForm && !text(state.screen,"openChoice").isEmpty { choosing=text(state.screen,"openChoice"); choiceQuery=text(state.screen,"choiceQuery") } }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in privacyCover = true }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in privacyCover = false }
+            .accessibilityAction(.escape) { state.back() }
     }
 
     private func sbIcon(_ key: String) -> String {
@@ -189,7 +192,7 @@ struct StaffNativeScreen: View {
             HStack(alignment:.center,spacing:15) {
                 Image(systemName:sbIcon(key)).font(.system(size:19,weight:.regular)).foregroundColor(sbNavy).frame(width:25)
                 if let options=field["options"] as? [[String:Any]] {
-                    Button { choiceQuery=""; choosing=key } label: {
+                    Button { state.choiceQuery=""; state.choosing=key } label: {
                         HStack {
                             VStack(alignment:.leading,spacing:4) {
                                 if let selected=options.first(where:{text($0,"value")==binding.wrappedValue}) { StaffWordText(text(selected,"label")).font(.system(size:17,weight:.semibold)).foregroundColor(sbNavy); StaffWordText(label).font(.system(size:13)).foregroundColor(.gray) }
@@ -426,18 +429,18 @@ struct StaffNativeScreen: View {
     }
 
     @ViewBuilder private var choiceOverlay: some View {
-        if let key = choosing, let field = items("fields").first(where: { text($0,"id") == key }),
+        if let key = state.choosing, let field = items("fields").first(where: { text($0,"id") == key }),
            let options = field["options"] as? [[String: Any]] {
             if simplyForm {
                 sbSelector(key,field,options)
             } else { ZStack(alignment:.bottom) {
-                Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { choosing=nil }
+                Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { state.choosing=nil }
                 VStack(alignment:.leading,spacing:10) {
-                    HStack { StaffWordText(text(field,"label")).font(.title2.weight(.semibold)); Spacer(); Button { choosing=nil } label: { Image(systemName:"xmark.circle.fill").font(.title2).foregroundColor(muted) } }
+                    HStack { StaffWordText(text(field,"label")).font(.title2.weight(.semibold)); Spacer(); Button { state.choosing=nil } label: { Image(systemName:"xmark.circle.fill").font(.title2).foregroundColor(muted) } }
                     ScrollView {
                         VStack(spacing: 5) {
                             ForEach(Array(options.enumerated()),id:\.offset) { _, option in
-                                Button { state.values[key]=text(option,"value"); choosing=nil } label: {
+                                Button { state.values[key]=text(option,"value"); state.choosing=nil } label: {
                                     HStack {
                                         StaffWordText(text(option,"label")).font(.body).foregroundColor(ink)
                                         Spacer()
@@ -455,17 +458,17 @@ struct StaffNativeScreen: View {
 
     private func sbSelector(_ key:String,_ field:[String:Any],_ options:[[String:Any]]) -> some View {
         let client = key == "customer_id"
-        let shown = choiceQuery.isEmpty || client ? options : options.filter{text($0,"label").localizedCaseInsensitiveContains(choiceQuery)}
+        let shown = state.choiceQuery.isEmpty || client ? options : options.filter{text($0,"label").localizedCaseInsensitiveContains(state.choiceQuery)}
         return GeometryReader { geometry in
             ZStack {
-                Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { choosing=nil }
+                Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { state.choosing=nil }
                 VStack(alignment:.leading,spacing:13) {
                     Text(client ? t("Patient auswählen","Choose patient") : text(field,"label")).font(.system(size:17,weight:.bold)).foregroundColor(sbNavy)
-                    HStack { TextField(t("Suchen...","Search..."),text:$choiceQuery).submitLabel(.search).onSubmit { if client { state.send?("calendar-client-search",state.values.merging(["_patient_query":choiceQuery]){$1}) } }; Button { if client { state.send?("calendar-client-search",state.values.merging(["_patient_query":choiceQuery]){$1}) } } label:{Image(systemName:"magnifyingglass").foregroundColor(sbNavy)} }.padding(10).background(sbSection,in:RoundedRectangle(cornerRadius:5))
+                    HStack { TextField(t("Suchen...","Search..."),text:$state.choiceQuery).submitLabel(.search).onSubmit { if client { state.send?("calendar-client-search",state.values.merging(["_patient_query":state.choiceQuery]){$1}) } }; Button { if client { state.send?("calendar-client-search",state.values.merging(["_patient_query":state.choiceQuery]){$1}) } } label:{Image(systemName:"magnifyingglass").foregroundColor(sbNavy)} }.padding(10).background(sbSection,in:RoundedRectangle(cornerRadius:5))
                     if client { Text(t("Neuen Patienten hinzufügen · Web","Add new patient · Web")).font(.subheadline.weight(.semibold)).foregroundColor(Color(red:0,green:0.60,blue:0.78)).frame(maxWidth:.infinity).padding(.top,18).accessibilityHint(t("In der Webverwaltung verfügbar","Available in web administration")) }
                     ScrollView {
                         VStack(spacing:0) { ForEach(Array(shown.enumerated()),id:\.offset) { _, option in
-                            Button { state.values[key]=text(option,"value"); choosing=nil } label: {
+                            Button { state.values[key]=text(option,"value"); state.choosing=nil } label: {
                                 HStack(spacing:11) {
                                     if client { Text(String(text(option,"label").prefix(1)).uppercased()).font(.system(size:15,weight:.medium)).foregroundColor(.white).frame(width:36,height:36).background(sbNavy,in:Circle()) }
                                     VStack(alignment:.leading,spacing:4) { StaffWordText(text(option,"label")).font(.system(size:15)).foregroundColor(sbNavy); if !text(option,"detail").isEmpty { StaffWordText(text(option,"detail")).font(.system(size:11)).foregroundColor(.gray) } }; Spacer(); if state.values[key]==text(option,"value") { Image(systemName:"checkmark").foregroundColor(sbNavy) }
@@ -473,7 +476,7 @@ struct StaffNativeScreen: View {
                             }.buttonStyle(.plain)
                         } }
                     }.frame(maxHeight:.infinity)
-                    HStack { Spacer(); Button(t("Abbrechen","Cancel")) { choosing=nil }.font(.system(size:15,weight:.bold)).foregroundColor(sbNavy) }
+                    HStack { Spacer(); Button(t("Abbrechen","Cancel")) { state.choosing=nil }.font(.system(size:15,weight:.bold)).foregroundColor(sbNavy) }
                 }.padding(17).frame(width:min(geometry.size.width-44,390),height:min(geometry.size.height-60,640)).background(Color.white,in:RoundedRectangle(cornerRadius:12)).shadow(color:.black.opacity(0.24),radius:10)
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
         }
@@ -510,7 +513,7 @@ struct StaffNativeScreen: View {
                         }
                     }
                 } else {
-                    Button { choosing=key } label: {
+                    Button { state.choosing=key } label: {
                         HStack {
                             StaffWordText(options.first(where:{ text($0,"value")==binding.wrappedValue }).map{ text($0,"label") } ?? t("Auswählen","Select"))
                                 .foregroundColor(ink).multilineTextAlignment(.leading)
@@ -536,7 +539,8 @@ struct StaffNativeScreen: View {
 }
 
 @objc(NativeStaffPlugin)
-public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelegate, UIImagePickerControllerDelegate,
+    UINavigationControllerDelegate, UIAdaptivePresentationControllerDelegate {
     public let identifier = "NativeStaffPlugin"
     public let jsName = "NativeStaff"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -544,6 +548,7 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
         CAPPluginMethod(name: "render", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "dismiss", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "previewPDF", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "confirmUpload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pickPDF", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pickPhoto", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "takePhoto", returnType: CAPPluginReturnPromise),
@@ -553,26 +558,50 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
     @objc func probe(_ call: CAPPluginCall) {
         call.resolve(["ok": true, "native": true, "bridge": "NativeStaff"])
     }
-    private var pickCall: CAPPluginCall?
-    private var photoCall: CAPPluginCall?
+    private var pickerCall: CAPPluginCall?
+    private var previewCall: CAPPluginCall?
+    private var confirmationCall: CAPPluginCall?
+    private weak var modal: UIViewController?
     private var state: StaffScreenState?
     private var host: UIHostingController<StaffNativeScreen>?
 
     @objc func present(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             guard let screen = call.getObject("screen"), self.host == nil,
-                  let presenter = self.bridge?.viewController else {
+                  let presenter = self.bridge?.viewController, presenter.presentedViewController == nil,
+                  presenter.viewIfLoaded?.window != nil else {
                 call.reject("Native screen unavailable"); return
             }
             let state = StaffScreenState()
-            state.send = { [weak self] id, values in self?.notifyListeners("action", data: ["id": id, "values": values]) }
+            state.send = { [weak self, weak state] id, values in
+                guard let self, let state, self.modal == nil, self.pickerCall == nil else { return }
+                self.notifyListeners("action", data: ["id": id, "values": values,
+                                                      "screenKey": state.screen["screenKey"] as? String ?? ""])
+            }
             state.replace(screen)
             let host = UIHostingController(rootView: StaffNativeScreen(state: state))
             host.modalPresentationStyle = .fullScreen
             host.isModalInPresentation = true
+            self.installBackGesture(on: host)
             self.state = state
             self.host = host
-            presenter.present(host, animated: true) { call.resolve() }
+            presenter.present(host, animated: false) { call.resolve() }
+        }
+    }
+    private func installBackGesture(on controller: UIViewController) {
+        let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(edgeBack(_:)))
+        edge.edges = .left
+        controller.view.addGestureRecognizer(edge)
+    }
+    @objc private func edgeBack(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard gesture.state == .ended, gesture.translation(in: gesture.view).x >= 45 else { return }
+        if let modal, let call = previewCall, gesture.view === modal.view {
+            closePreview(modal, call: call)
+        } else if modal == nil {
+            if let view = host?.view, view.keyboardLayoutGuide.layoutFrame.height > view.safeAreaInsets.bottom + 1 {
+                view.endEditing(true); return
+            }
+            state?.back()
         }
     }
     @objc func render(_ call: CAPPluginCall) {
@@ -583,76 +612,139 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
             state.replace(screen); call.resolve()
         }
     }
+    private func availableHost() -> UIViewController? {
+        guard let host, modal == nil, pickerCall == nil, host.presentedViewController == nil,
+              !host.isBeingDismissed else { return nil }
+        return host
+    }
+    private func showModal(_ controller: UIViewController, on presenter: UIViewController) {
+        modal = controller
+        presenter.present(controller, animated: true)
+        controller.presentationController?.delegate = self
+    }
+    private func finishModal(_ controller: UIViewController, then finish: @escaping () -> Void) {
+        let complete = {
+            if self.modal === controller { self.modal = nil }
+            finish()
+        }
+        if controller.isBeingDismissed, let transition = controller.transitionCoordinator {
+            // A system picker can start its own dismissal before calling its delegate.
+            if transition.animate(alongsideTransition: nil, completion: { _ in complete() }) { return }
+        }
+        if controller.presentingViewController != nil {
+            controller.dismiss(animated: true, completion: complete)
+        } else { complete() }
+    }
     @objc func pickPDF(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
-            guard self.pickCall == nil, let host = self.host else {
-                call.reject("Picker unavailable"); return
-            }
+            guard let host = self.availableHost() else { call.reject("Picker unavailable"); return }
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.pdf], asCopy: true)
             picker.delegate = self
             picker.allowsMultipleSelection = false
-            self.pickCall = call
-            host.present(picker, animated: true)
+            self.pickerCall = call
+            self.showModal(picker, on: host)
         }
     }
-    @objc func pickPhoto(_ call: CAPPluginCall) { openPhoto(call,source:.photoLibrary) }
-    @objc func takePhoto(_ call: CAPPluginCall) { openPhoto(call,source:.camera) }
-    private func openPhoto(_ call: CAPPluginCall,source:UIImagePickerController.SourceType) {
-        DispatchQueue.main.async {
-            guard self.pickCall == nil, self.photoCall == nil, let host=self.host,
-                  UIImagePickerController.isSourceTypeAvailable(source) else { call.reject("Photo source unavailable");return }
-            let picker=UIImagePickerController()
-            picker.sourceType=source
-            picker.mediaTypes=[UTType.image.identifier]
-            picker.delegate=self
-            picker.allowsEditing=false
-            picker.modalPresentationStyle = .fullScreen
-            self.photoCall=call
-            host.present(picker,animated:true)
+    @objc func pickPhoto(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { self.beginPhoto(call, source: .photoLibrary) }
+    }
+    @objc func takePhoto(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { self.beginPhoto(call, source: .camera) }
+    }
+    private func beginPhoto(_ call: CAPPluginCall, source: UIImagePickerController.SourceType) {
+        guard availableHost() != nil, UIImagePickerController.isSourceTypeAvailable(source) else {
+            call.reject("Photo source unavailable"); return
+        }
+        pickerCall = call
+        if source != .camera { showPhoto(call, source: source); return }
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: showPhoto(call, source: source)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    guard self.pickerCall === call else { return }
+                    if granted { self.showPhoto(call, source: source) }
+                    else { self.pickerCall = nil; call.resolve(["cancelled": true]) }
+                }
+            }
+        default: pickerCall = nil; call.resolve(["cancelled": true])
         }
     }
-    public func imagePickerControllerDidCancel(_ picker:UIImagePickerController) {
-        picker.dismiss(animated:true)
-        photoCall?.resolve(["cancelled":true]);photoCall=nil
+    private func showPhoto(_ call: CAPPluginCall, source: UIImagePickerController.SourceType) {
+        guard let host, host.presentedViewController == nil else {
+            pickerCall = nil; call.reject("Photo source unavailable"); return
+        }
+        let picker = UIImagePickerController()
+        picker.sourceType = source
+        picker.mediaTypes = [UTType.image.identifier]
+        picker.delegate = self
+        picker.allowsEditing = false
+        picker.modalPresentationStyle = .fullScreen
+        showModal(picker, on: host)
     }
-    public func imagePickerController(_ picker:UIImagePickerController,didFinishPickingMediaWithInfo info:[UIImagePickerController.InfoKey:Any]) {
-        guard let call=photoCall else { picker.dismiss(animated:true);return }
-        photoCall=nil
-        picker.dismiss(animated:true)
-        guard let image=info[.originalImage] as? UIImage else { call.reject("Image unavailable");return }
-        let ratio=min(1,2400/max(image.size.width,image.size.height))
-        let format=UIGraphicsImageRendererFormat();format.scale=1;format.opaque=true
-        let size=CGSize(width:max(1,image.size.width*ratio),height:max(1,image.size.height*ratio))
-        let normalized=UIGraphicsImageRenderer(size:size,format:format).image { _ in image.draw(in:CGRect(origin:.zero,size:size)) }
-        guard let data=normalized.jpegData(compressionQuality:0.85),data.count<=6*1024*1024 else { call.reject("Image exceeds 6 MB");return }
-        call.resolve(["filename":"patient-photo.jpg","base64":data.base64EncodedString()])
+    private func closePicker(_ controller: UIViewController, then finish: @escaping (CAPPluginCall) -> Void) {
+        guard modal === controller, let call = pickerCall else { return }
+        pickerCall = nil
+        finishModal(controller) { finish(call) }
+    }
+    public func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        closePicker(presentationController.presentedViewController) { $0.resolve(["cancelled": true]) }
+    }
+    public func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        closePicker(picker) { $0.resolve(["cancelled": true]) }
+    }
+    public func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        closePicker(picker) { call in
+            guard let image=info[.originalImage] as? UIImage else { call.reject("Image unavailable");return }
+            let ratio=min(1,2400/max(image.size.width,image.size.height))
+            let format=UIGraphicsImageRendererFormat();format.scale=1;format.opaque=true
+            let size=CGSize(width:max(1,image.size.width*ratio),height:max(1,image.size.height*ratio))
+            let normalized=UIGraphicsImageRenderer(size:size,format:format).image { _ in image.draw(in:CGRect(origin:.zero,size:size)) }
+            guard let data=normalized.jpegData(compressionQuality:0.85),data.count<=6*1024*1024 else { call.reject("Image exceeds 6 MB");return }
+            call.resolve(["filename":"patient-photo.jpg","base64":data.base64EncodedString()])
+        }
     }
     public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        pickCall?.resolve(["cancelled": true]); pickCall = nil
+        closePicker(controller) { $0.resolve(["cancelled": true]) }
     }
     public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        guard let call = pickCall else { return }
-        pickCall = nil
-        guard let url = urls.first else { call.resolve(["cancelled": true]); return }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            do {
-                let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                guard size > 0, size <= 6 * 1024 * 1024 else { call.reject("File exceeds 6 MB"); return }
-                let data = try Data(contentsOf: url)
-                guard data.count <= 6 * 1024 * 1024, data.starts(with: Data("%PDF-".utf8)) else {
-                    call.reject("Invalid PDF"); return
-                }
-                call.resolve(["filename": url.lastPathComponent, "base64": data.base64EncodedString()])
-            } catch { call.reject("Unable to read PDF") }
+        closePicker(controller) { call in
+            guard let url = urls.first else { call.resolve(["cancelled": true]); return }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                do {
+                    let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                    guard size > 0, size <= 6 * 1024 * 1024 else { call.reject("File exceeds 6 MB"); return }
+                    let data = try Data(contentsOf: url)
+                    guard data.count <= 6 * 1024 * 1024, data.starts(with: Data("%PDF-".utf8)) else {
+                        call.reject("Invalid PDF"); return
+                    }
+                    call.resolve(["filename": url.lastPathComponent, "base64": data.base64EncodedString()])
+                } catch { call.reject("Unable to read PDF") }
+            }
+        }
+    }
+    @objc func confirmUpload(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let host = self.availableHost() else { call.reject("Confirmation unavailable"); return }
+            let alert = UIAlertController(title: call.getString("title"), message: call.getString("message"), preferredStyle: .alert)
+            self.confirmationCall = call
+            let finish: (Bool) -> Void = { [weak self, weak alert] confirmed in
+                guard let self, let alert, self.confirmationCall === call else { return }
+                self.confirmationCall = nil
+                self.finishModal(alert) { call.resolve(["confirmed": confirmed]) }
+            }
+            alert.addAction(UIAlertAction(title: call.getString("cancel"), style: .cancel) { _ in finish(false) })
+            alert.addAction(UIAlertAction(title: call.getString("confirm"), style: .default) { _ in finish(true) })
+            self.showModal(alert, on: host)
         }
     }
     @objc func previewPDF(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
-            guard let encoded = call.getString("base64"), encoded.count <= 11000000,
-                  let data = Data(base64Encoded: encoded), let document = PDFDocument(data: data),
-                  let presenter = self.host else {
+            guard let presenter = self.availableHost(),
+                  let encoded = call.getString("base64"), encoded.count <= 11000000,
+                  let data = Data(base64Encoded: encoded), let document = PDFDocument(data: data) else {
                 call.reject("PDF unavailable"); return
             }
             let pdf = PDFView()
@@ -661,24 +753,70 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
             let content = UIViewController()
             content.view = pdf
             content.navigationItem.title = call.getString("title") ?? "PDF"
-            content.navigationItem.leftBarButtonItem = UIBarButtonItem(
-                systemItem: .done, primaryAction: UIAction { [weak content] _ in content?.dismiss(animated: true) })
             let nav = UINavigationController(rootViewController: content)
+            content.navigationItem.leftBarButtonItem = UIBarButtonItem(
+                systemItem: .done, primaryAction: UIAction { [weak self, weak nav] _ in
+                    if let nav { self?.closePreview(nav, call: call) }
+                })
             nav.modalPresentationStyle = .fullScreen
-            presenter.present(nav, animated: true) { call.resolve() }
+            self.previewCall = call
+            self.installBackGesture(on: nav)
+            self.showModal(nav, on: presenter)
         }
+    }
+    private func closePreview(_ controller: UIViewController, call: CAPPluginCall) {
+        guard previewCall === call else { return }
+        previewCall = nil
+        finishModal(controller) { call.resolve() }
     }
     @objc func dismiss(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
+            self.pickerCall?.resolve(["cancelled": true]); self.pickerCall = nil
+            self.confirmationCall?.resolve(["confirmed": false]); self.confirmationCall = nil
+            self.previewCall?.resolve(); self.previewCall = nil
             self.state?.replace([:])
-            self.host?.dismiss(animated: true)
-            self.host = nil; self.state = nil
-            call.resolve()
+            let presenter = self.host?.presentingViewController
+            self.modal = nil
+            self.host = nil
+            self.state = nil
+            if let presenter { presenter.dismiss(animated: false) { call.resolve() } }
+            else { call.resolve() }
         }
     }
 }
 
 class StaffBridgeViewController: CAPBridgeViewController {
+    private var privacyCover: UIView?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(customerBack(_:)))
+        edge.edges = .left
+        view.addGestureRecognizer(edge)
+        NotificationCenter.default.addObserver(self, selector: #selector(coverBackground(_:)),
+            name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(uncoverForeground(_:)),
+            name: UIApplication.willEnterForegroundNotification, object: nil)
+    }
+    @objc private func customerBack(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard gesture.state == .ended, gesture.translation(in: view).x >= 45, presentedViewController == nil else { return }
+        if view.keyboardLayoutGuide.layoutFrame.height > view.safeAreaInsets.bottom + 1 { view.endEditing(true); return }
+        webView?.evaluateJavaScript("window.APlusNativeBack && window.APlusNativeBack()")
+    }
+    @objc private func coverBackground(_ notification: Notification) {
+        guard let window = viewIfLoaded?.window, privacyCover == nil else { return }
+        let cover = UIView(frame: window.bounds)
+        cover.backgroundColor = UIColor(red: 247/255, green: 245/255, blue: 240/255, alpha: 1)
+        cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        cover.isAccessibilityElement = false
+        window.addSubview(cover)
+        privacyCover = cover
+    }
+    @objc private func uncoverForeground(_ notification: Notification) {
+        privacyCover?.removeFromSuperview()
+        privacyCover = nil
+    }
+
 #if DEBUG && targetEnvironment(simulator)
     private var syntheticQAHost: UIHostingController<StaffNativeScreen>?
 #endif

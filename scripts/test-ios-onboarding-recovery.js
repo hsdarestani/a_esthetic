@@ -83,7 +83,8 @@ async function run() {
   assert.ok(authTimer, 'Missing bounded auth request');
   authTimer.fn();
   await settle();
-  assert.match(waiting.root.innerHTML, /Erneut verbinden/);
+  assert.match(waiting.root.innerHTML, /Erneut versuchen/);
+  assert.match(waiting.root.innerHTML, /request_timeout/);
   assert.equal(waiting.localStorage.getItem('aplus_token'), 'test-token');
 
   // A successful confirmation refreshes the in-memory session, not the WebView.

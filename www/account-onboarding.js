@@ -342,6 +342,7 @@
     });
 
     host.querySelector('[data-onboarding-logout]')?.addEventListener('click', () => {
+      if(typeof window.APlusSignOut==='function')return window.APlusSignOut();
       localStorage.removeItem('aplus_token');
       location.reload();
     });
