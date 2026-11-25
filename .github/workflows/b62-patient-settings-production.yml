@@ -1,0 +1,97 @@
+name: B62 scoped production patient settings update
+on:
+  push:
+    branches: ['ops/admin-v4-production-preflight-20261124']
+    paths: ['.github/workflows/b62-patient-settings-production.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: a-esthetic-customer-club-web-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Require exact B62 QA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 130); do
+            state=$(gh api repos/hsdarestani/a_esthetic/actions/runs/45573570768 --jq '[.head_sha,.status,.conclusion] | @tsv')
+            echo "$state"
+            [[ "$state" == 528a7c4e5f97e6db47cb6bc90e4b5367beac828c* ]]
+            if [[ "$state" == *$'\tcompleted\tsuccess' ]]; then exit 0; fi
+            if [[ "$state" == *$'\tcompleted\t'* ]]; then exit 1; fi
+            sleep 20
+          done
+          exit 1
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            ROOT=/opt/a-esthetic-web/site
+            test -f "$ROOT/core-app.js"
+            test -f "$ROOT/index.html"
+            test "$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' https://app.a-esthetic.de/api/mobile/status/)" = 200
+            test "$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' https://app.a-esthetic.de/api/mobile/staff/session/)" = 401
+            exec 9>/opt/a-esthetic-web/.b62-settings.lock
+            flock -n 9
+            umask 077
+            work=$(mktemp -d /opt/a-esthetic-web/b62-settings.XXXXXXXX)
+            cp -a "$ROOT/core-app.js" "$ROOT/index.html" "$work/"
+            curl -fsSL --max-time 15 "https://app.a-esthetic.de/core-app.js?b62-before=${{ github.run_id }}" -o "$work/public-before.js"
+            cmp -s "$work/public-before.js" "$work/core-app.js"
+            python3 - "$ROOT" "$work" <<'PY'
+            from pathlib import Path
+            import re,sys,os
+            root,work=map(Path,sys.argv[1:])
+            js=(work/'core-app.js').read_text()
+            html=(work/'index.html').read_text()
+            button='      <button type="button" class="settings-link" data-intake>Aufnahmebogen & Rechnungsadresse <span>›</span></button>\n'
+            handler="    node.querySelector('[data-intake]').onclick=()=>showPatientIntake(node,email);\n"
+            if button in js:
+                assert js.count(button)==js.count(handler)==1,'Unexpected live patient settings markup'
+                js=js.replace(button,'').replace(handler,'')
+            else:
+                assert 'data-intake>Aufnahmebogen & Rechnungsadresse' not in js and handler not in js,'Unexpected alternate live intake menu'
+            html,n=re.subn(r'(src=["\'](?:\./)?core-app\.js)(?:\?[^"\']*)?(["\'])',r'\1?v=20261125-b62\2',html)
+            assert n==1,'Cannot locate unique live core-app asset'
+            (work/'new-core.js').write_text(js)
+            (work/'new-index.html').write_text(html)
+            PY
+            if command -v node >/dev/null; then node --check "$work/new-core.js"; fi
+            rollback() {
+              rc=$?
+              trap - ERR
+              cp -a "$work/core-app.js" "$ROOT/core-app.js"
+              cp -a "$work/index.html" "$ROOT/index.html"
+              echo B62_WEB_ROLLED_BACK
+              exit "$rc"
+            }
+            trap rollback ERR
+            for f in core-app.js index.html; do
+              new="$work/new-core.js"; [ "$f" != index.html ] || new="$work/new-index.html"
+              tmp=$(mktemp "$ROOT/.b62.XXXXXXXX")
+              cp "$new" "$tmp"
+              chmod --reference="$ROOT/$f" "$tmp"
+              chown --reference="$ROOT/$f" "$tmp"
+              mv -f "$tmp" "$ROOT/$f"
+            done
+            curl -fsSL --max-time 15 "https://app.a-esthetic.de/core-app.js?v=20261125-b62" -o "$work/public-after.js"
+            cmp -s "$work/new-core.js" "$work/public-after.js"
+            curl -fsSL --max-time 15 "https://app.a-esthetic.de/?b62=${{ github.run_id }}" -o "$work/public-index.html"
+            grep -F 'core-app.js?v=20261125-b62' "$work/public-index.html" >/dev/null
+            ! grep -F 'data-intake>Aufnahmebogen & Rechnungsadresse' "$work/public-after.js"
+            test "$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' https://app.a-esthetic.de/api/mobile/status/)" = 200
+            test "$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' https://app.a-esthetic.de/api/mobile/staff/session/)" = 401
+            trap - ERR
+            echo B62_WEB_PRODUCTION_VERIFIED
