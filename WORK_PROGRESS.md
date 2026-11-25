@@ -30,3 +30,5 @@
 - B61 / 1.0.55: signed device Release minimum iOS 16.0, matching native SwiftUI API requirements; explicit release settings and IPA verification; CI additionally builds the device Release target at iOS 16, rather than relying on simulator Debug alone. B60 was already queued in Publisher, so a new immutable build/version is required; no patient or calendar behavior changed.
 
 - B62 / 1.0.56: remove patient settings intake/billing-address entry only (keep admin forms and existing data); keep Android calendar header and native dialog mounted, swap opaque timeline children on navigation, preserve scroll where possible; iOS separates date strip and grid gestures and removes opacity transitions. Production-device visual verification pending.
+
+- B62 QA follow-up: actual failed emulator screenshot showed the native dashboard loaded behind an unrelated Quickstep launcher ANR. Retry handles only that launcher dialog, still asserts each expected screen, and adds a synthetic in-place calendar day/week update identity gate. No application ANR is ignored.

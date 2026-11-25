@@ -525,6 +525,20 @@ public final class NativeStaffPlugin extends Plugin {
                 dialog=new Dialog(activity,android.R.style.Theme_Material_Light_NoActionBar);
                 dialog.setCancelable(false);
                 draw(screen);dialog.show();if(dialog.getWindow()!=null)dialog.getWindow().setLayout(-1,-1);
+                JSONArray transitions=fixture.optJSONArray("transitions");
+                if(transitions!=null&&transitions.length()>0){
+                    NativeStaffV3Calendar initial=liveCalendar;
+                    View root=dialog.findViewById(android.R.id.content);
+                    if(initial==null||root==null)throw new IllegalStateException("Calendar QA missing initial root");
+                    final View header=initial.qaHeader();
+                    final View body=initial.qaGrid();
+                    for(int i=0;i<transitions.length();i++){
+                        draw(transitions.getJSONObject(i));
+                        if(liveCalendar!=initial||dialog.findViewById(android.R.id.content)!=root||initial.qaHeader()!=header||initial.qaGrid()==body)
+                            throw new IllegalStateException("Calendar root/header rebuilt or grid did not update");
+                    }
+                    android.util.Log.i("APlusCalendarQA","PASS B62 calendar header and native root retained across day/week updates");
+                }
             }catch(Exception ignored){if(dialog!=null)dialog.dismiss();dialog=null;liveCalendar=null;}
         },700);
     }

@@ -168,6 +168,8 @@ final class NativeStaffV3Calendar {
         outer.addView(fab,fp);
         return outer;
     }
+    View qaHeader(){return headerTitle;}
+    View qaGrid(){return gridView;}
     private void renderDateStrip(){
         LinearLayout staging=vertical();
         buildDateStrip(staging);

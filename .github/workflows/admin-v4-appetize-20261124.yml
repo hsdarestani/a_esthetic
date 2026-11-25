@@ -14,6 +14,8 @@ jobs:
         with:
           node-version: '22'
       - run: |
+          node --check www/core-app.js
+          if grep -F 'data-intake>Aufnahmebogen & Rechnungsadresse' www/core-app.js; then exit 1; fi
           node scripts/test_native_calendar_layout.mjs
           APLUS_NATIVE_QA_FIXTURES=qa-fixtures node scripts/test_native_staff_controller.mjs
       - uses: actions/upload-artifact@v4
