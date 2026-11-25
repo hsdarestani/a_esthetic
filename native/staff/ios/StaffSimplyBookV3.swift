@@ -17,6 +17,7 @@ struct StaffSimplyBookV3: View {
 
     private let navy = Color(red: 32/255, green: 43/255, blue: 61/255)
     private let pink = Color(red: 249/255, green: 27/255, blue: 82/255)
+    private let appointmentBlue = Color(red: 0.0/255, green: 125.0/255, blue: 166.0/255)
     private let amber = Color(red: 255/255, green: 190/255, blue: 103/255)
     private let blue = Color(red: 0/255, green: 153/255, blue: 200/255)
     private let rule = Color(red: 220/255, green: 226/255, blue: 234/255)
@@ -383,6 +384,7 @@ struct StaffSimplyBookV3: View {
         let height = max(25, CGFloat(max(1,finish-start)) * hourHeight / 60)
         let kind = text(event,"kind")
         let isNote = kind == "note"
+        let isAppointment = kind == "appointment"
         let title = text(event,"title")
         let time = text(event,"start") + " · " + text(event,"end")
         return Button {
@@ -404,10 +406,10 @@ struct StaffSimplyBookV3: View {
                 }
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(ink)
+            .foregroundStyle(isAppointment ? Color.white : ink)
             .padding(.top, 6)
             .frame(width: max(16,width-1), height: height)
-            .background(isNote ? Color(red: 1, green: 214.0/255, blue: 133.0/255) : kind == "block" ? Color(red: 227.0/255, green: 171.0/255, blue: 91.0/255) : amber)
+            .background(isAppointment ? appointmentBlue : isNote ? Color(red: 1, green: 214.0/255, blue: 133.0/255) : kind == "block" ? Color(red: 227.0/255, green: 171.0/255, blue: 91.0/255) : amber)
             .overlay(Rectangle().stroke(.white.opacity(0.55), lineWidth: 0.6))
         }
         .buttonStyle(.plain)

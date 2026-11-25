@@ -32,3 +32,5 @@
 - B62 / 1.0.56: remove patient settings intake/billing-address entry only (keep admin forms and existing data); keep Android calendar header and native dialog mounted, swap opaque timeline children on navigation, preserve scroll where possible; iOS separates date strip and grid gestures and removes opacity transitions. Production-device visual verification pending.
 
 - B62 QA follow-up: actual failed emulator screenshot showed the native dashboard loaded behind an unrelated Quickstep launcher ANR. Retry handles only that launcher dialog, still asserts each expected screen, and adds a synthetic in-place calendar day/week update identity gate. No application ANR is ignored.
+
+- 2026-11-25 — 1.0.57 (B63): match SimplyBook event semantics on both native platforms: patient appointments teal-blue RGB(0,125,166) with white text; note/block colors and text unchanged, cyan add button unchanged. Includes B62 navigation fixes. Regression checks palette parity, contrast and actual Android calendar fixture pixels. Native QA and signed delivery tracked separately.

@@ -37,6 +37,7 @@ final class NativeStaffV3Calendar {
     private static final int NAVY=Color.rgb(32,43,61);
     private static final int PINK=Color.rgb(249,27,82);
     private static final int BLUE=Color.rgb(0,153,200);
+    private static final int APPOINTMENT_BLUE=Color.rgb(0,125,166);
     private static final int AMBER=Color.rgb(255,190,103);
     private static final int INK=Color.rgb(42,48,58);
     private static final int MUTED=Color.rgb(128,133,142);
@@ -446,9 +447,9 @@ final class NativeStaffV3Calendar {
             paint.setColor(color);paint.setStyle(Paint.Style.FILL);
             c.drawRoundRect(new RectF(left,top,right,bottom),radius,radius,paint);
         }
-        private void label(Canvas c,String value,float x,float y,float maxWidth,float size,boolean bold,int maxLines){
+        private void label(Canvas c,String value,float x,float y,float maxWidth,float size,boolean bold,int maxLines,int textColor){
             if(value==null||value.isEmpty())return;
-            paint.setColor(INK);paint.setTypeface(bold?Typeface.create("sans-serif-medium",Typeface.NORMAL):Typeface.DEFAULT);
+            paint.setColor(textColor);paint.setTypeface(bold?Typeface.create("sans-serif-medium",Typeface.NORMAL):Typeface.DEFAULT);
             paint.setTextSize(d(size));paint.setTextAlign(Paint.Align.LEFT);
             // Avoid overflowing neighboring lanes; truncate by measured glyph width.
             String[] words=value.replace('\n',' ').split("\\s+");
@@ -495,8 +496,10 @@ final class NativeStaffV3Calendar {
                 float laneWidth=w/lanes;
                 float left=lane*laneWidth+d(1);
                 float right=(lane+1)*laneWidth-d(1);
-                int color=AMBER;
                 String kind=str(event,"kind");
+                boolean isAppointment="appointment".equals(kind);
+                int color=isAppointment?APPOINTMENT_BLUE:AMBER;
+                int textColor=isAppointment?Color.WHITE:INK;
                 if("note".equals(kind))color=Color.rgb(255,214,133);
                 if("block".equals(kind))color=Color.rgb(227,171,91);
                 fill(canvas,color,left,y+1,right,y+h-1,d(2));
@@ -504,9 +507,9 @@ final class NativeStaffV3Calendar {
                 String detail=str(event,"detail");
                 String time=str(event,"start");
                 float tx=left+d(5),labelWidth=right-left-d(10);
-                if(h>=d(27))label(canvas,title,tx,y+d(17),labelWidth,11,true,h>=d(60)?2:1);
-                if(h>=d(56))label(canvas,time,tx,y+h-d(17),labelWidth,10,false,1);
-                if(h>=d(86))label(canvas,detail,tx,y+d(52),labelWidth,10,false,1);
+                if(h>=d(27))label(canvas,title,tx,y+d(17),labelWidth,11,true,h>=d(60)?2:1,textColor);
+                if(h>=d(56))label(canvas,time,tx,y+h-d(17),labelWidth,10,false,1,textColor);
+                if(h>=d(86))label(canvas,detail,tx,y+d(52),labelWidth,10,false,1,textColor);
                 String id=str(event,"id");
                 if(!id.isEmpty())hitTargets.add(new TouchTarget(new RectF(left,y,right,y+h),id));
             }
