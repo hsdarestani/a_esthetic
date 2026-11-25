@@ -5,6 +5,7 @@ must enter and check the fee number, base amount, factor and VAT classification.
 Final GOÄ issuance remains disabled pending the approved invoice template.
 """
 import re
+from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
 
@@ -15,7 +16,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from xml.sax.saxutils import escape
 
-from .models import Invoice, InvoiceItem, UserProfile
+from .models import Invoice, InvoiceItem, UserProfile, SecureDocument
 from .goae_tariff import CATALOG, POINT_VALUE_EUR
 
 
@@ -31,7 +32,7 @@ def to_decimal(value):
 
 # GOÄ § 5 ordinary ranges. These categories must be assigned by an
 # authorized reviewer against the official tariff schedule, never inferred
-# from the marketing treatment name. Deviating § 2 agreements are not supported.
+# from the marketing treatment name. Deviating § 2 agreements require separate evidence.
 FEE_RANGES = {
     "general": (Decimal("2.30"), Decimal("3.50")),
     "technical": (Decimal("1.80"), Decimal("2.50")),
@@ -43,7 +44,30 @@ def cents(amount):
     return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def calculate_goae_lines(data):
+def _agreement_evidence(row, *, user, service_date, category, verified):
+    # Only the specifically reviewed general official codes in the current
+    # catalogue are eligible here. Technical/laboratory and analog exceptions
+    # must not be unlocked by a browser-provided category.
+    if category != "general" or not verified or row.get("analog") is True:
+        raise ValueError("Abweichende Vereinbarung für diese Leistung nicht freigegeben.")
+    if row.get("agreement_confirmed") is not True or user is None or service_date is None:
+        raise ValueError("Schriftliche Honorarvereinbarung vor der Behandlung bestätigen.")
+    try:
+        signed_on = date.fromisoformat(str(row.get("agreement_date") or ""))
+        raw_id = str(row.get("agreement_document_id") or "")
+        if not re.fullmatch(r"[1-9][0-9]{0,17}", raw_id):
+            raise ValueError
+        document_id = int(raw_id)
+    except (ValueError, TypeError):
+        raise ValueError("Datum und Dokument-ID der Honorarvereinbarung erforderlich.")
+    if signed_on > service_date or signed_on > date.today():
+        raise ValueError("Die Vereinbarung muss vor der Behandlung getroffen worden sein.")
+    if not SecureDocument.objects.filter(pk=document_id, user=user, category__in=["medical", "consent"]).exclude(file="").exists():
+        raise ValueError("Unterzeichnetes Dokument in der Patientenakte nicht gefunden.")
+    return document_id, signed_on
+
+
+def calculate_goae_lines(data, *, user=None, service_date=None):
     rows = data.get("lines")
     if rows is None:
         rows = [data]  # existing Office one-line form
@@ -108,9 +132,13 @@ def calculate_goae_lines(data):
             raise ValueError("Bitte die Gebührenkategorie prüfen.")
         threshold, maximum = FEE_RANGES[category]
         factor = to_decimal(row.get("goae_factor"))
-        if not Decimal("1") <= factor <= maximum or factor != factor.quantize(Decimal(".01")):
-            raise ValueError("Steigerungsfaktor außerhalb des zulässigen Gebührenrahmens.")
-        if factor > threshold and not reason:
+        if not Decimal("1") <= factor <= Decimal("99.9999") or factor != factor.quantize(Decimal(".0001")):
+            raise ValueError("Ungültiger Steigerungsfaktor (maximal vier Nachkommastellen).")
+        agreement = None
+        if factor > maximum:
+            agreement = _agreement_evidence(row, user=user, service_date=service_date,
+                                            category=category, verified=verified)
+        elif factor > threshold and not reason:
             raise ValueError("Ein erhöhter Steigerungsfaktor braucht eine individuelle Begründung.")
         points_value = row.get("goae_points")
         if verified:
@@ -137,6 +165,10 @@ def calculate_goae_lines(data):
         # the net fee (do not silently derive a smaller fee from a gross price).
         unit_net = cents(base * factor)
         net = unit_net * int(quantity)
+        if agreement:
+            agreed = to_decimal(row.get("agreement_amount_eur"))
+            if agreed != agreed.quantize(Decimal(".01")) or cents(agreed) != net:
+                raise ValueError("Vereinbarter Nettobetrag und tatsächliche Gebührenposition stimmen nicht überein.")
         tax = int((Decimal(net) * vat / 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         gross = net + tax
         result.append(dict(
@@ -144,14 +176,36 @@ def calculate_goae_lines(data):
             goae_base_cents=cents(base), goae_justification=reason,
             quantity=quantity, unit_gross_cents=cents(Decimal(unit_net) / 100 * (1 + vat / 100)),
             vat_rate=vat, net_cents=net, tax_cents=tax, gross_cents=gross,
+            **({'goae_agreement_document_id': agreement[0], 'goae_agreement_date': agreement[1]} if agreement else {}),
         ))
+    # Round VAT once per tax rate on the complete net taxable amount,
+    # then distribute exact cent shares by largest remainder. Never force
+    # VAT to match a requested retail amount.
+    for rate in {item["vat_rate"] for item in result}:
+        group = [item for item in result if item["vat_rate"] == rate]
+        target_tax = int((sum(item["net_cents"] for item in group) * rate / 100)
+                         .quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        raw = [Decimal(item["net_cents"]) * rate / 100 for item in group]
+        shares = [int(value) for value in raw]
+        remainder = target_tax - sum(shares)
+        order = sorted(range(len(group)), key=lambda i: (raw[i] - shares[i], -i), reverse=True)
+        for i in order[:remainder]:
+            shares[i] += 1
+        for item, share in zip(group, shares):
+            item["tax_cents"] = share
+            item["gross_cents"] = item["net_cents"] + share
     if sum(row['gross_cents'] for row in result) > 2147483647:
         raise ValueError("Rechnungsbetrag außerhalb des zulässigen Bereichs.")
     return result
 
 
 def create_goae_draft(*, user, actor, service_date, data):
-    items = calculate_goae_lines(data)
+    items = calculate_goae_lines(data, user=user, service_date=service_date)
+    target = data.get("target_total_cents")
+    if target is not None:
+        target = to_decimal(target)
+        if target != target.to_integral_value() or target != sum(item["gross_cents"] for item in items):
+            raise ValueError("Wunschbetrag und serverseitig berechnete Rechnung stimmen nicht centgenau überein.")
     profile, _ = UserProfile.objects.get_or_create(user=user)
     with transaction.atomic():
         invoice = Invoice.objects.create(
@@ -197,6 +251,8 @@ def goae_draft_pdf_bytes(invoice, settings, *, simulation=False):
         desc = para(item.description)
         if item.goae_justification:
             desc = [desc, para("Begründung: " + item.goae_justification)]
+        if item.goae_agreement_document_id:
+            desc = (desc if isinstance(desc, list) else [desc]) + [para("Honorarvereinbarung nach § 2 GOÄ dokumentiert")]
         rows.append([para(item.goae_number or "Auslage"), desc, para(item.quantity),
                      para(item.goae_factor or "-"),
                      [para(money(item.net_cents)), para(f"USt {item.vat_rate}%: {money(item.tax_cents)}")]])

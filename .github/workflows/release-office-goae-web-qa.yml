@@ -1,7 +1,9 @@
 name: Focused A+ Office and GOÄ web release QA (no deploy)
 on:
   push:
-    branches: [release/office-goae-web-20261123]
+    branches: [release/office-goae-web-20261123, fix/goae-precision-and-agreement]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
