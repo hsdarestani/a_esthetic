@@ -63,8 +63,18 @@ final class StaffScreenState: ObservableObject {
     }
 }
 
+private struct StaffFormPickerRequest: Identifiable {
+    let id = UUID()
+    let title: String
+    let dateKey: String?
+    let timeKey: String?
+}
+
 struct StaffNativeScreen: View {
     @ObservedObject var state: StaffScreenState
+    @State private var sbPickerRequest: StaffFormPickerRequest?
+    @State private var sbDraftDate = Date()
+    @State private var sbDraftTime = Date()
     private let paper = Color(red: 247/255, green: 245/255, blue: 240/255)
     private let card = Color(red: 255/255, green: 252/255, blue: 248/255)
     private let ink = Color(red: 23/255, green: 41/255, blue: 35/255)
@@ -110,6 +120,7 @@ struct StaffNativeScreen: View {
             }
         }
             .overlay { choiceOverlay }
+            .sheet(item: $sbPickerRequest) { request in sbPickerPanel(request) }
             .accessibilityAction(.escape) { state.back() }
     }
 
@@ -169,26 +180,63 @@ struct StaffNativeScreen: View {
                            else { var calendar=Calendar(identifier:.gregorian);calendar.timeZone=formatter.timeZone;let minute=calendar.component(.minute,from:chosen);let adjusted=calendar.date(byAdding:.minute,value:((minute+7)/15)*15-minute,to:chosen) ?? chosen;state.values[key]=formatter.string(from:adjusted) }
                        })
     }
-    private func sbNativePicker(_ key: String, label: String, isDate: Bool) -> some View {
-        DatePicker(label, selection: sbPickerBinding(key, isDate: isDate), displayedComponents: isDate ? .date : .hourAndMinute)
-            .labelsHidden().datePickerStyle(.compact).fixedSize(horizontal: true, vertical: false)
-            .environment(\.locale, Locale(identifier: english ? "en_GB" : "de_DE"))
-            .environment(\.timeZone, TimeZone(identifier: "Europe/Berlin") ?? .current)
-            .accessibilityLabel(label)
+    private func sbOpenPicker(_ title: String, dateKey: String? = nil, timeKey: String? = nil) {
+        if let dateKey { sbDraftDate = sbPickerBinding(dateKey,isDate:true).wrappedValue }
+        if let timeKey { sbDraftTime = sbPickerBinding(timeKey,isDate:false).wrappedValue }
+        sbPickerRequest = StaffFormPickerRequest(title:title,dateKey:dateKey,timeKey:timeKey)
+    }
+    private func sbPickerPanel(_ request: StaffFormPickerRequest) -> some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment:.leading,spacing:16) {
+                    if request.dateKey != nil {
+                        DatePicker(t("Datum","Date"),selection:$sbDraftDate,displayedComponents:.date)
+                            .datePickerStyle(.graphical)
+                    }
+                    if request.timeKey != nil {
+                        DatePicker(t("Uhrzeit","Time"),selection:$sbDraftTime,displayedComponents:.hourAndMinute)
+                            .datePickerStyle(.wheel).labelsHidden().frame(maxWidth:.infinity)
+                            .accessibilityLabel(t("Uhrzeit","Time"))
+                    }
+                }.padding(16)
+            }
+            .navigationTitle(request.title).navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement:.cancellationAction) {
+                    Button(t("Abbrechen","Cancel")) { sbPickerRequest = nil }
+                }
+                ToolbarItem(placement:.confirmationAction) {
+                    Button(t("Fertig","Done")) {
+                        if let key = request.dateKey { sbPickerBinding(key,isDate:true).wrappedValue = sbDraftDate }
+                        if let key = request.timeKey { sbPickerBinding(key,isDate:false).wrappedValue = sbDraftTime }
+                        sbPickerRequest = nil
+                    }.fontWeight(.semibold)
+                }
+            }
+        }.environment(\.locale,Locale(identifier:english ? "en_GB" : "de_DE"))
+        .environment(\.timeZone,TimeZone(identifier:"Europe/Berlin") ?? .current)
+        .tint(sbNavy).preferredColorScheme(.light)
+        .presentationDetents(request.dateKey != nil && request.timeKey != nil ? [.large] : [.medium,.large])
+    }
+    private func sbPickerValue(_ value:String) -> some View {
+        Text(value.isEmpty ? t("Nicht festgelegt","Not set") : value)
+            .font(.system(size:17,weight:.medium))
+            .foregroundColor(value.isEmpty ? .gray : sbNavy)
+            .frame(maxWidth:.infinity,alignment:.leading)
     }
     private func sbDatePair(_ time:String,_ label:String) -> some View {
         VStack(spacing:0) {
-            HStack(spacing:15) {
-                Image(systemName:"calendar").font(.system(size:19)).foregroundColor(sbNavy).frame(width:25)
-                VStack(alignment:.leading,spacing:4) {
-                    HStack(spacing:5) {
-                        if time != "end" { sbNativePicker("date", label:t("Datum","Date"), isDate:true) }
-                        sbNativePicker(time, label:label, isDate:false)
-                    }.font(.system(size:16,weight:.bold)).foregroundColor(sbNavy)
-                    Text(label).font(.system(size:13)).foregroundColor(.gray).fixedSize(horizontal:false,vertical:true)
-                }.frame(maxWidth:.infinity,alignment:.leading)
-                Image(systemName:"pencil").font(.system(size:18)).foregroundColor(sbNavy).frame(width:18)
-            }.padding(.horizontal,19).padding(.vertical,12).frame(maxWidth:.infinity,minHeight:65,alignment:.leading).background(Color.white)
+            Button { sbOpenPicker(label,dateKey:time == "end" ? nil : "date",timeKey:time) } label: {
+                HStack(spacing:15) {
+                    Image(systemName:"calendar").font(.system(size:19)).foregroundColor(sbNavy).frame(width:25)
+                    VStack(alignment:.leading,spacing:4) {
+                        sbPickerValue([state.values["date"] ?? "",state.values[time] ?? ""].filter{ !$0.isEmpty }.joined(separator:"   "))
+                        Text(label).font(.system(size:13)).foregroundColor(.gray).fixedSize(horizontal:false,vertical:true)
+                    }.frame(maxWidth:.infinity,alignment:.leading)
+                    Image(systemName:"pencil").font(.system(size:18)).foregroundColor(sbNavy).frame(width:18)
+                }.padding(.horizontal,19).padding(.vertical,12)
+                    .frame(maxWidth:.infinity,minHeight:65,alignment:.leading).contentShape(Rectangle())
+            }.buttonStyle(.plain).background(Color.white).accessibilityLabel(label)
             Rectangle().fill(sbLine).frame(height:1)
         }
     }
@@ -221,18 +269,24 @@ struct StaffNativeScreen: View {
                             }; Spacer(); Image(systemName:"chevron.down").font(.system(size:15,weight:.medium)).foregroundColor(.gray)
                         }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel(label)
+                } else if key == "date" || key.hasPrefix("start") || key.hasPrefix("end") {
+                    Button { sbOpenPicker(key == "date" ? t("Datum","Date") : label,dateKey:key == "date" ? key : nil,timeKey:key == "date" ? nil : key) } label: {
+                        HStack(spacing:15) {
+                            VStack(alignment:.leading,spacing:4) {
+                                sbPickerValue(binding.wrappedValue)
+                                Text(key == "date" ? t("Datum","Date") : label).font(.system(size:13)).foregroundColor(.gray).fixedSize(horizontal:false,vertical:true)
+                            }.frame(maxWidth:.infinity,alignment:.leading)
+                            Image(systemName:"pencil").font(.system(size:18)).foregroundColor(sbNavy).frame(width:18)
+                        }.frame(maxWidth:.infinity,minHeight:44,alignment:.leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityLabel(label)
+                    if key.hasSuffix("_2") && !binding.wrappedValue.isEmpty {
+                        Button(t("Leeren","Clear")) { binding.wrappedValue="" }.font(.caption).buttonStyle(.plain).foregroundColor(sbNavy)
+                    }
                 } else {
                     VStack(alignment:.leading,spacing:4) {
                         if kind == "multiline" {
                             TextField(t("Notiz hinzufügen","Add a note"),text:binding,axis:.vertical)
                                 .font(.system(size:16)).lineLimit(1...4).accessibilityLabel(label)
-                        }
-                        else if key == "date" || key.hasPrefix("start") || key.hasPrefix("end") {
-                            HStack(spacing:8) {
-                                sbNativePicker(key,label:label,isDate:key=="date")
-                                if key.hasSuffix("_2") { Button(t("Leeren","Clear")) { binding.wrappedValue="" }.buttonStyle(.plain) }
-                            }.frame(maxWidth:.infinity,alignment:.leading)
-                            if binding.wrappedValue.isEmpty { Text(t("Nicht festgelegt","Not set")).font(.caption) }
                         }
                         else { TextField(label,text:binding).font(.system(size:17,weight:.semibold)).keyboardType(keyboardType(kind)).autocorrectionDisabled().accessibilityLabel(label) }
                         StaffWordText(key == "date" ? t("Datum","Date") : label).font(.system(size:13)).foregroundColor(.gray).fixedSize(horizontal:false,vertical:true)
