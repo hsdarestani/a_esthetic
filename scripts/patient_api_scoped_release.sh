@@ -80,9 +80,11 @@ allowed = {
     ('platform_app', '0007_office_intake_review'),
     ('platform_app', '0008_goae_draft_revision'),
     ('platform_app', '0009_public_intake_forms'),
+    ('platform_app', '0010_merge_goae_request_native_office'),
     ('p0_app', '0010_package_booking_lifecycle'),
 }
 plan = e.migration_plan(e.loader.graph.leaf_nodes())
+e.loader.check_consistent_history(connection)
 assert all(not backwards and (m.app_label, m.name) in allowed for m, backwards in plan)
 PY
 then echo 'Unexpected migration plan; restoring source.'; exit 1; fi

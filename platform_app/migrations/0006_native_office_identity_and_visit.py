@@ -5,7 +5,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('platform_app', '0008_goae_draft_request'),
+        ('platform_app', '0007_goae_agreement_precision'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
     operations = [
