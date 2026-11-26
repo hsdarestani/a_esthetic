@@ -15,6 +15,7 @@ let choose = async()=>({cancelled:true});
 let confirm = async()=>({confirmed:false});
 let preview = async()=>{};
 const uploads=[];
+const contactActions=[], calendarCommands=[];
 let uploadFailures=0, patientRequests=0, loggedOut=0, sessionExpired=false;
 const checkpoints=new Map();
 const navigation={
@@ -39,8 +40,10 @@ globalThis.Capacitor={Plugins:{NativeStaff:{
   async takePhoto(){return choose();},
   async confirmUpload(options){return confirm(options);},
   async previewPDF(options){return preview(options);},
+  async openContact(options){contactActions.push(options);},
   async addListener(name,fn){assert.equal(name,'action');onAction=fn;return{remove(){onAction=null;}};},
 }}};
+let localBooking=false, omitCurrentPatient=false;
 let lastCalendar, lastFinancialUpdate, officeRevision='v1', sourceEditEnabled=false, accountMode='linked', invoiceRequests=0, invoiceMode='error';
 const officeSettings={company_name:'A+ Esthetic Demo',street:'Testweg 1',postal_code:'60313',city:'Frankfurt',
   email:'office@example.test',phone:'0691',tax_number:'',vat_id:'',bank_name:'',iban:'',bic:'',
@@ -61,7 +64,7 @@ globalThis.fetch=async(url,opts)=>{
     result={
       appointments:[{id:44,customer_id:23,customer_name:'Synced patient',service_name:'Consult',staff_name:'Demo clinician',staff_id:1,service_id:1,
         date:'2026-11-23',start:'10:00',end:'10:30',
-        start_at:'2026-11-23T10:00:00+01:00',end_at:'2026-11-23T10:30:00+01:00',source_managed:true,source_editable:sourceEditEnabled,status:'confirmed'}],
+        start_at:'2026-11-23T10:00:00+01:00',end_at:'2026-11-23T10:30:00+01:00',source_managed:!localBooking,source_editable:sourceEditEnabled,status:'confirmed',revision:'synthetic-revision'}],
       blocks:[
         {id:90,staff_id:1,editable:false,source_managed:true,date:'2026-11-23',start:'12:00',end:'13:00',
           kind:'block',text:'Synced SimplyBook note',start_at:'2026-11-23T12:00:00+01:00',end_at:'2026-11-23T13:00:00+01:00'},
@@ -70,12 +73,13 @@ globalThis.fetch=async(url,opts)=>{
       ],availability:[]
     };
   }
-  else if(path.endsWith('/patients/'))result={items:[{id:23,name:'Demo patient',email:'demo@example.test'}],has_more:new URL(url).searchParams.get('page')==='1'};
+  else if(path.endsWith('/patients/'))result={items:omitCurrentPatient?[]:[{id:23,name:'Demo patient',email:'demo@example.test'}],has_more:new URL(url).searchParams.get('page')==='1'};
   else if(path.endsWith('/patient/23/')){patientRequests++;result={patient:{id:23,name:'Demo patient',email:'demo@example.test',phone:'069000000'},appointments:[{id:46,public_id:'00000000-0000-4000-8000-000000000046',date:'2026-11-20',start:'11:30',service_name:'Consult',staff_name:'Demo clinician',status:'completed'}],records:[{id:'00000000-0000-4000-8000-000000000099',title:'Synthetic clinical note',date:'2026-11-20',note:'Synthetic record for UI testing',kind:'note',has_file:false}]};}
   else if(path.endsWith('/customers/'))result={items:[{id:25,name:'Demo patient',email:'demo@example.test',book_customer_id:accountMode==='unlinked'?null:23,address:{street:'Testweg 1',postal_code:'60313',city:'Frankfurt'}}]};
   else if(path.endsWith('/patient-account/23/')){if(accountMode==='fallback'||accountMode==='unlinked')return {ok:false,status:404};result={customer_id:accountMode==='null-verified'?null:25};}
   else if(path.endsWith('/customers/25/')){if(accountMode==='missing-detail')return {ok:false,status:404};result={customer:{id:25,name:'Demo patient',coins:240,credit_cents:1500},packages:[{id:1,name:'Synthetic package',remaining_sessions:2,expires_at:'2027-01-01',status:'active'}]};}
   else if(path.endsWith('/records/99/'))return new Response('%PDF-1.7 synthetic');
+  else if(/\/(appointment|appointment-reminder|block|availability)\/$/.test(path)&&opts.body){calendarCommands.push({path,body:JSON.parse(opts.body)});result={ok:true,id:44};}
   else if(path.endsWith('/record-upload/')){
     uploads.push(JSON.parse(opts.body));
     if(uploadFailures-->0)throw new TypeError('Synthetic connection loss after upload request');
@@ -157,6 +161,13 @@ await click('availability');
 assert.equal(current.layout,'simplybook-form');
 assert.equal(current.formType,'availability');
 assert.ok(!current.actions.some(a=>a.id==='save-availability'),'provider and date must be loaded before editing');
+await click('load-availability',{staff_id:'1',date:'23.11.2026'});
+assert.ok(current.actions.some(a=>a.id==='save-availability'));
+assert.ok(!current.fields.some(f=>['staff_id','date'].includes(f.id)),'loaded provider/date cannot silently change');
+await click('save-availability',{operation:'daily',closed:'no',start_1:'09:00',end_1:'18:00',start_2:'',end_2:''});
+assert.equal(calendarCommands.at(-1).body.staff_id,1);
+assert.equal(calendarCommands.at(-1).body.date,'2026-11-23');
+await click('availability');
 capture('06-working-hours');
 await click('load-availability',{staff_id:'2',date:'23.11.2026'});
 assert.match(current.message,/SimplyBook/);
@@ -166,6 +177,11 @@ await click('appointment:44');
 capture('05-appointment-details');
 assert.ok(current.rows.some(x=>x.detail==='demo@example.test'),'appointment shows verified patient email');
 assert.ok(current.actions.some(x=>x.id==='patient:23'),'appointment has direct patient record action');
+await click('appointment-call');assert.equal(contactActions.at(-1).phone,'+4969000000');
+await click('appointment-whatsapp');assert.equal(contactActions.at(-1).channel,'whatsapp');
+await click('appointment-reminder');assert.ok(current.actions.some(x=>x.id==='confirm-appointment-reminder'));
+await click('confirm-appointment-reminder');assert.equal(calendarCommands.at(-1).body.id,44);assert.equal(current.title,'Reminder created');
+await click('appointment:44');
 assert.match(current.message,/SimplyBook/);
 assert.ok(!current.actions.some(x=>x.id==='edit-appointment' || x.id==='cancel-appointment'));
 await click('calendar');
@@ -324,6 +340,13 @@ await click('edit-appointment');
 assert.deepEqual(current.fields.map(field=>field.id),['date','start'],
   'source appointment offers only the two supported editable time fields');
 await native.destroy();
+localBooking=true;omitCurrentPatient=true;
+native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'admin',name:'Demo Admin'},origin:'https://example.test',logout:()=>{}});
+await click('calendar');await click('appointment:44');await click('edit-appointment');
+assert.ok(current.fields.find(f=>f.id==='customer_id').options.some(o=>o.value==='23'));
+await click('save-edit',{date:'23.11.2026',start:'11:00',staff_id:'1',service_id:'1'});
+assert.equal(calendarCommands.at(-1).body.customer_id,23);
+await native.destroy();localBooking=false;omitCurrentPatient=false;
 native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'doctor',name:'Demo Doctor'},
   origin:'https://example.test',logout:()=>{}});
 assert.ok(!current.tabs.some(t=>t.id==='office'));
