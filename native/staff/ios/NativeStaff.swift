@@ -164,7 +164,10 @@ struct StaffNativeScreen: View {
         formatter.dateFormat = isDate ? "dd.MM.yyyy" : "HH:mm"
         formatter.isLenient = false
         return Binding(get: { formatter.date(from: state.values[key] ?? "") ?? Date() },
-                       set: { state.values[key] = formatter.string(from: $0) })
+                       set: { chosen in
+                           if isDate { state.values[key] = formatter.string(from: chosen) }
+                           else { var calendar=Calendar(identifier:.gregorian);calendar.timeZone=formatter.timeZone;let minute=calendar.component(.minute,from:chosen);let adjusted=calendar.date(byAdding:.minute,value:((minute+7)/15)*15-minute,to:chosen) ?? chosen;state.values[key]=formatter.string(from:adjusted) }
+                       })
     }
     private func sbNativePicker(_ key: String, label: String, isDate: Bool) -> some View {
         DatePicker(label, selection: sbPickerBinding(key, isDate: isDate), displayedComponents: isDate ? .date : .hourAndMinute)
@@ -178,7 +181,7 @@ struct StaffNativeScreen: View {
             HStack(spacing:15) {
                 Image(systemName:"calendar").font(.system(size:19)).foregroundColor(sbNavy).frame(width:25)
                 VStack(alignment:.leading,spacing:4) {
-                    HStack(spacing:5) { sbNativePicker("date", label:t("Datum","Date"), isDate:true); sbNativePicker(time, label:label, isDate:false) }.font(.system(size:16,weight:.bold)).foregroundColor(sbNavy)
+                    HStack(spacing:5) { if time != "end" { sbNativePicker("date", label:t("Datum","Date"), isDate:true) }; sbNativePicker(time, label:label, isDate:false) }.font(.system(size:16,weight:.bold)).foregroundColor(sbNavy)
                     Text(label).font(.system(size:13)).foregroundColor(.gray)
                 }; Spacer(minLength:0); Image(systemName:"pencil").foregroundColor(sbNavy)
             }.padding(.horizontal,19).padding(.vertical,13).frame(minHeight:68)
@@ -189,15 +192,13 @@ struct StaffNativeScreen: View {
         if type == "block" {
             sbDatePair("start",t("Startdatum und Uhrzeit","Start date and time"))
             sbDatePair("end",t("Enddatum und Uhrzeit","End date and time"))
-            HStack(spacing:15) { Image(systemName:"lock").frame(width:25); VStack(alignment:.leading,spacing:4) { Text(state.values["kind"] == "block" ? t("Zeitraum ist geblockt","Time is blocked") : t("Zeitraum ist nicht geblockt","Time is not blocked")).font(.system(size:16,weight:.bold)); Text(t("Zeitraum ist geblockt","Time is blocked")).font(.caption).foregroundColor(.gray) }; Spacer(); Toggle("",isOn:Binding(get:{state.values["kind"] == "block"},set:{state.values["kind"]=$0 ? "block" : "note"})).labelsHidden().tint(Color(red:0,green:0.60,blue:0.78)) }.foregroundColor(sbNavy).padding(.horizontal,19).frame(minHeight:68)
+            HStack(spacing:15) { Image(systemName:"lock").frame(width:25); VStack(alignment:.leading,spacing:4) { Text(state.values["kind"] == "block" ? t("Zeitraum ist geblockt","Time is blocked") : t("Zeitraum ist nicht geblockt","Time is not blocked")).font(.system(size:16,weight:.bold)); Text(t("Aus: nur Notiz, keine Sperre","Off: note only, no blocking")).font(.caption).foregroundColor(.gray) }; Spacer(); Toggle("",isOn:Binding(get:{state.values["kind"] == "block"},set:{state.values["kind"]=$0 ? "block" : "note"})).labelsHidden().tint(Color(red:0,green:0.60,blue:0.78)) }.foregroundColor(sbNavy).padding(.horizontal,19).frame(minHeight:68)
             sbSectionTitle(t("Anwendung der Notiz","Apply note to"))
-            HStack(spacing:0) { ForEach([t("Für alle anwenden","Apply to all"),t("Für Dienstleister anwenden","Apply to provider"),t("Für Dienstleistung anwenden","Apply to service")],id:\.self) { label in let selected = label == t("Für Dienstleister anwenden","Apply to provider"); Text(label).font(.system(size:12,weight:selected ? .bold : .regular)).foregroundColor(selected ? sbNavy : .gray).multilineTextAlignment(.center).frame(maxWidth:.infinity,minHeight:64).background(selected ? Color.white : sbSection.opacity(0.6)) } }
+            Text(t("Für den ausgewählten Behandler","For the selected provider")).font(.subheadline).foregroundColor(sbNavy).padding(16)
             ForEach(Array(items("fields").filter{["staff_id","text"].contains(text($0,"id"))}.enumerated()),id:\.offset) { _,field in sbField(field) }
-            HStack(spacing:15) { Text("N").font(.system(size:16,weight:.bold)).foregroundColor(.white).frame(width:34,height:34).background(Color(red:0.95,green:0.77,blue:0.36),in:Circle()); VStack(alignment:.leading,spacing:4) { Text("Note").font(.system(size:16,weight:.bold)); Text(t("Art der Notiz","Note type")).font(.caption).foregroundColor(.gray) }; Spacer() }.foregroundColor(sbNavy).padding(.horizontal,19).frame(minHeight:68)
         } else if type == "booking" {
             ForEach(Array(items("fields").filter{["service_id","staff_id","customer_id"].contains(text($0,"id"))}.enumerated()),id:\.offset) { _, field in sbField(field) }
             sbDatePair("start",t("Datum und Uhrzeit der Buchung","Booking date and time"))
-            HStack { Text(t("Einstellungen wiederkehrende Buchungen","Recurring booking settings")).font(.system(size:15)).foregroundColor(sbNavy); Spacer(); Toggle("",isOn:.constant(false)).labelsHidden().disabled(true) }.padding(.horizontal,19).frame(minHeight:66).background(sbSection).accessibilityHint(t("Nur in der Webverwaltung verfügbar","Available in web administration"))
             ForEach(Array(items("fields").filter{text($0,"id") == "notes"}.enumerated()),id:\.offset) { _,field in sbField(field) }
         } else { ForEach(Array(items("fields").enumerated()),id:\.offset) { _,field in sbField(field) } }
     }
