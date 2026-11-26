@@ -32,18 +32,24 @@ def template_options():
             for key, item in templates().items()}
 
 
-def draft_lines(plan):
+def draft_lines(plan, *, allow_incomplete=False):
     if not isinstance(plan, dict):
         raise ValueError('Ungültige Angaben für die Schnellrechnung.')
     key, version, scope = plan.get('treatment'), plan.get('version'), plan.get('quantity')
     template = templates().get(key) if isinstance(key, str) else None
-    if template is None or template['version'] != version:
-        raise ValueError('Keine gültige, freigegebene Vorlage vorhanden.')
+    if not isinstance(key, str) or not 1 <= len(key) <= 120:
+        raise ValueError('Bitte eine Behandlung auswählen.')
     if type(scope) is not int or not 1 <= scope <= 100:
         raise ValueError('Bitte den Behandlungsumfang prüfen.')
     desired = plan.get('desired_cents')
-    if type(desired) is not int or not 0 <= desired <= 100_000_000:
+    if desired is not None and (type(desired) is not int or not 0 <= desired <= 100_000_000):
         raise ValueError('Bitte einen gültigen Wunschbetrag eingeben.')
+
+    metadata = {'treatment': key, 'version': version, 'quantity': scope, 'desired_cents': desired}
+    if template is None and allow_incomplete and version in (None, ''):
+        return [], {**metadata, 'requires_approval': True}
+    if template is None or template['version'] != version:
+        raise ValueError('Keine gültige, freigegebene Vorlage vorhanden.')
 
     lines = []
     for rule in template['lines']:
@@ -55,6 +61,8 @@ def draft_lines(plan):
         quantity = rule['quantity'] * (scope if multiple else 1)
         row = {'quantity': quantity, 'goae_vat_rate': rule.get('vat_rate')}
         if rule.get('kind') == 'material':
+            if str(rule.get('unit_cost_eur')).replace(',', '.') in ('0', '0.0', '0.00'):
+                continue
             desc = rule.get('description')
             if not isinstance(desc, str) or not 4 <= len(desc.strip()) <= 220:
                 raise ValueError('GOÄ-Vorlage: Materialbezeichnung prüfen.')
@@ -72,4 +80,4 @@ def draft_lines(plan):
             row.update(kind='service', tariff_source='official_catalog',
                        goae_number=code, goae_factor=factor)
         lines.append(row)
-    return lines, {'treatment': key, 'version': version, 'quantity': scope, 'desired_cents': desired}
+    return lines, metadata

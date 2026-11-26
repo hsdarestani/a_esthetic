@@ -230,17 +230,19 @@ def _book_preview_details(data):
     return result
 
 
-def calculate_quick_draft(plan):
+def calculate_quick_draft(plan, *, allow_incomplete=False):
     from .goae_quick import draft_lines
 
-    rows, metadata = draft_lines(plan)
+    rows, metadata = draft_lines(plan, allow_incomplete=allow_incomplete)
+    if metadata.get('requires_approval'):
+        return [], metadata
     return calculate_goae_lines({'lines': rows}, approved_template_draft=True), metadata
 
 
 def _prepare_goae_invoice(*, user, actor, service_date, data, create_profile=False, allow_quick=False):
     quick_metadata = None
     if allow_quick and 'quick_invoice' in data:
-        items, quick_metadata = calculate_quick_draft(data['quick_invoice'])
+        items, quick_metadata = calculate_quick_draft(data['quick_invoice'], allow_incomplete=create_profile)
     else:
         items = calculate_goae_lines(data, user=user, service_date=service_date)
     target = data.get('target_total_cents')
@@ -361,7 +363,11 @@ def goae_draft_pdf_bytes(invoice, settings, *, simulation=False, items=None):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
         ("TOPPADDING", (0, 0), (-1, -1), 7),
     ]))
-    story.extend([table, Spacer(1, 14), KeepTogether([
+    incomplete = draft and (invoice.native_draft_data or {}).get('quick_invoice', {}).get('requires_approval')
+    if incomplete:
+        story.append(para("Unvollständiger Entwurf. Behandlungsvorlage und GOÄ-Positionen noch nicht freigegeben."))
+    else:
+        story.extend([table, Spacer(1, 14), KeepTogether([
         para(f"Ärztliche Leistungen: {money(sum(item.net_cents for item in positions if item.goae_number))}"),
         para(f"Material / Auslagen: {money(sum(item.net_cents for item in positions if not item.goae_number))}"),
         para(f"Netto: {money(invoice.subtotal_cents)}"),
