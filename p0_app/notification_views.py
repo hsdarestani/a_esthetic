@@ -168,7 +168,10 @@ def internal_booking_notification(request):
     recipients = []
     missing_customer = False
     if target == "customer":
-        customer = User.objects.filter(is_active=True, email__iexact=email).order_by("id").first() if email else None
+        matches = User.objects.filter(is_active=True, email__iexact=email).order_by("id") if email else User.objects.none()
+        if event == "staff_manual_reminder" and matches.count() != 1:
+            return JsonResponse({"ok": False, "error": "customer_identity_missing_or_ambiguous"}, status=409)
+        customer = matches.first()
         if customer:
             recipients = [customer]
         else:
