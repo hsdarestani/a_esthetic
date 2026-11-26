@@ -1,4 +1,4 @@
-name: Patient API release failure category (read-only)
+name: Verify clinic-approved GOÄ template coverage in production
 on:
   push:
     branches: [remediation/goae-draft-session-03]
@@ -18,46 +18,8 @@ jobs:
           command_timeout: 2m
           script: |
             set -euo pipefail
-            log=$(find /opt/a-esthetic-mobile/remediation-rollbacks -maxdepth 2 -type f -name validation.log -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
-            test -n "$log" && test -f "$log"
-            # Only fixed, allowlisted categories; no log lines or patient records.
-            if grep -q 'SystemCheckError' "$log"; then echo 'FAILURE_CATEGORY=system_check'; fi
-            if grep -q 'PermissionError' "$log"; then echo 'FAILURE_CATEGORY=permission'; fi
-            if grep -q 'ImproperlyConfigured' "$log"; then echo 'FAILURE_CATEGORY=settings'; fi
-            if grep -q 'OperationalError' "$log"; then echo 'FAILURE_CATEGORY=db_operational'; fi
-            if grep -q 'ProgrammingError' "$log"; then echo 'FAILURE_CATEGORY=db_programming'; fi
-            if grep -q 'IntegrityError' "$log"; then echo 'FAILURE_CATEGORY=db_integrity'; fi
-            if grep -q 'duplicate column\|already exists' "$log"; then echo 'FAILURE_CATEGORY=duplicate_schema'; fi
-            if grep -q 'does not exist\|no such column\|no such table' "$log"; then echo 'FAILURE_CATEGORY=missing_schema'; fi
-            if grep -q 'ModuleNotFoundError\|ImportError' "$log"; then echo 'FAILURE_CATEGORY=dependency'; fi
-            if grep -q 'database is locked' "$log"; then echo 'FAILURE_CATEGORY=db_locked'; fi
-            if grep -q 'InconsistentMigrationHistory\|NodeNotFoundError' "$log"; then echo 'FAILURE_CATEGORY=migration_graph'; fi
-            if grep -q 'UnicodeDecodeError\|SyntaxError' "$log"; then echo 'FAILURE_CATEGORY=source_parse'; fi
-            if grep -q 'staticfiles\|STATIC_ROOT' "$log"; then echo 'FAILURE_CATEGORY=static_check'; fi
-            if grep -q 'Applying platform_app.0008_goae_draft_request' "$log"; then echo 'DRAFT_MIGRATION_ATTEMPTED=yes'; fi
-            if grep -q 'Applying p0_app.0010_package_booking_lifecycle' "$log"; then echo 'PACKAGE_MIGRATION_ATTEMPTED=yes'; fi
-            if grep -q 'Applying platform_app.0006_native_office_identity_and_visit' "$log"; then echo 'NATIVE_IDENTITY_MIGRATION_ATTEMPTED=yes'; fi
-            if grep -q 'Applying platform_app.0007_office_intake_review' "$log"; then echo 'NATIVE_REVIEW_MIGRATION_ATTEMPTED=yes'; fi
-            if grep -q 'Applying platform_app.0008_goae_draft_revision' "$log"; then echo 'NATIVE_REVISION_MIGRATION_ATTEMPTED=yes'; fi
-            if grep -q 'InconsistentMigrationHistory' "$log"; then echo 'HISTORY_INCONSISTENT=yes'; fi
-            if grep -q 'NodeNotFoundError' "$log"; then echo 'MIGRATION_NODE_MISSING=yes'; fi
             cd /opt/a-esthetic-mobile
             set -a
             source mobile.env
             set +a
-            venv/bin/python manage.py shell <<'PY'
-            from django.db import connection
-            from django.db.migrations.recorder import MigrationRecorder
-            applied = MigrationRecorder(connection).applied_migrations()
-            for app, name in (
-                ('platform_app', '0007_goae_agreement_precision'),
-                ('platform_app', '0006_native_office_identity_and_visit'),
-                ('platform_app', '0007_office_intake_review'),
-                ('platform_app', '0008_goae_draft_request'),
-                ('platform_app', '0008_goae_draft_revision'),
-                ('platform_app', '0009_public_intake_forms'),
-                ('p0_app', '0010_package_booking_lifecycle'),
-            ):
-                print(f'MIGRATION_APPLIED {app}.{name}={int((app,name) in applied)}')
-            PY
-            systemctl is-active --quiet a-esthetic-mobile.service && echo 'SERVICE_ACTIVE=yes'
+            venv/bin/python manage.py shell -c 'from platform_app.goae_quick import template_options; expected = {"aesthetische-erstberatung", "botox-neupatient", "botox-bestandspatient", "hyaluron", "laser-haarentfernung", "rf-microneedling", "infusionstherapie", "injektionslipolyse", "kontrolltermin"}; templates = template_options(); print("GOAE_APPROVED_TEMPLATE_COUNT=" + str(len(templates))); print("GOAE_PUBLIC_APPROVAL_MISSING=" + ",".join(sorted(expected - templates.keys())))'
