@@ -22,6 +22,8 @@ jobs:
       - name: Check all native URLs, app assets, syntax and version rules
         run: |
           set -euo pipefail
+          npm install --no-audit --no-fund
+          test -s www/mobile/native-staff-bridge.js
           python3 scripts/check_app_production_domains.py
           python3 scripts/store_positioning_check.py
           bash -n scripts/build-android.sh scripts/build-ios.sh
