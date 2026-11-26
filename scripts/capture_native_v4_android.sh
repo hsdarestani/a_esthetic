@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
-adb install -r "${APLUS_QA_APK:-artifacts/APlus-Esthetic-V4-1.0.57-B63.apk}"
+apk="${APLUS_QA_APK:-}"
+if [[ -z "$apk" ]]; then
+  mapfile -t packages < <(find artifacts -maxdepth 1 -type f -name 'APlus-Esthetic-V4-*-B*.apk' | sort)
+  if [[ ${#packages[@]} -ne 1 ]]; then echo "Expected exactly one versioned QA APK; found ${#packages[@]}" >&2; exit 1; fi
+  apk="${packages[0]}"
+fi
+test -s "$apk"
+adb install -r "$apk"
 target=${APLUS_QA_OUTPUT:-screenshots/android}
 mkdir -p "$target"
 fixtures=(qa-fixtures/*.json)
