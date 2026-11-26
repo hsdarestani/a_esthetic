@@ -7,8 +7,10 @@
   const esc = (value = '') => String(value)
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
-  const pad = value => String(value).padStart(2, '0');
-  const dayKey = date => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const clinicDateKey = date => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).map(x => [x.type,x.value]));
+    return `${p.year}-${p.month}-${p.day}`;
+  };
 
   async function api(path, options = {}) {
     const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -85,25 +87,25 @@
   });
 
   function formatDay(key) {
-    const date = new Date(`${key}T12:00:00`);
+    const date = new Date(`${key}T12:00:00Z`);
     return {
-      weekday: new Intl.DateTimeFormat('de-DE', { weekday: 'long' }).format(date),
-      short: new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(date).replace('.', ''),
-      day: new Intl.DateTimeFormat('de-DE', { day: '2-digit' }).format(date),
-      month: new Intl.DateTimeFormat('de-DE', { month: 'short' }).format(date).replace('.', ''),
-      full: new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }).format(date),
+      weekday: new Intl.DateTimeFormat('de-DE', { timeZone:'UTC', weekday: 'long' }).format(date),
+      short: new Intl.DateTimeFormat('de-DE', { timeZone:'UTC', weekday: 'short' }).format(date).replace('.', ''),
+      day: new Intl.DateTimeFormat('de-DE', { timeZone:'UTC', day: '2-digit' }).format(date),
+      month: new Intl.DateTimeFormat('de-DE', { timeZone:'UTC', month: 'short' }).format(date).replace('.', ''),
+      full: new Intl.DateTimeFormat('de-DE', { timeZone:'UTC', weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }).format(date),
     };
   }
 
   function timeLabel(value) {
-    return new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+    return new Intl.DateTimeFormat('de-DE', { timeZone:'Europe/Berlin', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
   }
 
   function appointmentRows(items = [], manageable = null) {
     if (!items.length) return '<p class="book-empty">Noch keine Termine.</p>';
     const allowed = new Map((manageable?.appointments || []).map(item => [String(item.id), item]));
     const cutoff = Number(manageable?.change_deadline_hours || 24);
-    const dateFormat = new Intl.DateTimeFormat('de-DE', { day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit' });
+    const dateFormat = new Intl.DateTimeFormat('de-DE', { timeZone:'Europe/Berlin',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit' });
     return items.map(item => {
       const statusCode = String(item.status_code || '').toLowerCase();
       const statusText = String(item.status || 'Unbekannt');
@@ -152,12 +154,11 @@
     const id = ++state.requestId;
     const service = state.service.id, staff = state.staff.id;
     root.innerHTML = '<div class="book-slot-empty">Freie Termine werden geladen …</div>';
-    const today = new Date();
-    today.setHours(12, 0, 0, 0);
+    const today = new Date(clinicDateKey(new Date())+'T12:00:00Z');
     const days = Array.from({ length: 91 }, (_, offset) => {
       const d = new Date(today);
-      d.setDate(today.getDate() + offset);
-      return dayKey(d);
+      d.setUTCDate(today.getUTCDate() + offset);
+      return d.toISOString().slice(0,10);
     });
     const results = [];
     let cursor = 0;

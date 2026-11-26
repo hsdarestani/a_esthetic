@@ -7,7 +7,7 @@
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
   const fmt = value => new Intl.DateTimeFormat('de-DE', {
-    weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    timeZone: 'Europe/Berlin', weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
   }).format(new Date(value));
 
   async function api(path, options = {}) {
@@ -90,10 +90,11 @@
 
   function showEditor(host, appointment, staff, section) {
     const eligible = staff.filter(person => (person.service_ids || []).map(Number).includes(Number(appointment.service_id)));
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const min = today.toISOString().slice(0, 10);
-    const maxDate = new Date(today.getTime() + 56 * 86400000).toISOString().slice(0, 10);
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
+    const min = `${parts.year}-${parts.month}-${parts.day}`;
+    const today = new Date(min+'T12:00:00Z');
+    today.setUTCDate(today.getUTCDate()+56);
+    const maxDate = today.toISOString().slice(0,10);
     host.innerHTML = `<div class="separator"></div><form class="form" data-book-reschedule-form>
       <label>Behandler/in<select name="staff_id" required>${eligible.map(person => `<option value="${person.id}" ${Number(person.id) === Number(appointment.staff_id) ? 'selected' : ''}>${esc(person.name)}</option>`).join('')}</select></label>
       <label>Datum<input name="day" type="date" min="${min}" max="${maxDate}" required></label>
@@ -115,7 +116,7 @@
       try {
         const result = await api(`/slots/?service_id=${encodeURIComponent(appointment.service_id)}&staff_id=${encodeURIComponent(provider.value)}&day=${encodeURIComponent(day.value)}&exclude_appointment_id=${encodeURIComponent(appointment.id)}`);
         slot.innerHTML = result.slots.length
-          ? '<option value="">Zeit wählen</option>' + result.slots.map(value => `<option value="${esc(value)}">${new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' }).format(new Date(value))}</option>`).join('')
+          ? '<option value="">Zeit wählen</option>' + result.slots.map(value => `<option value="${esc(value)}">${new Intl.DateTimeFormat('de-DE', { timeZone:'Europe/Berlin', hour: '2-digit', minute: '2-digit' }).format(new Date(value))}</option>`).join('')
           : '<option value="">Keine freie Zeit</option>';
         slot.disabled = !result.slots.length;
       } catch (error) {
