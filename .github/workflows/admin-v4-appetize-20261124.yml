@@ -1,8 +1,8 @@
 name: A+ Esthetic B66 native simulator and Android QA
 on:
-  push:
-    branches: ['remediation/native-build-66']
-  workflow_dispatch:
+  pull_request:
+    branches: ['remediation/native-staff-contract-session-03']
+    paths: ['.github/workflows/admin-v4-appetize-20261124.yml', 'native/**', 'www/**', 'p0_app/**', 'platform_app/**']
 concurrency:
   group: admin-v4-qa-${{ github.ref }}
   cancel-in-progress: true
@@ -10,6 +10,7 @@ permissions:
   contents: read
 jobs:
   controller:
+    if: github.head_ref == 'remediation/native-build-66'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +29,7 @@ jobs:
           name: native-v4-synthetic-fixtures
           path: qa-fixtures
   backend:
+    if: github.head_ref == 'remediation/native-build-66'
     runs-on: ubuntu-latest
     env:
       DJANGO_DEBUG: '1'
