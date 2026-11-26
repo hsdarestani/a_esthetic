@@ -1,4 +1,4 @@
-name: Guarded patient booking UX static release
+name: Guarded patient empty appointment card release
 on:
   push:
     branches: [release/patient-booking-ux-20261126]
@@ -15,21 +15,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Package only the four tested web assets
+      - name: Package only the two changed web assets
         run: |
           set -euo pipefail
           mkdir -p release/files
-          baseline=97bfd86b3273ef7edeba42f2d32ca1b6a7a69085
-          target=7077018477ed0c8f491ad84e20ebb5ecd9a72ca2
-          for f in booking-book-flow.css booking-book-flow.js core-app.js index.html; do
+          baseline=7077018477ed0c8f491ad84e20ebb5ecd9a72ca2
+          target=3e307144da8dc167528e78b80058e5469630f6d1
+          for f in booking-book-flow.css index.html; do
             git show "$target:www/$f" > "release/files/$f"
             old=$(git show "$baseline:www/$f" | sha256sum | cut -d' ' -f1)
             new=$(sha256sum "release/files/$f" | cut -d' ' -f1)
             printf '%s %s %s\n' "$old" "$new" "$f" >> release/manifest
           done
-          node --check release/files/core-app.js
-          node --check release/files/booking-book-flow.js
-          test "$(grep -o '20261126-patient-booking-v2' release/files/index.html | wc -l)" -eq 3
+          test "$(grep -o '20261126-empty-appointment-v3' release/files/index.html | wc -l)" -eq 1
           tar -czf patient-ux-${GITHUB_RUN_ID}.tar.gz -C release .
       - uses: appleboy/scp-action@v0.1.7
         with:
@@ -39,7 +37,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           source: patient-ux-${{ github.run_id }}.tar.gz
           target: /tmp
-      - name: Verify baseline, replace four files, verify public bytes or roll back
+      - name: Verify baseline, replace two files, verify public bytes or roll back
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -76,7 +74,7 @@ jobs:
             }
             trap restore EXIT
             tar -xzf "$archive" -C "$work"
-            test "$(wc -l < "$work/manifest")" -eq 4
+            test "$(wc -l < "$work/manifest")" -eq 2
             hash() { sha256sum "$1" | cut -d' ' -f1; }
             while read -r old new f; do
               case "$f" in index.html|core-app.js|booking-book-flow.js|booking-book-flow.css) ;; *) exit 1;; esac
@@ -108,5 +106,5 @@ jobs:
             test "$(hash "$work/public")" = "$(hash "$work/files/index.html")"
             curl -fsS --max-time 20 https://app.a-esthetic.de/api/mobile/status/ -o /dev/null
             changed=0
-            echo 'PATIENT_BOOKING_UX_DEPLOYED=7077018477ed0c8f491ad84e20ebb5ecd9a72ca2'
-            echo 'Four static files only; backend, database and configuration unchanged.'
+            echo 'PATIENT_BOOKING_UX_DEPLOYED=3e307144da8dc167528e78b80058e5469630f6d1'
+            echo 'Two static files only; backend, database and configuration unchanged.'
