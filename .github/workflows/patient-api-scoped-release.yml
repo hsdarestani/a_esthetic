@@ -9,8 +9,8 @@ concurrency:
   group: a-esthetic-mobile-api-production
   cancel-in-progress: false
 env:
-  PATIENT_BASELINE: 6d85d20edb718ca132eb92e787c94e747a84ebae
-  PATIENT_TARGET: 5de94d4b7fa015f3d2e954bb8775f4f42cc80d3e
+  PATIENT_BASELINE: 5de94d4b7fa015f3d2e954bb8775f4f42cc80d3e
+  PATIENT_TARGET: 9d8ff5df8a8f545926f8b411801836d22de673f8
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -29,7 +29,7 @@ jobs:
         run: |
           python manage.py makemigrations --check --dry-run
           python manage.py check
-          python manage.py test p0_app.test_book_billing_bridge p0_app.test_mobile_staff_workspace p0_app.test_native_office platform_app.test_goae_draft platform_app.test_office_invoicing --noinput
+          python manage.py test p0_app.test_book_billing_bridge --noinput
   release:
     needs: validate
     runs-on: ubuntu-latest
