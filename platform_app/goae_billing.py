@@ -16,7 +16,7 @@ from django.db import transaction
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
 from xml.sax.saxutils import escape
 
 from .models import Invoice, InvoiceItem, UserProfile, SecureDocument
@@ -208,6 +208,55 @@ def _check_draft_request(invoice, *, user, actor, digest):
     return invoice
 
 
+def _book_preview_details(data):
+    """Optional draft-only presentation values shared by export and save."""
+    values = data.get('book_preview')
+    if values is None:
+        return {}
+    if not isinstance(values, dict):
+        raise ValueError('Ungültige Vorschauangaben.')
+    result = {}
+    for key in ('invoice_date', 'due_date'):
+        value = values.get(key)
+        if value:
+            result[key] = date.fromisoformat(str(value)).isoformat()
+    diagnosis = values.get('diagnosis', '')
+    if not isinstance(diagnosis, str) or len(diagnosis) > 500:
+        raise ValueError('Ungültiger Behandlungsanlass.')
+    if diagnosis.strip():
+        result['diagnosis'] = diagnosis.strip()
+    return result
+
+
+def _prepare_goae_invoice(*, user, actor, service_date, data, create_profile=False):
+    items = calculate_goae_lines(data, user=user, service_date=service_date)
+    target = data.get('target_total_cents')
+    total = sum(row['gross_cents'] for row in items)
+    if target is not None:
+        target = to_decimal(target)
+        if target != target.to_integral_value() or target != total:
+            raise ValueError('Wunschbetrag und serverseitig berechnete Rechnung stimmen nicht centgenau überein.')
+    preview = _book_preview_details(data)
+    profile = UserProfile.objects.get_or_create(user=user)[0] if create_profile else user.profile
+    fields = dict(user=user, billing_method='goae', service_date=service_date,
+                  customer_name=user.get_full_name() or user.email, customer_email=user.email,
+                  customer_street=profile.street, customer_postal_code=profile.postal_code,
+                  customer_city=profile.city, subtotal_cents=sum(row['net_cents'] for row in items),
+                  tax_cents=sum(row['tax_cents'] for row in items), total_cents=total, created_by=actor)
+    if preview:
+        fields['native_draft_data'] = {'book_preview': preview}
+    return fields, items
+
+
+def goae_preview_pdf_bytes(*, user, actor, service_date, data, settings):
+    """Render the exact validated draft without writing any invoice or patient row."""
+    if data.get('target_total_cents') is None:
+        raise ValueError('Bestätigter Gesamtbetrag fehlt.')
+    fields, items = _prepare_goae_invoice(user=user, actor=actor, service_date=service_date, data=data)
+    invoice = Invoice(**fields)
+    return goae_draft_pdf_bytes(invoice, settings, items=[InvoiceItem(**item) for item in items])
+
+
 def create_goae_draft(*, user, actor, service_date, data):
     request_id = data.get("draft_request_id")
     digest = ""
@@ -222,24 +271,8 @@ def create_goae_draft(*, user, actor, service_date, data):
         existing = Invoice.objects.filter(draft_request_id=request_id).first()
         if existing:
             return _check_draft_request(existing, user=user, actor=actor, digest=digest)
-    items = calculate_goae_lines(data, user=user, service_date=service_date)
-    target = data.get("target_total_cents")
-    if target is not None:
-        target = to_decimal(target)
-        if target != target.to_integral_value() or target != sum(item["gross_cents"] for item in items):
-            raise ValueError("Wunschbetrag und serverseitig berechnete Rechnung stimmen nicht centgenau überein.")
-    profile, _ = UserProfile.objects.get_or_create(user=user)
-    fields = dict(
-        user=user, billing_method="goae", service_date=service_date,
-        customer_name=user.get_full_name() or user.email,
-        customer_email=user.email,
-        customer_street=profile.street, customer_postal_code=profile.postal_code,
-        customer_city=profile.city,
-        subtotal_cents=sum(row["net_cents"] for row in items),
-        tax_cents=sum(row["tax_cents"] for row in items),
-        total_cents=sum(row["gross_cents"] for row in items),
-        created_by=actor, draft_request_digest=digest,
-    )
+    fields, items = _prepare_goae_invoice(user=user, actor=actor, service_date=service_date, data=data, create_profile=True)
+    fields['draft_request_digest'] = digest
     with transaction.atomic():
         if request_id is None:
             invoice = Invoice.objects.create(**fields)
@@ -251,40 +284,60 @@ def create_goae_draft(*, user, actor, service_date, data):
     return invoice
 
 
-def goae_draft_pdf_bytes(invoice, settings, *, simulation=False):
+def goae_draft_pdf_bytes(invoice, settings, *, simulation=False, items=None):
     """Paginated non-final draft; clinical tariff and issuer review still required."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=44, rightMargin=44,
                             topMargin=44, bottomMargin=54)
     styles = getSampleStyleSheet()
+    styles['BodyText'].fontSize = 9
+    styles['BodyText'].leading = 12
+    draft = invoice.status == 'draft'
+    preview = (invoice.native_draft_data or {}).get('book_preview', {}) if draft else {}
+    if not isinstance(preview, dict):
+        preview = {}
     def para(value, style="BodyText"):
         return Paragraph(escape(str(value or "")), styles[style])
 
     story = [
-        para("Privatpraxis Ariane Regaei", "Title"),
-        para("Stiftstrasse 14 · 60313 Frankfurt am Main"),
-        Spacer(1, 18),
-        para("TESTRECHNUNG – NICHT ZAHLBAR" if simulation else "Rechnung nach GOÄ – ENTWURF", "Heading2"),
-        para(invoice.number if simulation else ""),
+        para(settings.company_name, "Title"),
+        para(f"{settings.street} · {settings.postal_code} {settings.city}"),
+        para(' · '.join(filter(None, [settings.email, settings.phone]))),
+        para(' · '.join(filter(None, ['Steuernummer: ' + settings.tax_number if settings.tax_number else '', 'USt-IdNr.: ' + settings.vat_id if settings.vat_id else '']))),
+        Spacer(1, 10),
+        para("TESTRECHNUNG – NICHT ZAHLBAR" if simulation else ("Rechnung nach GOÄ – ENTWURF" if draft else "Rechnung nach GOÄ"), "Heading2"),
+        para(f"Rechnungsnummer: {invoice.number}" if invoice.number else ""),
         para(invoice.customer_name),
         para(invoice.customer_street),
         para(f"{invoice.customer_postal_code} {invoice.customer_city}".strip()),
-        Spacer(1, 12),
+        Spacer(1, 8),
         para(f"Leistungsdatum: {invoice.service_date:%d.%m.%Y}"),
-        Spacer(1, 12),
     ]
-    money = lambda amount: f"{Decimal(amount)/100:.2f} EUR"
+    if invoice.issued_on and not draft:
+        story.append(para(f"Rechnungsdatum: {invoice.issued_on:%d.%m.%Y}"))
+    for key, label in [('invoice_date', 'Rechnungsdatum (Vorschau)'), ('due_date', 'Fälligkeit (Vorschau)')]:
+        if preview.get(key):
+            try:
+                story.append(para(f"{label}: {date.fromisoformat(preview[key]):%d.%m.%Y}"))
+            except (ValueError, TypeError):
+                pass
+    if preview.get('diagnosis'):
+        story.append(para('Behandlungsanlass: ' + str(preview['diagnosis'])))
+    story.append(Spacer(1, 9))
+    money = lambda amount: f"{Decimal(amount)/100:.2f}".replace('.', ',') + ' EUR'
+    number = lambda value: format(Decimal(str(value)).normalize(), 'f').replace('.', ',')
     rows = [[para(x) for x in ("GOÄ Nr.", "Leistung", "Anzahl", "Faktor", "Netto / USt")]]
-    for item in invoice.items.all():
+    positions = list(invoice.items.all() if items is None else items)
+    for item in positions:
         desc = para(item.description)
         if item.goae_justification:
             desc = [desc, para("Begründung: " + item.goae_justification)]
         if item.goae_agreement_document_id:
             desc = (desc if isinstance(desc, list) else [desc]) + [para("Honorarvereinbarung nach § 2 GOÄ dokumentiert")]
-        rows.append([para(item.goae_number or "Auslage"), desc, para(item.quantity),
-                     para(item.goae_factor or "-"),
+        rows.append([para(item.goae_number or "Auslage"), desc, para(number(item.quantity)),
+                     para(number(item.goae_factor) if item.goae_factor is not None else "–"),
                      [para(money(item.net_cents)), para(f"USt {item.vat_rate}%: {money(item.tax_cents)}")]])
-    table = Table(rows, colWidths=[62, 180, 46, 44, 171], repeatRows=1)
+    table = Table(rows, colWidths=[62, 180, 46, 44, 171], repeatRows=1, splitInRow=1)
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaece6")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -293,18 +346,30 @@ def goae_draft_pdf_bytes(invoice, settings, *, simulation=False):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
         ("TOPPADDING", (0, 0), (-1, -1), 7),
     ]))
-    story.extend([table, Spacer(1, 14),
+    story.extend([table, Spacer(1, 14), KeepTogether([
+        para(f"Ärztliche Leistungen: {money(sum(item.net_cents for item in positions if item.goae_number))}"),
+        para(f"Material / Auslagen: {money(sum(item.net_cents for item in positions if not item.goae_number))}"),
         para(f"Netto: {money(invoice.subtotal_cents)}"),
         para(f"Umsatzsteuer: {money(invoice.tax_cents)}"),
         para(f"Gesamt: {money(invoice.total_cents)}", "Heading2"),
-        para("Nicht zur Zahlung verwenden. Ärztliche und steuerliche Freigabe ausstehend."),
-    ])
+    ] + ([para("Nicht zur Zahlung verwenden. Ärztliche und steuerliche Freigabe ausstehend.")] if draft or simulation else []))])
 
     def footer(pdf, document):
         pdf.saveState()
+        if draft:
+            pdf.saveState()
+            pdf.setFont('Helvetica-Bold', 64)
+            pdf.setFillColor(colors.HexColor('#efefef'))
+            pdf.translate(A4[0] / 2, A4[1] / 2)
+            pdf.rotate(35)
+            pdf.drawCentredString(0, 0, 'ENTWURF')
+            pdf.restoreState()
         pdf.setFont("Helvetica-Bold", 10)
         pdf.setFillColor(colors.HexColor("#7f3c36"))
-        pdf.drawString(44, 32, "ENTWURF – NICHT ZUR ZAHLUNG")
+        if draft:
+            pdf.drawString(44, 32, "ENTWURF – NICHT ZUR ZAHLUNG")
+        elif simulation:
+            pdf.drawString(44, 32, "TESTRECHNUNG – NICHT ZAHLBAR")
         pdf.drawRightString(A4[0] - 44, 32, f"Seite {document.page}")
         pdf.restoreState()
 

@@ -93,7 +93,7 @@ class BookingBillingBridgeTests(TestCase):
         with patch('reportlab.rl_config.pageCompression', 0):
             pdf = self.client.get(self.base + f'pdf/{invoice.pk}/')
         self.assertEqual(pdf.status_code, 200)
-        self.assertIn(b'(23.00 EUR)', pdf.content)
+        self.assertIn(b'(23,00 EUR)', pdf.content)
         self.assertIn(b'ENTWURF', pdf.content)
 
     @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
@@ -121,3 +121,52 @@ class BookingBillingBridgeTests(TestCase):
     def test_bridge_does_not_proxy_arbitrary_admin_paths(self, verified):
         response = self.client.get(self.base + "users/")
         self.assertEqual(response.status_code, 404)
+
+    @patch('p0_app.book_billing_bridge._internal_authorized', return_value=True)
+    def test_pdf_export_standalone_matching_document_and_pagination(self, verified):
+        import os
+        import re
+        from pathlib import Path
+        from platform_app.models import InvoiceSettings
+        from platform_app.goae_billing import goae_draft_pdf_bytes
+
+        InvoiceSettings.objects.create(pk=1, company_name='Synthetische Privatpraxis', street='Teststraße 42', tax_number='TEST-123')
+        line = {'goae_number': '1', 'goae_description': 'Ärztliche Beratung', 'goae_base_eur': '10,00',
+                'goae_factor': '2,30', 'goae_vat_rate': '19', 'clinical_confirmed': True}
+        payload = {'billing_method': 'goae', 'customer_id': self.customer.pk, 'service_date': '2026-11-26',
+                   'lines': [line], 'target_total_cents': 2737,
+                   'book_preview': {'invoice_date': '2026-11-26', 'due_date': '2026-12-10', 'diagnosis': 'Synthetischer Anlass'}}
+        with patch('reportlab.rl_config.pageCompression', 0):
+            preview = self.client.post(self.base + 'pdf-preview/', payload, content_type='application/json')
+            self.assertEqual(preview.status_code, 200, preview.content[:200])
+            self.assertEqual(preview['Content-Type'], 'application/pdf')
+            self.assertIn('attachment', preview['Content-Disposition'])
+            self.assertFalse(Invoice.objects.exists())
+            self.assertEqual(len(re.findall(rb'/Type /Page\b', preview.content)), 1)
+            self.assertIn(b'ENTWURF', preview.content)
+            self.assertIn(b'27,37 EUR', preview.content)
+            self.assertEqual(self.client.post(self.base + 'pdf-preview/', {**payload, 'target_total_cents': 1}, content_type='application/json').status_code, 400)
+            saved = self.client.post(self.base + 'draft/', {**payload, 'draft_request_id': str(uuid4())}, content_type='application/json')
+            self.assertEqual(saved.status_code, 201, saved.content)
+            invoice = Invoice.objects.get()
+            self.assertEqual(invoice.total_cents, 2737)
+            self.assertEqual(invoice.native_draft_data['book_preview'], payload['book_preview'])
+            stored = self.client.get(self.base + f'pdf/{invoice.pk}/')
+            self.assertEqual(stored.status_code, 200)
+            self.assertIn(b'27,37 EUR', stored.content)
+            long_pdf = self.client.post(self.base + 'pdf-preview/', {**payload, 'lines': [line] * 35, 'target_total_cents': 2737 * 35}, content_type='application/json')
+            self.assertEqual(long_pdf.status_code, 200, long_pdf.content[:200])
+            self.assertGreater(len(re.findall(rb'/Type /Page\b', long_pdf.content)), 1)
+            self.assertIn(b'957,95 EUR', long_pdf.content)
+            invoice.status = 'issued'
+            invoice.number = 'TEST-001'
+            issued = goae_draft_pdf_bytes(invoice, InvoiceSettings.objects.get(pk=1))
+            self.assertNotIn(b'ENTWURF', issued)
+            self.assertIn(b'TEST-001', issued)
+        output = os.environ.get('GOAE_PDF_QA_DIR')
+        if output:
+            folder = Path(output)
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / 'preview.pdf').write_bytes(preview.content)
+            (folder / 'saved.pdf').write_bytes(stored.content)
+            (folder / 'long.pdf').write_bytes(long_pdf.content)

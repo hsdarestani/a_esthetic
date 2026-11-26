@@ -24,7 +24,7 @@ from .billing_admin_views import (
 from platform_app.models import Invoice
 from platform_app.office_views import _invoice_pdf_bytes
 from platform_app.models import InvoiceSettings
-from platform_app.goae_billing import calculate_goae_lines
+from platform_app.goae_billing import calculate_goae_lines, goae_preview_pdf_bytes
 from platform_app.goae_tariff import catalog_payload, TREATMENTS
 
 
@@ -121,6 +121,29 @@ def book_billing(request, operation, item_id=None):
         if not isinstance(data, dict) or data.get("billing_method") != "goae" or not data.get("draft_request_id"):
             return JsonResponse({"ok": False, "error": "draft_request_required"}, status=400)
         return billing_invoices(request)
+    if operation == 'pdf-preview' and request.method == 'POST':
+        try:
+            data = json.loads(request.body) if len(request.body) <= 150000 else None
+            if not isinstance(data, dict):
+                raise ValueError('Ungültige Vorschauangaben.')
+            raw_id = str(data.get('customer_id', ''))
+            if not raw_id.isdigit() or len(raw_id) > 18:
+                raise ValueError('Ungültige Patienten-ID.')
+            customer = User.objects.filter(pk=int(raw_id), is_active=True, is_superuser=False,
+                                           profile__role='customer').select_related('profile').first()
+            if customer is None:
+                raise ValueError('Patient nicht gefunden.')
+            service_date = date.fromisoformat(str(data.get('service_date', '')))
+            settings = InvoiceSettings.objects.filter(pk=1).first() or InvoiceSettings()
+            pdf = goae_preview_pdf_bytes(user=customer, actor=request._book_internal_billing_actor,
+                                         service_date=service_date, data=data, settings=settings)
+        except (ValueError, TypeError, UnicodeError) as exc:
+            return JsonResponse({'ok': False, 'message': str(exc)[:200]}, status=400)
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="GOAE-Rechnungsentwurf.pdf"'
+        response['Cache-Control'] = 'private, no-store'
+        response['X-Content-Type-Options'] = 'nosniff'
+        return response
     handler = routes.get((operation, request.method))
     if handler:
         return handler(request)
@@ -139,7 +162,8 @@ def book_billing(request, operation, item_id=None):
         settings, _ = InvoiceSettings.objects.get_or_create(pk=1)
         pdf = _invoice_pdf_bytes(invoice, settings)
         response = HttpResponse(pdf, content_type="application/pdf")
-        response["Content-Disposition"] = f'inline; filename="Rechnung-{invoice.pk}.pdf"'
+        name = 'Rechnungsentwurf' if invoice.status == 'draft' else 'Rechnung'
+        response["Content-Disposition"] = f'attachment; filename="{name}-{invoice.pk}.pdf"'
         response["Cache-Control"] = "private, no-store"
         response["X-Content-Type-Options"] = "nosniff"
         return response
