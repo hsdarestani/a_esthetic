@@ -1,0 +1,82 @@
+name: Guarded incomplete GOÄ draft API release
+on:
+  push:
+    branches: [remediation/goae-draft-session-03]
+    paths: ['.github/workflows/patient-api-scoped-release.yml']
+permissions:
+  contents: read
+concurrency:
+  group: a-esthetic-mobile-api-production
+  cancel-in-progress: false
+env:
+  PATIENT_BASELINE: 7bdc99fa966bfa9c8cbe7af7ded1d81b2cc60e45
+  PATIENT_TARGET: 47e3f969313fd2eb629cb3208142365896a9b2fe
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_DEBUG: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PATIENT_TARGET }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Verify migration graph and patient API integration
+        run: |
+          python manage.py makemigrations --check --dry-run
+          python manage.py check
+          python manage.py test p0_app.test_book_billing_bridge.BookingBillingBridgeTests.test_quick_template_calculates_and_saves_only_a_draft p0_app.test_book_billing_bridge.BookingBillingBridgeTests.test_unapproved_treatment_saves_only_an_incomplete_draft --noinput
+  release:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build only the audited server-side delta
+        run: |
+          set -euo pipefail
+          mkdir -p patient-release/files
+          git merge-base --is-ancestor "$PATIENT_BASELINE" "$PATIENT_TARGET"
+          while IFS=$'\t' read -r status path; do
+            case "$status" in A|M) ;; *) exit 1;; esac
+            case "$path" in p0_app/*|platform_app/*|templates/office/*) ;; *) exit 1;; esac
+            if [ "$status" = M ]; then
+              old=$(git show "$PATIENT_BASELINE:$path" | sha256sum | cut -d' ' -f1)
+            else
+              old=absent
+            fi
+            mkdir -p "patient-release/files/$(dirname "$path")"
+            git show "$PATIENT_TARGET:$path" > "patient-release/files/$path"
+            new=$(sha256sum "patient-release/files/$path" | cut -d' ' -f1)
+            printf '%s %s %s\n' "$old" "$new" "$path" >> patient-release/manifest
+          done < <(git diff --name-status "$PATIENT_BASELINE" "$PATIENT_TARGET" -- p0_app platform_app templates/office)
+          test -s patient-release/manifest
+          cp scripts/patient_api_scoped_release.sh patient-release/release.sh
+          tar -czf "patient-api-${GITHUB_RUN_ID}.tar.gz" -C patient-release .
+      - uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: patient-api-${{ github.run_id }}.tar.gz
+          target: /tmp
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            bundle=/tmp/patient-api-${{ github.run_id }}.tar.gz
+            work=$(mktemp -d)
+            trap 'rm -rf -- "$work"; rm -f -- "$bundle"' EXIT
+            tar -xzf "$bundle" -C "$work"
+            bash "$work/release.sh" "$work" '${{ env.PATIENT_TARGET }}'

@@ -1,0 +1,25 @@
+name: Verify clinic-approved GOÄ template coverage in production
+on:
+  push:
+    branches: [remediation/goae-draft-session-03]
+    paths: ['.github/workflows/patient-api-release-failure-summary.yml']
+permissions:
+  contents: read
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            cd /opt/a-esthetic-mobile
+            set -a
+            source mobile.env
+            set +a
+            venv/bin/python manage.py shell -c 'from platform_app.goae_quick import template_options; expected = {"aesthetische-erstberatung", "botox-neupatient", "botox-bestandspatient", "hyaluron", "laser-haarentfernung", "rf-microneedling", "infusionstherapie", "injektionslipolyse", "kontrolltermin"}; templates = template_options(); print("GOAE_APPROVED_TEMPLATE_COUNT=" + str(len(templates))); print("GOAE_PUBLIC_APPROVAL_MISSING=" + ",".join(sorted(expected - templates.keys())))'

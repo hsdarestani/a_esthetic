@@ -77,8 +77,5 @@
     markNativePlatform();
     cleanupIfLoggedOut();
   });
-  window.addEventListener('pagehide', () => {
-    if (nativePlatform()) removeSettingsSheets();
-  });
   setTimeout(cleanupIfLoggedOut, 0);
 })();

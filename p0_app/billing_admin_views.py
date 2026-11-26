@@ -123,6 +123,9 @@ def billing_overview(request):
                 "name": item.get_full_name() or item.email,
                 "email": item.email,
                 "phone": getattr(item.profile, "phone", ""),
+                "street": getattr(item.profile, "street", ""),
+                "postal_code": getattr(item.profile, "postal_code", ""),
+                "city": getattr(item.profile, "city", ""),
                 "member_number": getattr(getattr(item, "member_account", None), "member_number", ""),
                 "address_complete": bool(
                     getattr(item.profile, "street", "")
