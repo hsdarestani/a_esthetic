@@ -404,7 +404,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         row('',appointment.date+' · '+appointment.start+' – '+appointment.end, appointment.staff_name),
         row('',tr('Status','Status'),appointment.status),row('',tr('Notiz','Note'),appointment.notes||''),
         row('',tr('Patient','Patient'),appointment.customer_name),row('',tr('Telefon','Phone'),contact.phone||tr('Nicht angegeben','Not provided')),row('','E Mail',contact.email||tr('Nicht angegeben','Not provided')),
-      ],actions:[...(appointment.customer_id?[row('patient:'+appointment.customer_id,tr('Patientenakte öffnen','Open patient record'))]:[]),...(appointment.source_managed && !(admin&&appointment.source_editable)
+      ],actions:[...(contact.phone?[row('appointment-call',tr('Patient anrufen','Call patient')),row('appointment-whatsapp',tr('WhatsApp Erinnerung vorbereiten','Prepare WhatsApp reminder'))]:[]),...(appointment.customer_id?[row('patient:'+appointment.customer_id,tr('Patientenakte öffnen','Open patient record'))]:[]),...(appointment.source_managed && !(admin&&appointment.source_editable)
         ? [row('calendar',tr('Zurück zum Kalender','Back to calendar'))]
         : [row('edit-appointment',tr('Bearbeiten','Edit')),row('cancel-appointment',tr('Absagen','Cancel'))])],
     }));
@@ -821,6 +821,18 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       }
       if(id.startsWith('patient:'))return await showPatient(Number(id.split(':')[1]));
       if(id.startsWith('appointment:'))return await showAppointment(Number(id.split(':')[1]));
+      if(id==='appointment-call'||id==='appointment-whatsapp'){
+        // Re-fetch authorized contact before opening a native external action.
+        const detail=await book('patient/'+appointment.customer_id+'/');
+        const raw=String(detail.patient?.phone||'').trim();
+        let phone=raw.replace(/[^0-9+]/g,'');
+        if(phone.startsWith('00'))phone='+'+phone.slice(2);
+        else if(phone.startsWith('0'))phone='+49'+phone.slice(1);
+        if(!/^\+[1-9]\d{6,14}$/.test(phone))throw new Error(tr('Keine gültige internationale Telefonnummer.','No valid international phone number.'));
+        const message=language==='en'?'Hello, this is a friendly reminder of your appointment on '+germanDate(appointment.date)+' at '+appointment.start+' with A+ Esthetic.':'Guten Tag, wir möchten Sie freundlich an Ihren Termin am '+germanDate(appointment.date)+' um '+appointment.start+' bei A+ Esthetic erinnern.';
+        await plugin.openContact({channel:id==='appointment-call'?'phone':'whatsapp',phone,message});
+        return;
+      }
       if(id==='apply-calendar-filter'){
         calendarMode=fields.calendar_mode;providerFilter=fields.provider_filter;serviceFilter=fields.service_filter;
         return await screen('calendar');
