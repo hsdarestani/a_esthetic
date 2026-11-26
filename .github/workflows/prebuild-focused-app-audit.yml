@@ -2,21 +2,6 @@ name: A+ Esthetic focused prebuild audit
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/prebuild-focused-app-audit.yml"
-      - "scripts/prebuild_production_smoke.py"
-      - "www/**"
-      - "platform_app/**"
-      - "p0_app/**"
-      - "p2_app/**"
-      - "package.json"
-      - "package-lock.json"
-      - "capacitor.config.json"
-      - "scripts/build-android.sh"
-      - "scripts/build-ios.sh"
-      - "scripts/install-google-services.js"
 
 permissions:
   contents: read

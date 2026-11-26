@@ -1,5 +1,6 @@
 import json
 from unittest.mock import patch
+from uuid import uuid4
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -59,6 +60,57 @@ class BookingBillingBridgeTests(TestCase):
         final = self.client.post(self.base + f"finalize/{invoice.pk}/",
                                  data=json.dumps({}), content_type="application/json")
         self.assertEqual(final.status_code, 409)
+
+    @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
+    def test_draft_retry_returns_existing_invoice_and_refuses_changed_request(self, verified):
+        payload = {
+            "billing_method": "goae", "customer_id": self.customer.pk,
+            "service_date": "2026-10-20", "goae_number": "1",
+            "goae_description": "Ärztliche Beratung", "goae_base_eur": "10,00",
+            "goae_factor": "2,30", "goae_vat_rate": "0",
+        }
+        def post_draft(data):
+            return self.client.post(self.base + "draft/", data, content_type="application/json")
+
+        self.assertEqual(post_draft(payload).status_code, 400)
+        quote = self.client.post(self.base + 'quote/', payload, content_type='application/json')
+        self.assertEqual(quote.status_code, 200, quote.content)
+        cents = quote.json()['total_cents']
+        self.assertEqual(cents, 2300)
+        self.assertFalse(Invoice.objects.exists())
+        request_id = str(uuid4())
+        payload.update(draft_request_id=request_id, target_total_cents=cents)
+        first = post_draft(payload)
+        self.assertEqual(first.status_code, 201, first.content)
+        self.assertEqual(post_draft(dict(reversed(list(payload.items())))).json(), first.json())
+        self.assertEqual(post_draft({**payload, "service_date": "2026-10-21"}).status_code, 400)
+        self.assertEqual(post_draft({**payload, "draft_request_id": "invalid"}).status_code, 400)
+        invoice = Invoice.objects.get(draft_request_id=request_id)
+        self.assertEqual(invoice.status, "draft")
+        self.assertEqual(invoice.items.count(), 1)
+        self.assertEqual(Invoice.objects.count(), 1)
+        self.assertEqual(invoice.total_cents, cents)
+        with patch('reportlab.rl_config.pageCompression', 0):
+            pdf = self.client.get(self.base + f'pdf/{invoice.pk}/')
+        self.assertEqual(pdf.status_code, 200)
+        self.assertIn(b'(23.00 EUR)', pdf.content)
+        self.assertIn(b'ENTWURF', pdf.content)
+
+    @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
+    def test_patient_search_queries_the_full_active_customer_catalog(self, verified):
+        filler = User.objects.bulk_create([User(username=f'patient-test-{i}', last_name='A') for i in range(1001)])
+        UserProfile.objects.bulk_create([UserProfile(user=user, role='customer') for user in filler])
+        self.customer.first_name = 'Synthetic'
+        self.customer.last_name = 'Ziel'
+        self.customer.save(update_fields=['first_name', 'last_name'])
+        other = User.objects.create_user('synthetic-admin-name', first_name='Synthetic', last_name='Ziel', is_staff=True)
+        UserProfile.objects.create(user=other, role='admin')
+        reply = self.client.post(self.base + 'patient-search/', {'query': 'Synthetic Ziel'}, content_type='application/json')
+        self.assertEqual(reply.status_code, 200)
+        self.assertEqual(reply.json()['patients'], [
+            {'id': self.customer.pk, 'name': 'Synthetic Ziel', 'email': self.customer.email},
+        ])
+        self.assertIn('no-store', reply['Cache-Control'])
 
     @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
     def test_bridge_does_not_proxy_arbitrary_admin_paths(self, verified):

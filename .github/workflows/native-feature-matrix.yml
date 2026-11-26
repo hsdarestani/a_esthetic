@@ -5,17 +5,13 @@ on:
   push:
     branches: [main]
     paths:
+      - "native/**"
       - "www/**"
-      - "platform_app/**"
-      - "p0_app/**"
-      - "p1_app/**"
-      - "p2_app/**"
-      - "p3_app/**"
-      - "config/**"
-      - "scripts/**"
+      - "scripts/build-*.sh"
+      - "scripts/install_native_staff.py"
       - "package.json"
-      - "requirements.txt"
-      - ".github/workflows/native-feature-matrix.yml"
+      - "package-lock.json"
+      - "capacitor.config.json"
 
 permissions:
   contents: read

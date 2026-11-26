@@ -4,10 +4,13 @@ No official GOÄ tariff mapping is inferred from a service price: the practice
 must enter and check the fee number, base amount, factor and VAT classification.
 Final GOÄ issuance remains disabled pending the approved invoice template.
 """
+import json
 import re
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from hashlib import sha256
 from io import BytesIO
+from uuid import UUID
 
 from django.db import transaction
 from reportlab.lib.pagesizes import A4
@@ -199,7 +202,26 @@ def calculate_goae_lines(data, *, user=None, service_date=None):
     return result
 
 
+def _check_draft_request(invoice, *, user, actor, digest):
+    if (invoice.user_id, invoice.created_by_id, invoice.draft_request_digest) != (user.pk, actor.pk, digest):
+        raise ValueError("Diese Entwurfsanfrage wurde bereits mit anderen Angaben verwendet.")
+    return invoice
+
+
 def create_goae_draft(*, user, actor, service_date, data):
+    request_id = data.get("draft_request_id")
+    digest = ""
+    if request_id is not None:
+        try:
+            request_id = UUID(str(request_id))
+        except ValueError as exc:
+            raise ValueError("Ungültige Entwurfsanfrage.") from exc
+        request_data = {key: value for key, value in data.items() if key != "draft_request_id"}
+        request_data["service_date"] = service_date.isoformat()
+        digest = sha256(json.dumps(request_data, sort_keys=True).encode()).hexdigest()
+        existing = Invoice.objects.filter(draft_request_id=request_id).first()
+        if existing:
+            return _check_draft_request(existing, user=user, actor=actor, digest=digest)
     items = calculate_goae_lines(data, user=user, service_date=service_date)
     target = data.get("target_total_cents")
     if target is not None:
@@ -207,18 +229,24 @@ def create_goae_draft(*, user, actor, service_date, data):
         if target != target.to_integral_value() or target != sum(item["gross_cents"] for item in items):
             raise ValueError("Wunschbetrag und serverseitig berechnete Rechnung stimmen nicht centgenau überein.")
     profile, _ = UserProfile.objects.get_or_create(user=user)
+    fields = dict(
+        user=user, billing_method="goae", service_date=service_date,
+        customer_name=user.get_full_name() or user.email,
+        customer_email=user.email,
+        customer_street=profile.street, customer_postal_code=profile.postal_code,
+        customer_city=profile.city,
+        subtotal_cents=sum(row["net_cents"] for row in items),
+        tax_cents=sum(row["tax_cents"] for row in items),
+        total_cents=sum(row["gross_cents"] for row in items),
+        created_by=actor, draft_request_digest=digest,
+    )
     with transaction.atomic():
-        invoice = Invoice.objects.create(
-            user=user, billing_method="goae", service_date=service_date,
-            customer_name=user.get_full_name() or user.email,
-            customer_email=user.email,
-            customer_street=profile.street, customer_postal_code=profile.postal_code,
-            customer_city=profile.city,
-            subtotal_cents=sum(row["net_cents"] for row in items),
-            tax_cents=sum(row["tax_cents"] for row in items),
-            total_cents=sum(row["gross_cents"] for row in items),
-            created_by=actor,
-        )
+        if request_id is None:
+            invoice = Invoice.objects.create(**fields)
+        else:
+            invoice, created = Invoice.objects.get_or_create(draft_request_id=request_id, defaults=fields)
+            if not created:
+                return _check_draft_request(invoice, user=user, actor=actor, digest=digest)
         InvoiceItem.objects.bulk_create([InvoiceItem(invoice=invoice, **item) for item in items])
     return invoice
 

@@ -25,10 +25,20 @@ ANSWER_FIELDS = (
     'profession','gender','allergies','allergies_notes','other_diseases',
     'medications','medications_notes','surgeries','surgeries_notes','pregnancy',
     'smoking','cigarettes','alcohol','alcohol_frequency','expectations',
-    'prior_treatments','prior_treatments_notes','referral','referral_other',
+    'referral','referral_other',
     'photo_consultation','photo_marketing',
 )
 LIST_FIELDS = ('diseases','interests')
+
+MEDICAL_CHOICES = {
+    'allergies': 'Allergien',
+    'medications': 'Regelmäßige Medikamenteneinnahme',
+    'surgeries': 'Frühere Operationen oder ästhetische Eingriffe',
+    'pregnancy': 'Schwangerschaft oder Stillzeit',
+    'smoking': 'Rauchen',
+    'alcohol': 'Alkoholkonsum',
+}
+
 
 
 def parse_answers(post):
@@ -36,6 +46,20 @@ def parse_answers(post):
     for k in LIST_FIELDS:
         result[k] = [str(v).strip()[:150] for v in post.getlist(k)[:20] if str(v).strip()]
     return result
+
+
+def validate_medical_answers(answers):
+    for field, label in MEDICAL_CHOICES.items():
+        allowed = {'Ja', 'Nein', 'Nicht zutreffend'} if field == 'pregnancy' else {'Ja', 'Nein'}
+        if answers.get(field) not in allowed:
+            raise ValueError(f'{label} ist ein Pflichtfeld. Bitte wählen Sie eine Antwort.')
+
+    diseases = set(answers.get('diseases') or [])
+    other_diseases = answers.get('other_diseases', '').strip()
+    if not diseases and not other_diseases:
+        raise ValueError('Bitte geben Sie bestehende Erkrankungen an oder wählen Sie „Keine“.')
+    if 'Keine' in diseases and (diseases - {'Keine'} or other_diseases):
+        raise ValueError('Wählen Sie „Keine“ nur, wenn keine Erkrankungen vorliegen.')
 
 
 def valid_signature(raw):
@@ -120,6 +144,7 @@ def _match_or_create(identity):
 
 
 def create_signed_submission(identity,answers,signature):
+    validate_medical_answers(answers)
     if not valid_signature(signature):
         raise ValueError('Bitte digital unterschreiben.')
     if len(json.dumps(answers,ensure_ascii=False))>80000:
@@ -127,7 +152,10 @@ def create_signed_submission(identity,answers,signature):
     with transaction.atomic():
         OfficeIntakeLock.objects.get_or_create(pk=1)
         OfficeIntakeLock.objects.select_for_update().get(pk=1)
-        user,_=_match_or_create(identity)
+        user,match_status=_match_or_create(identity)
+        if user is None and match_status == 'review':
+            from .intake_identity import queue_review
+            queue_review(identity)
         row=OfficeIntakeSubmission.objects.create(
             user=user,identity=identity,answers=answers,signature_png=signature)
     sync_submission(row)

@@ -168,3 +168,9 @@ class GoogleReviewActivity(models.Model):
 
     def __str__(self):
         return f"{self.user.get_username()} – {self.get_status_display()}"
+
+
+class PackageBookingLifecycle(models.Model):
+    """Serialize reservations and staff cancellation by canonical Book UUID."""
+    booking_public_id = models.CharField(max_length=64, unique=True)
+    cancelled_at = models.DateTimeField(null=True)

@@ -122,10 +122,31 @@ class OfficeInvoicingTests(TestCase):
             "website": "",
             "consent_accepted": "on",
             "privacy_ack": "on",
+            "allergies": "Nein",
+            "diseases": ["Keine"],
+            "medications": "Nein",
+            "surgeries": "Nein",
+            "pregnancy": "Nicht zutreffend",
+            "smoking": "Nein",
+            "alcohol": "Nein",
             "signature_png": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==",
         }
-        with patch('platform_app.public_intake.sync_submission', return_value=True):
-            response = self.client.post(reverse("office_intake"), input_data)
+        self.assertNotContains(response, 'name="prior_treatments"')
+        with patch('platform_app.public_intake.sync_submission', return_value=True) as sync:
+            for field in ("allergies", "diseases", "medications", "surgeries", "pregnancy", "smoking", "alcohol"):
+                with self.subTest(missing=field):
+                    incomplete = {key: value for key, value in input_data.items() if key != field}
+                    rejected = self.client.post(reverse("office_intake"), incomplete)
+                    self.assertNotContains(rejected, "Vielen Dank")
+                    self.assertFalse(OfficeIntakeSubmission.objects.exists())
+            inconsistent = self.client.post(reverse("office_intake"), {
+                **input_data, "diseases": ["Keine", "Diabetes mellitus"],
+            })
+            self.assertContains(inconsistent, "nur, wenn keine Erkrankungen vorliegen")
+            sync.assert_not_called()
+            response = self.client.post(reverse("office_intake"), {
+                **input_data, "prior_treatments": "Ja", "prior_treatments_notes": "Legacy question",
+            })
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Vielen Dank")
         self.assertNotContains(response, "PDF herunterladen")
@@ -135,6 +156,8 @@ class OfficeInvoicingTests(TestCase):
         form = OfficeIntakeSubmission.objects.get()
         self.assertEqual(form.user_id, user.pk)
         self.assertEqual(form.identity["date_of_birth"], "1987-04-05")
+        self.assertEqual(form.answers["pregnancy"], "Nicht zutreffend")
+        self.assertNotIn("prior_treatments", form.answers)
 
     def test_admin_can_save_billing_settings_and_service_tax(self):
         service = Service.objects.create(

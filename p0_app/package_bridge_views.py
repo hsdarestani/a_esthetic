@@ -13,7 +13,7 @@ from django.views.decorators.http import require_http_methods
 from platform_app import mobile_api as legacy_mobile_api
 from platform_app.models import AuditLog, MemberPackage, WalletTransaction
 
-from .models import PackageBookingRedemption, PackageBookingService
+from .models import PackageBookingLifecycle, PackageBookingRedemption, PackageBookingService
 from .notification_views import _internal_authorized
 
 
@@ -135,6 +135,9 @@ def mobile_package_booking(request):
         return JsonResponse({"ok": False, "error": "service_slug_required"}, status=400)
 
     with transaction.atomic():
+        lifecycle, _ = PackageBookingLifecycle.objects.select_for_update().get_or_create(booking_public_id=booking_public_id)
+        if lifecycle.cancelled_at:
+            return _payload()
         existing = PackageBookingRedemption.objects.select_for_update().select_related(
             "member_package", "member_package__definition"
         ).filter(user=user, booking_public_id=booking_public_id).first()
@@ -236,4 +239,26 @@ def internal_book_package_release(request):
         redemption = PackageBookingRedemption.objects.select_for_update().select_related(
             "user", "member_package", "member_package__definition",
         ).filter(booking_public_id=booking_id).first()
+        return _release_package_redemption(redemption)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def internal_staff_cancel_package(request):
+    """Block late reserves and release a reservation in the same transaction."""
+    if not _internal_authorized(request):
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    data = _json(request)
+    if not isinstance(data, dict) or set(data) != {"booking_public_id"}:
+        return JsonResponse({"ok": False, "error": "invalid_payload"}, status=400)
+    try:
+        booking_id = str(uuid.UUID(str(data["booking_public_id"])))
+    except (ValueError, TypeError, AttributeError):
+        return JsonResponse({"ok": False, "error": "invalid_booking_id"}, status=400)
+    with transaction.atomic():
+        lifecycle, _ = PackageBookingLifecycle.objects.select_for_update().get_or_create(booking_public_id=booking_id)
+        if lifecycle.cancelled_at is None:
+            lifecycle.cancelled_at = timezone.now()
+            lifecycle.save(update_fields=["cancelled_at"])
+        redemption = PackageBookingRedemption.objects.select_for_update().filter(booking_public_id=booking_id).first()
         return _release_package_redemption(redemption)

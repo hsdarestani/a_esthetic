@@ -55,6 +55,23 @@ def book_billing(request, operation, item_id=None):
         return JsonResponse({"ok": True, "catalog": catalog_payload(),
                              "treatments": TREATMENTS,
                              "review_required": True, "issuance_allowed": False})
+    if operation == "patient-search" and request.method == "POST":
+        try:
+            data = json.loads(request.body) if len(request.body) <= 1024 else None
+        except (UnicodeError, ValueError):
+            data = None
+        query = data.get('query') if isinstance(data, dict) else None
+        if not isinstance(query, str) or not query.isprintable() or not 2 <= len(query.strip()) <= 80:
+            return JsonResponse({'ok': False, 'error': 'invalid_search'}, status=400)
+        patients = User.objects.filter(is_active=True, is_superuser=False, profile__role='customer')
+        for term in query.split():
+            patients = patients.filter(Q(first_name__icontains=term) | Q(last_name__icontains=term)
+                                       | Q(email__icontains=term))
+        patients = patients.only('id', 'first_name', 'last_name', 'email').order_by('last_name', 'first_name', 'pk')
+        return JsonResponse({'ok': True, 'patients': [
+            {'id': patient.pk, 'name': patient.get_full_name() or patient.email, 'email': patient.email}
+            for patient in patients[:25]
+        ]}, headers={'Cache-Control': 'private, no-store, max-age=0'})
     if operation == "quote" and request.method == "POST":
         try:
             data = json.loads(request.body.decode("utf-8"))
@@ -81,6 +98,14 @@ def book_billing(request, operation, item_id=None):
             "items": [{"goae_number": item["goae_number"], "description": item["description"],
                        "net_cents": item["net_cents"], "tax_cents": item["tax_cents"],
                        "gross_cents": item["gross_cents"]} for item in lines]})
+    if operation == "draft" and request.method == "POST":
+        try:
+            data = json.loads(request.body)
+        except (UnicodeError, ValueError):
+            data = None
+        if not isinstance(data, dict) or data.get("billing_method") != "goae" or not data.get("draft_request_id"):
+            return JsonResponse({"ok": False, "error": "draft_request_required"}, status=400)
+        return billing_invoices(request)
     handler = routes.get((operation, request.method))
     if handler:
         return handler(request)

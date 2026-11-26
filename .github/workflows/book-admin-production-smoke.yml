@@ -2,17 +2,6 @@ name: A+ Esthetic focused Book admin production smoke
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/book-admin-production-smoke.yml"
-      - "p0_app/admin_mobile_views.py"
-      - "p0_app/book_admin_proxy_views.py"
-      - "p0_app/wallet_lookup_views.py"
-      - "p0_app/review_views.py"
-      - "p0_app/urls.py"
-      - "www/admin-mode.js"
-      - "www/index.html"
 
 permissions:
   contents: read

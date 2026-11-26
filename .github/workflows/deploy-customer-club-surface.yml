@@ -1,53 +1,13 @@
-name: Deploy A+ Esthetic customer-club surface
-
+name: Customer Club automatic deployment disabled
 on:
-  push:
-    branches: [main]
-    paths:
-      - "templates/**"
-      - "platform_app/**"
-      - "p0_app/**"
-      - "p1_app/**"
-      - "p2_app/**"
-      - "p3_app/**"
-      - "config/**"
-      - "www/**"
-      - "manifest.json"
-      - ".github/workflows/deploy-customer-club-surface.yml"
   workflow_dispatch:
-
 permissions:
-  actions: write
   contents: read
-
-concurrency:
-  group: a-esthetic-customer-club-deploy
-  cancel-in-progress: true
-
 jobs:
-  dispatch:
+  guarded-release-required:
     runs-on: ubuntu-latest
     steps:
-      - name: Publish current Customer Club web surface
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ github.token }}
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'deploy-customer-club-web.yml',
-              ref: 'main'
-            });
-
-      - name: Publish current Django Customer Club backend
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ github.token }}
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'deploy-mobile-api.yml',
-              ref: 'main'
-            });
+      - run: |
+          echo 'Do not dispatch the unguarded legacy API release or overwrite the live web client.'
+          echo 'Use the pinned patient API scoped release workflow with a reviewed baseline, target and file manifest.'
+          exit 1

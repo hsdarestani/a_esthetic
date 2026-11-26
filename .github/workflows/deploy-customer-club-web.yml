@@ -2,11 +2,6 @@ name: Deploy A+ Esthetic Customer Club web
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "www/**"
-      - ".github/workflows/deploy-customer-club-web.yml"
 
 permissions:
   contents: read

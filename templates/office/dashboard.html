@@ -50,9 +50,9 @@
   <section class="hero">
     <div class="eyebrow">A+ Esthetic · Praxis & Billing</div>
     <h1>Alles an einem Ort.</h1>
-    <p>Kundenaufnahme, Rechnungen und Abrechnungsdaten direkt auf derselben A+ Plattform. Keine doppelte Eingabe und kein separates Word mehr.</p>
+    <p>Patientenaufnahme, Rechnungen und Abrechnungsdaten direkt auf derselben A+ Plattform. Keine doppelte Eingabe und kein separates Word mehr.</p>
     <div class="heroactions">
-      <a class="btn gold" href="{% url 'office_intake' %}" target="_blank">Kundenaufnahme öffnen</a>
+      <a class="btn gold" href="{% url 'office_intake' %}" target="_blank">Patientenaufnahme öffnen</a>
       <a class="btn light" href="{% url 'office_settings' %}">Preise & MwSt verwalten</a>
     </div>
   </section>
@@ -61,7 +61,7 @@
   {% if notice %}<div class="notice">{{ notice }}</div>{% endif %}
 
   <div class="stats">
-    <div class="stat"><b>{{ customer_count }}</b><span>Kunden</span></div>
+    <div class="stat"><b>{{ customer_count }}</b><span>Patienten</span></div>
     <div class="stat"><b>{{ issued_count }}</b><span>Ausgestellt</span></div>
     <div class="stat"><b>{{ draft_count }}</b><span>Entwürfe</span></div>
     <div class="stat"><b>{{ configured_services }}/{{ active_services }}</b><span>Preise bereit</span></div>
@@ -71,14 +71,14 @@
   <div class="grid">
     <section class="card">
       <div class="sectionhead">
-        <div><h2>Kundenaufnahme am iPad</h2><p>Der Kunde gibt seine Daten selbst ein. Bestehende Kunden werden automatisch erkannt.</p></div>
+        <div><h2>Patientenaufnahme am iPad</h2><p>Der Patient gibt seine Daten selbst ein. Bestehende Patienten werden automatisch erkannt.</p></div>
         <span class="badge ready">Live</span>
       </div>
       <div class="kioskvisual">
         <div class="ipad"></div>
         <div>
           <strong>Tablet first Check in</strong>
-          <p style="margin-top:5px">Name, Kontakt und Rechnungsadresse landen direkt im A+ Kundenprofil.</p>
+          <p style="margin-top:5px">Name, Kontakt und Rechnungsadresse landen direkt im A+ Patientenprofil.</p>
         </div>
       </div>
       <div class="toolbar">
@@ -89,13 +89,13 @@
 
     <section class="card">
       <div class="sectionhead">
-        <div><h2>Rechnung erstellen</h2><p>Kunde, Leistungsdatum und Behandlung auswählen. Netto und MwSt werden automatisch berechnet.</p></div>
+        <div><h2>Rechnung erstellen</h2><p>Patient, Leistungsdatum und Behandlung auswählen. Netto und MwSt werden automatisch berechnet.</p></div>
         {% if invoice_settings.ready_for_issue %}<span class="badge ready">Bereit</span>{% else %}<span class="badge">Setup offen</span>{% endif %}
       </div>
 
       <form method="post" class="formgrid">
         {% csrf_token %}<input type="hidden" name="action" value="new_invoice">
-        <div class="field"><label>Kunde</label>
+        <div class="field"><label>Patient</label>
           <select name="customer_id" required>
             <option value="">Bitte wählen</option>
             {% for c in customers %}<option value="{{ c.id }}">{{ c.get_full_name|default:c.email }} · {{ c.email }}</option>{% endfor %}
@@ -120,12 +120,12 @@
 
     <section class="card full">
       <div class="sectionhead">
-        <div><h2>Letzte Rechnungen</h2><p>Entwürfe und ausgestellte Rechnungen aus dem gemeinsamen Kundenbestand.</p></div>
-        <form method="get" class="search"><input name="q" value="{{ query }}" placeholder="Kunde, E Mail, Telefon oder Kundennummer"><button class="btn light" type="submit">Suchen</button></form>
+        <div><h2>Letzte Rechnungen</h2><p>Entwürfe und ausgestellte Rechnungen aus dem gemeinsamen Patientenbestand.</p></div>
+        <form method="get" class="search"><input name="q" value="{{ query }}" placeholder="Patient, E Mail, Telefon oder Patientennummer"><button class="btn light" type="submit">Suchen</button></form>
       </div>
 
       <div class="invoicebox">
-        <div class="invoicehead"><span>Rechnung / Kunde</span><span>Leistungsdatum</span><span>Betrag</span><span>Status</span></div>
+        <div class="invoicehead"><span>Rechnung / Patient</span><span>Leistungsdatum</span><span>Betrag</span><span>Status</span></div>
         {% for inv in invoices %}
         <a class="invoice" href="{% url 'office_invoice_detail' inv.id %}">
           <div><strong>{{ inv.number|default:"Entwurf" }} · {{ inv.customer_name }}</strong><small>{{ inv.customer_email }}</small></div>
