@@ -163,6 +163,8 @@ assert.ok(!current.actions.some(a=>a.id==='save-availability'));
 await click('calendar');
 await click('appointment:44');
 capture('05-appointment-details');
+assert.ok(current.rows.some(x=>x.detail==='demo@example.test'),'appointment shows verified patient email');
+assert.ok(current.actions.some(x=>x.id==='patient:23'),'appointment has direct patient record action');
 assert.match(current.message,/SimplyBook/);
 assert.ok(!current.actions.some(x=>x.id==='edit-appointment' || x.id==='cancel-appointment'));
 await click('calendar');
