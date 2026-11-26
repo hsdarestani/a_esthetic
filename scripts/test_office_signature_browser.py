@@ -29,7 +29,18 @@ def run():
         page.locator('[name="city"]').fill("Frankfurt")
         page.locator('[name="email"]').fill("never-submit@example.invalid")
         page.locator('[name="phone"]').fill("+491701234567")
-        for expected in ("1", "2", "3"):
+        next_button = page.locator("[data-next]")
+        next_button.click()
+        assert page.locator(".step.active").get_attribute("data-step") == "1"
+        assert page.locator(".step.active input:checked").count() == 0
+        next_button.click()
+        assert page.locator(".step.active").get_attribute("data-step") == "1"
+        for field in ("allergies", "medications", "surgeries", "smoking", "alcohol"):
+            page.locator(f'input[name="{field}"][value="Nein"]').check()
+        page.locator('input[name="pregnancy"][value="Nicht zutreffend"]').check()
+        page.locator('input[name="diseases"][value="Keine"]').check()
+
+        for expected in ("2", "3"):
             page.locator("[data-next]").click()
             page.wait_for_function(
                 "(step) => document.querySelector('.step.active')?.dataset.step === step",

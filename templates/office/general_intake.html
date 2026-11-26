@@ -56,8 +56,8 @@ textarea{resize:vertical;min-height:82px}input:focus,textarea:focus,select:focus
 <label>Geschlecht<select name="gender"><option value="">Keine Angabe</option><option>Männlich</option><option>Weiblich</option><option>Divers</option></select></label>
 </div></fieldset>
 <fieldset class="step" data-step="1" style="border:0;padding:0;margin:0">
-<h2>02 · Anamnese</h2><p class="subtitle">Medizinische Angaben zur Vorbereitung des Gesprächs mit Ihrem Behandlungsteam.</p>
-<div class="question"><h3>Allergien (z. B. Medikamente, Lebensmittel)</h3><div class="choices"><label><input type="radio" name="allergies" value="Ja">Ja</label><label><input type="radio" name="allergies" value="Nein">Nein</label></div><label class="details">Falls ja, bitte spezifizieren<textarea name="allergies_notes" maxlength="3000"></textarea></label></div>
+<h2>02 · Anamnese</h2><p class="subtitle">Bitte beantworten Sie alle Fragen in diesem Abschnitt. Ergänzende Angaben sind freiwillig.</p>
+<div class="question"><h3>Allergien (z. B. Medikamente, Lebensmittel)</h3><div class="choices"><label><input type="radio" name="allergies" required value="Ja">Ja</label><label><input type="radio" name="allergies" required value="Nein">Nein</label></div><label class="details">Falls ja, bitte spezifizieren<textarea name="allergies_notes" maxlength="3000"></textarea></label></div>
 <div class="question"><h3>Bestehende Erkrankungen</h3><div class="choices">
 <label><input type="checkbox" name="diseases" value="Keine">Keine</label>
 <label><input type="checkbox" name="diseases" value="Diabetes mellitus">Diabetes mellitus</label>
@@ -65,11 +65,11 @@ textarea{resize:vertical;min-height:82px}input:focus,textarea:focus,select:focus
 <label><input type="checkbox" name="diseases" value="Herz-Kreislauf-Erkrankungen">Herz-Kreislauf-Erkrankungen</label>
 <label><input type="checkbox" name="diseases" value="Autoimmunerkrankungen">Autoimmunerkrankungen</label>
 <label><input type="checkbox" name="diseases" value="Implantate">Implantate</label></div><label class="details">Weitere Erkrankungen<input name="other_diseases" maxlength="3000"></label></div>
-<div class="question"><h3>Regelmäßige Medikamenteneinnahme</h3><div class="choices"><label><input type="radio" name="medications" value="Ja">Ja</label><label><input type="radio" name="medications" value="Nein">Nein</label></div><label class="details">Wenn ja, welche?<textarea name="medications_notes" maxlength="3000"></textarea></label></div>
-<div class="question"><h3>Frühere Operationen oder ästhetische Eingriffe</h3><div class="choices"><label><input type="radio" name="surgeries" value="Ja">Ja</label><label><input type="radio" name="surgeries" value="Nein">Nein</label></div><label class="details">Wenn ja, welche und wann?<textarea name="surgeries_notes" maxlength="3000"></textarea></label></div>
-<div class="question"><h3>Schwangerschaft oder Stillzeit (falls zutreffend)</h3><div class="choices"><label><input type="radio" name="pregnancy" value="Ja">Ja</label><label><input type="radio" name="pregnancy" value="Nein">Nein</label><label><input type="radio" name="pregnancy" value="Nicht zutreffend">Nicht zutreffend</label></div></div>
-<div class="grid"><div class="question"><h3>Rauchen</h3><div class="choices"><label><input type="radio" name="smoking" value="Ja">Ja</label><label><input type="radio" name="smoking" value="Nein">Nein</label></div><label class="details">Zigaretten pro Tag<input name="cigarettes" type="number" min="0" max="200"></label></div>
-<div class="question"><h3>Alkoholkonsum</h3><div class="choices"><label><input type="radio" name="alcohol" value="Ja">Ja</label><label><input type="radio" name="alcohol" value="Nein">Nein</label></div><label class="details">Wie oft pro Woche?<input name="alcohol_frequency" maxlength="100"></label></div></div>
+<div class="question"><h3>Regelmäßige Medikamenteneinnahme</h3><div class="choices"><label><input type="radio" name="medications" required value="Ja">Ja</label><label><input type="radio" name="medications" required value="Nein">Nein</label></div><label class="details">Wenn ja, welche?<textarea name="medications_notes" maxlength="3000"></textarea></label></div>
+<div class="question"><h3>Frühere Operationen oder ästhetische Eingriffe</h3><div class="choices"><label><input type="radio" name="surgeries" required value="Ja">Ja</label><label><input type="radio" name="surgeries" required value="Nein">Nein</label></div><label class="details">Wenn ja, welche, wann und gegebenenfalls mit welchem Präparat?<textarea name="surgeries_notes" maxlength="3000"></textarea></label></div>
+<div class="question"><h3>Schwangerschaft oder Stillzeit (falls zutreffend)</h3><div class="choices"><label><input type="radio" name="pregnancy" required value="Ja">Ja</label><label><input type="radio" name="pregnancy" required value="Nein">Nein</label><label><input type="radio" name="pregnancy" required value="Nicht zutreffend">Nicht zutreffend</label></div></div>
+<div class="grid"><div class="question"><h3>Rauchen</h3><div class="choices"><label><input type="radio" name="smoking" required value="Ja">Ja</label><label><input type="radio" name="smoking" required value="Nein">Nein</label></div><label class="details">Zigaretten pro Tag<input name="cigarettes" type="number" min="0" max="200"></label></div>
+<div class="question"><h3>Alkoholkonsum</h3><div class="choices"><label><input type="radio" name="alcohol" required value="Ja">Ja</label><label><input type="radio" name="alcohol" required value="Nein">Nein</label></div><label class="details">Wie oft pro Woche?<input name="alcohol_frequency" maxlength="100"></label></div></div>
 </fieldset>
 <fieldset class="step" data-step="2" style="border:0;padding:0;margin:0">
 <h2>03 · Ästhetische Anliegen</h2><p class="subtitle">Welche Behandlungen interessieren Sie und welche Erfahrungen haben Sie gemacht?</p>
@@ -82,7 +82,6 @@ textarea{resize:vertical;min-height:82px}input:focus,textarea:focus,select:focus
 <label><input type="checkbox" name="interests" value="Hautstraffung">Hautstraffung</label>
 <label><input type="checkbox" name="interests" value="RF-Microneedling">RF-Microneedling</label></div></div>
 <div class="question"><label>Welche Erwartungen haben Sie an die Behandlung?<textarea name="expectations" maxlength="3000"></textarea></label></div>
-<div class="question"><h3>Frühere ästhetische Behandlungen</h3><div class="choices"><label><input type="radio" name="prior_treatments" value="Ja">Ja</label><label><input type="radio" name="prior_treatments" value="Nein">Nein</label></div><label class="details">Wenn ja, welche, wo und mit welchem Präparat?<textarea name="prior_treatments_notes" maxlength="3000"></textarea></label></div>
 <div class="question"><h3>Wie sind Sie auf uns aufmerksam geworden?</h3><div class="choices"><label><input type="radio" name="referral" value="Instagram">Instagram</label><label><input type="radio" name="referral" value="TikTok">TikTok</label><label><input type="radio" name="referral" value="Google">Google</label><label><input type="radio" name="referral" value="Freunde und Bekannte">Freunde und Bekannte</label><label><input type="radio" name="referral" value="Website">Website</label><label><input type="radio" name="referral" value="Andere">Andere</label></div><label class="details">Falls Andere<input name="referral_other" maxlength="3000"></label></div>
 <div class="question"><h3>Optionale Fotofreigaben (unabhängig vom Aufnahmebogen)</h3>
 <label class="consent-check"><input type="checkbox" name="photo_consultation" value="Ja">Ich stimme der Verwendung von Fotos für interne Beratungsgespräche zu.</label>
@@ -110,7 +109,22 @@ textarea{resize:vertical;min-height:82px}input:focus,textarea:focus,select:focus
 (()=>{'use strict';const form=document.getElementById('intakeForm');if(!form)return;
 const steps=[...form.querySelectorAll('.step')],bar=[...document.querySelectorAll('.progress span')],next=form.querySelector('[data-next]'),back=form.querySelector('[data-back]'),submit=form.querySelector('[data-submit]');let current=0;
 function show(n){current=n;steps.forEach((s,i)=>s.classList.toggle('active',i===n));bar.forEach((s,i)=>s.classList.toggle('active',i<=n));back.hidden=n===0;next.hidden=n===steps.length-1;submit.hidden=n!==steps.length-1;if(n===3)requestAnimationFrame(size);window.scrollTo({top:100,behavior:'smooth'});}
+const diseaseOptions=[...form.querySelectorAll('input[name="diseases"]')];
+const otherDisease=form.querySelector('input[name="other_diseases"]');
+const noDisease=diseaseOptions.find(option=>option.value==='Keine');
+for(const option of [...diseaseOptions,otherDisease]){
+  option.addEventListener('input',()=>noDisease.setCustomValidity(''));
+}
 function validCurrent(){
+  if(current===1){
+    const conditions=diseaseOptions.some(option=>option!==noDisease&&option.checked)||Boolean(otherDisease.value.trim());
+    const error=noDisease.checked&&conditions
+      ? 'Wählen Sie „Keine“ nur, wenn keine Erkrankungen vorliegen.'
+      : !noDisease.checked&&!conditions ? 'Bitte geben Sie bestehende Erkrankungen an oder wählen Sie „Keine“.' : '';
+    noDisease.setCustomValidity(error);
+    if(error){noDisease.reportValidity();return false;}
+  }
+
   if(current===0){
     const value=form.querySelector('#birthDateGerman').value;
     const p=/^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value.trim());
