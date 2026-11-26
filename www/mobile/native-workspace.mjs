@@ -248,9 +248,23 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     if(name==='settings'){
       return render(view(tr('Einstellungen','Settings'),{rows:[
         row('availability',tr('Arbeitszeit und Verfügbarkeit','Hours and availability')),
-        ...(admin?[row('services',tr('Behandlungskatalog','Treatment catalog'))]:[]),
+        ...(admin?[row('services',tr('Behandlungskatalog','Treatment catalog')),row('booking-notifications',tr('Terminbenachrichtigungen','Booking notifications'))]:[]),
         row('language',tr('Sprache','Language')),
       ],actions:[row('logout',tr('Abmelden','Sign out'))]}));
+    }
+    if(name==='booking-notifications'&&admin){
+      let permission='unknown';
+      try {permission=(await globalThis.Capacitor?.Plugins?.PushNotifications?.checkPermissions?.())?.receive||'unknown';} catch (_) {}
+      const permissionLabel=permission==='granted'?tr('Erlaubt','Allowed'):permission==='denied'?tr('In den Systemeinstellungen deaktiviert','Disabled in system settings'):tr('Nicht bestätigt','Not confirmed');
+      return render(view(tr('Terminbenachrichtigungen','Booking notifications'),{
+        message:tr('Alle Terminaktionen lösen administrative Push und E-Mail Benachrichtigungen aus. Push Zustellung setzt ein registriertes Gerät und die Systemfreigabe voraus.','All booking actions trigger administrative push and email alerts. Push delivery requires a registered device and system permission.'),
+        rows:[row('',tr('Push Berechtigung dieses Geräts','Push permission on this device'),permissionLabel),
+          row('',tr('Neue Buchung und Änderungen','New booking and changes'),tr('Push und E-Mail','Push and email')),
+          row('',tr('Absage, Löschung und Statuswechsel','Cancellation, deletion and status changes'),tr('Push und E-Mail','Push and email')),
+          row('',tr('Erinnerung vor dem Termin','Appointment reminder'),tr('Push und E-Mail','Push and email')),
+          row('',tr('E-Mail Zustellung','Email delivery'),tr('An die konfigurierte Praxisadresse','To the configured clinic address'))],
+        actions:[row('register-booking-push',tr('Push Registrierung aktualisieren','Refresh push registration'))],
+      }));
     }
     if(name==='services'&&admin){
       catalog=await book('catalog/');
@@ -917,6 +931,13 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(admin&&id==='save-service'){
         await command('book/service/',{...fields,id:currentService.id,duration_minutes:Number(fields.duration_minutes),buffer_minutes:Number(fields.buffer_minutes),active:fields.active==='yes',bookable:fields.bookable==='yes'});
         catalog=null;return await screen('services');
+      }
+      if(admin&&id==='booking-notifications')return await screen('booking-notifications');
+      if(admin&&id==='register-booking-push'){
+        const register=globalThis.APlusNativePush?.register;
+        if(typeof register!=='function')throw new Error(tr('Push Registrierung ist nicht verfügbar.','Push registration is unavailable.'));
+        await register();
+        return await screen('booking-notifications');
       }
       if(id==='language')return await render(view(tr('Sprache','Language'),{message:tr('Sprachwechsel wird beim nächsten Öffnen angewendet.','Language applies when reopening.'),fields:[value('language',tr('Sprache','Language'),language,[option('de','Deutsch'),option('en','English')])],actions:[row('save-language',tr('Speichern','Save'))]}));
       if(id==='save-language'){
