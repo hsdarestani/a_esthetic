@@ -23,5 +23,5 @@ fixture = project.main_group.new_file(File.expand_path('qa-fixtures/02b-calendar
 test.resources_build_phase.add_file_reference(fixture, true)
 project.save
 scheme = Xcodeproj::XCScheme.new
-scheme.configure_with_targets(app, test, true)
+scheme.configure_with_targets(app, test)
 scheme.save_as(project_path, 'NativeCalendarSwipeQA', true)

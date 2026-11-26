@@ -12,8 +12,19 @@ jobs:
   controller:
     if: github.head_ref == 'remediation/native-build-66'
     runs-on: ubuntu-latest
+    outputs:
+      android_changed: ${{ steps.android_delta.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
+      - id: android_delta
+        name: Reuse completed B67 Android when its source is unchanged
+        run: |
+          git fetch --no-tags origin 8477adde2a5b801c7badff943c2dc2e4a2cfcf44
+          if git diff --quiet 8477adde2a5b801c7badff943c2dc2e4a2cfcf44 HEAD -- native/staff/android www scripts/build-android.sh scripts/install_native_staff.py package.json package-lock.json; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -106,6 +117,7 @@ jobs:
           if-no-files-found: warn
   android:
     needs: [controller]
+    if: needs.controller.outputs.android_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
