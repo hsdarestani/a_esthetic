@@ -31,3 +31,8 @@ Root cause, relevant files, new implementation SHA and PR, automated/manual resu
 
 - Book production preflight verified the checkout and migration 0031. The release is blocked on preserving host-only calendar assets and exact configuration, and verifying a rollback path that avoids unrelated writes. See the [master tracker](https://github.com/hsdarestani/book/blob/remediation/aesthetic-20261126/docs/qa/AESTHETIC_REMEDIATION.md).
 - Public Office intake BUG-013 and BUG-014 are implemented in [patient draft #88](https://github.com/hsdarestani/a_esthetic/pull/88) at `b0a0c6c`. The patient suite passed 137 tests and Chromium verified the medical step and signature canvas with synthetic input. This is a web intake change. Native candidate reconciliation, device acceptance and updated iOS/Android artifacts remain pending. The baseline B65 links above are historical.
+
+### Native API reconciliation
+
+- The B65 patient candidate at `7fe2ea7` forwards workspace operations from `p0_app/mobile_staff_views.py` to Book's `/api/mobile/staff/` namespace. That URL family exists in the Book [native API candidate](https://github.com/hsdarestani/book/commit/69750ebb94d1db1a75747181e625db558414fd2b), and is absent from the current Book remediation routes. An anonymous production check returned 404 for the Book staff overview and 401 for the patient staff session endpoint. This confirms the Book dependency to resolve before a new end-to-end build. No authenticated native acceptance took place.
+- Next action. Bring the supported Book staff contract and the intended iOS/Android candidate together on isolated staging, retaining the existing access and privacy controls. Run synthetic staff runtime acceptance before generating updated Appetize and Android QA artifacts.
