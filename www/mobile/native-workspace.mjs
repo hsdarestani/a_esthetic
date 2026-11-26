@@ -54,7 +54,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   let transition, location, routeTarget, calendarScreen, queuedRoute, closing;
   const appointmentsById = new Map();
   const rememberAppointments = items => { for(const a of items||[]) appointmentsById.set(a.id,a); };
-  let date = today(), search = '', calendarMode='day', providerFilter='all', serviceFilter='all', active = true, busy = true, listener, patient, catalog, appointment;
+  let date = today(), search = '', calendarMode='day', providerFilter=admin?null:'all', serviceFilter='all', active = true, busy = true, listener, patient, catalog, appointment;
   let activeTab = 'home';
   let patientPage=1, recordPage=1, patientSection='overview', intakeSearch='', intakeStatus='', intakePage=1, intakeFrom='', intakeTo='', submission, canonicalForms=true;
   let current = {title:'A+ Esthetic',busy:true,tabs:[]};
@@ -202,6 +202,12 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         return {id:'date:'+d,label:dateLabel(d,locale,{weekday:'short',day:'numeric'}),selected:d===date};
       });
       catalog = catalog || await book('catalog/');
+      // Resolve the default from the authorized provider catalog, never from a
+      // hard-coded database ID. Explicit All / provider choices stay intact.
+      if(providerFilter==null || (providerFilter!=='all'&&!catalog.providers.some(p=>String(p.id)===providerFilter))){
+        const ariane=admin?catalog.providers.filter(p=>/(^|[^\p{L}])ariane([^\p{L}]|$)/iu.test(String(p.name||''))&&!isSyncedProvider(p)):[];
+        providerFilter=ariane.length===1?String(ariane[0].id):'all';
+      }
       rememberAppointments(data.appointments);
       for(const item of data.blocks||[])blockById.set(item.id,item);
       const match = a => (providerFilter==='all'||String(a.staff_id)===providerFilter) &&
