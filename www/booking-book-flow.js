@@ -3,6 +3,15 @@
 
   const APP_ORIGIN = 'https://app.a-esthetic.de';
   const API_BASE = `${APP_ORIGIN}/api/mobile`;
+  const { appointmentStatus, isUpcoming, appointmentChevron, renderNextAppointment } = window.APlusAppointmentUI;
+  const statusLabels = {
+    new: 'Bestätigung ausstehend',
+    confirmed: 'Bestätigt',
+    cancelled: 'Storniert',
+    completed: 'Abgeschlossen',
+    no_show: 'Nicht erschienen',
+    expired: 'Vergangen',
+  };
   const token = () => localStorage.getItem('aplus_token') || '';
   const esc = (value = '') => String(value)
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -15,7 +24,7 @@
   async function api(path, options = {}) {
     const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
     if (token()) headers.Authorization = `Bearer ${token()}`;
-    const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    const response = await fetch(`${API_BASE}${path}`, { cache: 'no-store', ...options, headers });
     let body = {};
     try { body = await response.json(); } catch (_) {}
     if (!response.ok || body.ok === false) {
@@ -84,6 +93,7 @@
     requestId: 0,
     expandedAppointment: null,
     bookingAttempt: null,
+    changingAppointment: null,
   });
 
   function formatDay(key) {
@@ -106,52 +116,61 @@
     const allowed = new Map((manageable?.appointments || []).map(item => [String(item.id), item]));
     const cutoff = Number(manageable?.change_deadline_hours || 24);
     const dateFormat = new Intl.DateTimeFormat('de-DE', { timeZone:'Europe/Berlin',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit' });
-    return items.map(item => {
-      const statusCode = String(item.status_code || '').toLowerCase();
-      const statusText = String(item.status || 'Unbekannt');
-      const upcoming = new Date(item.starts_at).getTime() > Date.now();
-      const active = upcoming && !['cancelled','completed','done','no_show'].includes(statusCode);
+    const now = Date.now();
+    const sorted = [...items].sort((a, b) => {
+      const aActive = isUpcoming(a, now);
+      const bActive = isUpcoming(b, now);
+      return Number(bActive) - Number(aActive) ||
+        (Date.parse(a.starts_at) - Date.parse(b.starts_at)) * (aActive ? 1 : -1);
+    });
+    const descriptions = {
+      new: 'Deine Anfrage ist bei der Praxis eingegangen und wartet noch auf die Bestätigung.',
+      confirmed: 'Dieser Termin wurde bestätigt.',
+      cancelled: 'Dieser Termin findet nicht mehr statt.',
+    };
+    return sorted.map((item, index) => {
+      const status = appointmentStatus(item);
+      const active = isUpcoming(item, now);
+      const displayStatus = !active && ['new', 'confirmed'].includes(status) ? 'expired' : status;
+      const statusText = Object.hasOwn(statusLabels, displayStatus) ? statusLabels[displayStatus] : 'Status offen';
       const editable = allowed.get(String(item.id));
-      const canCancel = active && editable?.change_allowed === true;
-      const date = dateFormat.format(new Date(item.starts_at));
-      const explain = statusCode==='new'
-        ? 'Der Termin ist eingetragen und wartet noch auf die Bestätigung der Praxis.'
-        : statusCode==='confirmed'
-          ? 'Dieser Termin wurde bestätigt. Eine weitere Bestätigung ist nicht erforderlich.'
-          : statusCode==='cancelled'
-            ? 'Dieser Termin wurde storniert und findet nicht mehr statt.'
-            : statusCode==='completed'
-              ? 'Dieser Termin ist abgeschlossen.'
-              : 'Den aktuellen Status findest du in deiner Terminübersicht.';
-      const cancellation = canCancel
-        ? '<button type="button" class="book-cancel-start" data-start-cancel="'+esc(item.id)+'">Termin stornieren</button>'+
-          '<div class="book-cancel-confirm" data-cancel-confirmation hidden>'+
-            '<p>Diesen Termin wirklich stornieren?</p>'+
-            '<div class="book-cancel-actions"><button type="button" data-confirm-cancel="'+esc(item.id)+'">Ja, Termin stornieren</button>'+
-            '<button type="button" data-dismiss-cancel>Termin behalten</button></div></div>'
-        : active && editable && !editable.change_allowed
-          ? '<p class="book-cancel-deadline">Online Stornierungen sind nur bis '+cutoff+' Stunden vor Terminbeginn möglich. Danach kontaktiere bitte die Praxis.</p>'
-          : active && !manageable
-            ? '<p class="book-cancel-deadline">Die Stornierungsoptionen konnten nicht geladen werden.</p><button type="button" class="book-cancel-reload" data-reload-cancellations>Erneut versuchen</button>'
-            : '';
-      return '<article class="book-appointment-row" data-appointment-id="'+esc(item.id)+'">'+
-        '<button type="button" class="book-appointment-open" data-open-appointment="'+esc(item.id)+'" aria-expanded="false">'+
-          '<span class="book-appointment-summary"><strong>'+esc(item.service||'Behandlung')+'</strong><small>'+esc(date)+'</small></span>'+
-          '<span class="book-appointment-right"><span class="book-appointment-status-label">'+esc(statusText)+'</span>'+
-            '<span aria-hidden="true" class="book-appointment-chevron">⌄</span></span>'+
-        '</button>'+
-        '<div class="book-appointment-details" data-appointment-details hidden>'+
-          '<dl><div><dt>Behandlung</dt><dd>'+esc(item.service||'—')+'</dd></div>'+
-          '<div><dt>Datum und Uhrzeit</dt><dd>'+esc(date)+'</dd></div>'+
-          '<div><dt>Behandler</dt><dd>'+esc(item.staff||'Wird von der Praxis zugewiesen')+'</dd></div>'+
-          '<div><dt>Status</dt><dd>'+esc(statusText)+'</dd></div></dl>'+
-          '<p class="book-appointment-explanation">'+esc(explain)+'</p>'+cancellation+
-        '</div></article>';
+      const date = Number.isFinite(Date.parse(item.starts_at)) ? dateFormat.format(new Date(item.starts_at)) + ' Uhr' : '—';
+      const explain = Object.hasOwn(descriptions, displayStatus) ? descriptions[displayStatus] : '';
+      const id = esc(item.id);
+      const detailsId = `book-appointment-details-${index}`;
+      const actions = active && editable?.change_allowed === true
+        ? `<div class="book-appointment-actions">
+            <button type="button" class="book-cancel-start" data-start-reschedule>Termin verschieben</button>
+            <button type="button" class="book-cancel-start" data-start-cancel>Termin stornieren</button>
+          </div>
+          <div class="book-cancel-confirm" data-cancel-confirmation hidden>
+            <p>Diesen Termin wirklich stornieren?</p>
+            <div class="book-cancel-actions"><button type="button" data-confirm-cancel="${id}">Ja, Termin stornieren</button>
+            <button type="button" data-dismiss-cancel>Termin behalten</button></div>
+          </div>`
+        : active && editable
+          ? `<p class="book-cancel-deadline">Online-Änderungen sind bis ${cutoff} Stunden vor Terminbeginn möglich. Danach hilft dir die Praxis weiter.</p>`
+          : '';
+      return `<article class="book-appointment-row ${active?'is-upcoming':'is-history'}" data-appointment-id="${id}">
+        <button type="button" class="book-appointment-open" data-open-appointment="${id}" aria-expanded="false" aria-controls="${detailsId}">
+          <span class="book-appointment-summary"><strong>${esc(item.service || 'Behandlung')}</strong><small>${esc(date)}</small></span>
+          <span class="book-appointment-right">
+            <span class="book-appointment-status-label status-${Object.hasOwn(statusLabels, displayStatus) ? displayStatus : 'unknown'}">${statusText}</span>
+            <span class="book-appointment-chevron">${appointmentChevron}</span>
+          </span>
+        </button>
+        <div id="${detailsId}" class="book-appointment-details" data-appointment-details hidden>
+          <dl><div><dt>Behandler</dt><dd>${esc(item.staff || 'Wird von der Praxis zugewiesen')}</dd></div></dl>
+          ${explain ? `<p class="book-appointment-explanation">${esc(explain)}</p>` : ''}${actions}
+        </div>
+      </article>`;
     }).join('');
   }
 
   async function loadAvailability(state, root) {
     const id = ++state.requestId;
+    const { service, staff, changingAppointment } = state;
+    const exclude = changingAppointment ? '&exclude_appointment_id=' + encodeURIComponent(changingAppointment.id) : '';
     root.innerHTML = '<div class="book-slot-empty">Freie Termine werden geladen …</div>';
     const today = new Date(clinicDateKey(new Date())+'T12:00:00Z');
     const days = Array.from({ length: 91 }, (_, offset) => {
@@ -162,16 +181,19 @@
     const results = [];
     let cursor = 0;
     async function worker() {
-      while (cursor < days.length) {
+      while (cursor < days.length && id === state.requestId && root.isConnected) {
         const day = days[cursor++];
         try {
-          const data = await api(`/slots/?service_id=${encodeURIComponent(state.service.id)}&staff_id=${encodeURIComponent(state.staff.id)}&day=${encodeURIComponent(day)}`);
-          if (Array.isArray(data.slots) && data.slots.length) results.push({ date: day, slots: data.slots });
+          const data = await api(`/slots/?service_id=${encodeURIComponent(service.id)}&staff_id=${encodeURIComponent(staff.id)}&day=${encodeURIComponent(day)}${exclude}`);
+          const slots = (data.slots || []).filter(slot => !changingAppointment ||
+            Number(staff.id) !== Number(changingAppointment.staff_id) ||
+            Date.parse(slot) !== Date.parse(changingAppointment.starts_at));
+          if (slots.length) results.push({ date: day, slots });
         } catch (_) {}
       }
     }
     await Promise.all(Array.from({ length: 5 }, worker));
-    if (id !== state.requestId) return;
+    if (id !== state.requestId || !root.isConnected) return;
     state.availability = results.sort((a, b) => a.date.localeCompare(b.date));
     state.dayIndex = 0;
     renderAvailability(state, root);
@@ -239,7 +261,8 @@
       dot.classList.toggle('is-active', n === Math.min(step, 4));
       dot.classList.toggle('is-done', step > n);
     });
-    host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    host.querySelector('.book-progress').hidden = step === 5;
+    host.scrollIntoView({ block: 'start' });
   }
 
   function renderSummary(state, host) {
@@ -277,6 +300,7 @@
       return;
     }
 
+    if (!card.isConnected) return;
     const profileData = state.profile?.profile || {};
     const memberName = String(profileData.name || '').trim();
     const nameParts = memberName.split(/\s+/).filter(Boolean);
@@ -286,7 +310,12 @@
     const phone = profileData.phone || '';
 
     card.innerHTML = `
-      <section class="book-my-appointments"><h2>Deine Termine</h2><div data-appointment-status role="status" aria-live="polite"></div><div data-appointments>${appointmentRows(state.data.appointments)}</div></section>
+      <div data-next-card></div>
+      <section class="book-my-appointments" aria-labelledby="book-appointments-title">
+        <h2 id="book-appointments-title">Deine Termine</h2>
+        <div data-appointment-status role="status"></div>
+        <div data-appointments></div>
+      </section>
       <div class="book-flow" data-book-root>
         <div class="book-progress" aria-label="Buchungsfortschritt">
           <span class="book-progress-dot is-active" data-book-progress="1">1</span><span class="book-progress-line"></span>
@@ -296,7 +325,7 @@
         </div>
 
         <section class="book-step is-active" data-book-step="1">
-          <div class="book-step-head"><span>01</span><div><h2>Behandlung wählen</h2><p>Was dürfen wir für dich einplanen?</p></div></div>
+          <div class="book-step-head"><h2>Behandlung wählen</h2></div>
           <div class="book-service-filters" data-service-filters>
             <button type="button" class="is-active" data-service-filter="all">Alle</button>
             <button type="button" data-service-filter="face">Gesicht</button>
@@ -308,20 +337,21 @@
 
         <section class="book-step" data-book-step="2">
           <button class="book-back" type="button" data-back="1">← Zurück</button>
-          <div class="book-step-head"><span>02</span><div><h2>Ärztin oder Arzt wählen</h2><p>Wähle, bei wem du deinen Termin buchen möchtest.</p></div></div>
+          <div class="book-step-head"><h2>Ärztin oder Arzt wählen</h2></div>
           <div class="book-choice-grid book-staff-grid" data-staff></div>
         </section>
 
         <section class="book-step" data-book-step="3">
           <button class="book-back" type="button" data-back="2">← Zurück</button>
-          <div class="book-step-head"><span>03</span><div><h2>Freien Termin wählen</h2><p>Wische durch die verfügbaren Tage und wähle darunter direkt deine Uhrzeit.</p></div></div>
+          <div class="book-step-head"><h2>Freien Termin wählen</h2></div>
           <div data-slots></div>
         </section>
 
         <section class="book-step" data-book-step="4">
           <button class="book-back" type="button" data-back="3">← Zurück</button>
-          <div class="book-step-head"><span>04</span><div><h2>Deine Kontaktdaten</h2><p>Fast geschafft – prüfe deine Daten und sichere deinen Termin.</p></div></div>
+          <div class="book-step-head"><h2 data-review-title>Deine Kontaktdaten</h2></div>
           <form class="book-details-form" data-confirm-form>
+            <fieldset class="book-booking-fields" data-booking-fields>
             <div class="book-field-row">
               <label>Vorname<input value="${esc(firstName)}" readonly></label>
               <label>Nachname<input value="${esc(lastName)}" readonly></label>
@@ -330,69 +360,136 @@
               <label>E-Mail<input type="email" value="${esc(email)}" readonly></label>
               <label>Telefon<input name="phone" type="tel" value="${esc(phone)}" maxlength="40" placeholder="+49 …"></label>
             </div>
-            <div class="book-summary" data-book-summary></div>
             <div class="book-consent-stack">
               <label class="book-privacy-check"><input name="marketing" type="checkbox" checked><span>Ich möchte Informationen zu Aktionen, Angeboten und Neuigkeiten von A+ Esthetic erhalten. Diese Einwilligung ist freiwillig und jederzeit mit Wirkung für die Zukunft widerrufbar.</span></label>
               <label class="book-privacy-check"><input name="terms" type="checkbox" required><span>Ich akzeptiere die <a href="${APP_ORIGIN}/nutzungsbedingungen/">Nutzungsbedingungen</a> für die Terminorganisation.</span></label>
               <label class="book-privacy-check"><input name="privacy" type="checkbox" required><span>Ich stimme der Verarbeitung meiner Angaben zur Terminorganisation zu und habe die <a href="${APP_ORIGIN}/datenschutz/">Datenschutzhinweise</a> gelesen.</span></label>
             </div>
+            </fieldset>
+            <div class="book-summary" data-book-summary></div>
             <div class="book-confirm-error" data-booking-error role="alert" hidden></div>
             <button class="book-primary" type="submit">Jetzt Termin buchen</button>
           </form>
         </section>
 
-        <section class="book-step book-success" data-book-step="5">
-          <div class="book-success-mark">✓</div><div class="book-eyebrow">Termin gespeichert</div><h2>Vielen Dank.</h2>
-          <p>Dein Termin wurde erfolgreich gespeichert.</p>
+        <section class="book-step book-success" data-book-step="5" aria-labelledby="book-result-title">
+          <span class="book-success-mark" data-result-icon aria-hidden="true"></span>
+          <h2 id="book-result-title" tabindex="-1"></h2>
+          <p data-result-description></p>
           <div class="book-summary" data-success-summary></div>
-          <button class="book-primary" type="button" data-new-booking>Weiteren Termin buchen</button>
+          <button class="book-primary" type="button" data-result-appointments>Zu deinen Terminen</button>
         </section>
       </div>`;
 
+    const nextCard = card.querySelector('[data-next-card]');
     const appointmentsList = card.querySelector('[data-appointments]');
-    const appointmentStatus = card.querySelector('[data-appointment-status]');
+    const appointmentFeedback = card.querySelector('[data-appointment-status]');
+    let feedbackTimer;
+    let mutationInFlight = false;
+    const setFeedback = (message = '', kind = '', retry = false) => {
+      clearTimeout(feedbackTimer);
+      appointmentFeedback.replaceChildren();
+      if (!message.trim() || !card.isConnected) return;
+      const notice = document.createElement('div');
+      notice.className = `book-appointment-status is-${kind}`;
+      notice.textContent = message;
+      if (retry) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'book-cancel-reload';
+        button.textContent = 'Erneut versuchen';
+        button.addEventListener('click', () => {
+          setFeedback();
+          void reloadCancellations();
+        });
+        notice.append(button);
+      }
+      appointmentFeedback.append(notice);
+      if (kind === 'success') feedbackTimer = setTimeout(() => setFeedback(), 5000);
+    };
+    const findRow = id => [...appointmentsList.children].find(row => row.dataset.appointmentId === String(id));
+    const setExpanded = (row, expanded) => {
+      row.querySelector('[data-open-appointment]').setAttribute('aria-expanded', String(expanded));
+      row.querySelector('[data-appointment-details]').hidden = !expanded;
+      if (!expanded) {
+        const controls = row.querySelector('[data-cancel-confirmation]');
+        if (controls) controls.hidden = true;
+      }
+    };
+    const openAppointment = (row, expanded = true) => {
+      const previous = findRow(state.expandedAppointment);
+      if (previous && previous !== row) setExpanded(previous, false);
+      setExpanded(row, expanded);
+      state.expandedAppointment = expanded ? row.dataset.appointmentId : null;
+    };
     const paintAppointments = () => {
-      appointmentsList.innerHTML = appointmentRows(state.data.appointments || [], state.manageable);
-      if(state.expandedAppointment){
-        const expanded=[...appointmentsList.querySelectorAll('[data-appointment-id]')].find(
-          node=>node.dataset.appointmentId===state.expandedAppointment
-        );
-        const detail=expanded?.querySelector('[data-appointment-details]');
-        const toggle=expanded?.querySelector('[data-open-appointment]');
-        if(detail && toggle){
-          detail.hidden=false;
-          toggle.setAttribute('aria-expanded','true');
-        }
+      if (!card.isConnected) return;
+      nextCard.innerHTML = renderNextAppointment(state.data);
+      const items = state.data.appointments || [];
+      const next = state.data.next_appointment;
+      const includeNext = next && isUpcoming(next) && !items.some(item => String(item.id) === String(next.id));
+      appointmentsList.innerHTML = appointmentRows(includeNext ? [...items, next] : items, state.manageable);
+      const expanded = findRow(state.expandedAppointment);
+      if (expanded) setExpanded(expanded, true);
+    };
+    const applyAppointment = item => {
+      const items = state.data.appointments || [];
+      const id = String(item.id);
+      state.data.appointments = items.some(row => String(row.id) === id)
+        ? items.map(row => String(row.id) === id ? { ...row, ...item } : row)
+        : [item, ...items];
+      paintAppointments();
+    };
+    const refreshAppointments = async () => {
+      const fresh = await api('/booking/').catch(() => null);
+      if (Array.isArray(fresh?.appointments)) {
+        state.data = fresh;
+        paintAppointments();
       }
     };
     const reloadCancellations = async () => {
-      appointmentStatus.textContent = 'Stornierungsoptionen werden geladen …';
       try {
         state.manageable = await api('/booking/manageable/');
-        if (!card.isConnected) return;
         paintAppointments();
-        appointmentStatus.textContent = '';
       } catch (_) {
         state.manageable = null;
-        if (!card.isConnected) return;
         paintAppointments();
-        appointmentStatus.textContent = 'Stornierungsoptionen konnten nicht geladen werden. Bitte erneut versuchen.';
+        setFeedback('Die Terminoptionen konnten nicht geladen werden.', 'error', true);
       }
     };
+    paintAppointments();
+    nextCard.addEventListener('click', event => {
+      const button = event.target.closest('[data-next-appointment]');
+      if (!button) return;
+      const row = findRow(button.dataset.nextAppointment);
+      if (row) {
+        openAppointment(row);
+        row.querySelector('[data-open-appointment]').focus({ preventScroll: true });
+        row.scrollIntoView({ block: 'nearest' });
+      } else {
+        resetBooking();
+      }
+    });
     appointmentsList.addEventListener('click', async event => {
       const target = event.target.closest('button');
       if (!target || target.disabled) return;
-      if(target.hasAttribute('data-reload-cancellations')) { await reloadCancellations(); return; }
       const row = target.closest('[data-appointment-id]');
       if (!row) return;
       const controls = row.querySelector('[data-cancel-confirmation]');
       if (target.hasAttribute('data-open-appointment')) {
-        const details=row.querySelector('[data-appointment-details]');
-        if (!details) return;
-        const open=details.hidden;
-        state.expandedAppointment=open?row.dataset.appointmentId:null;
-        details.hidden=!open;
-        target.setAttribute('aria-expanded',String(open));
+        openAppointment(row, target.getAttribute('aria-expanded') !== 'true');
+        return;
+      }
+      if (target.hasAttribute('data-start-reschedule')) {
+        const item = state.manageable?.appointments.find(item => String(item.id) === row.dataset.appointmentId);
+        if (item?.change_allowed) {
+          const service = state.data.services.find(service => Number(service.id) === Number(item.service_id));
+          if (!service) {
+            setFeedback('Diese Behandlung lässt sich online nicht verschieben. Bitte kontaktiere die Praxis.', 'error');
+            return;
+          }
+          chooseStaff(service, item);
+        }
         return;
       }
       if (target.hasAttribute('data-start-cancel')) {
@@ -403,41 +500,34 @@
         if (controls) controls.hidden = true;
         return;
       }
-      if (!target.hasAttribute('data-confirm-cancel')) return;
+      if (!target.hasAttribute('data-confirm-cancel') || mutationInFlight) return;
+      mutationInFlight = true;
       const id = target.dataset.confirmCancel;
       target.disabled = true;
       target.textContent = 'Wird storniert …';
-      appointmentStatus.textContent = '';
+      setFeedback();
       try {
         const result = await api('/booking/'+encodeURIComponent(id)+'/change/', {
           method:'POST',
           body:JSON.stringify({ action:'cancel' })
         });
         if (!result.ok || result.action !== 'cancel') throw new Error('cancel_not_confirmed');
-        // Update immediately even when refreshing the appointment list fails.
-        state.data.appointments = (state.data.appointments || []).map(item =>
-          String(item.id) === String(id) ? { ...item, status:'Abgesagt', status_code:'cancelled' } : item
-        );
-        state.manageable = {
-          ...state.manageable,
-          appointments:(state.manageable?.appointments||[]).filter(item => String(item.id) !== String(id))
-        };
-        paintAppointments();
-        appointmentStatus.className = 'book-appointment-status is-success';
-        appointmentStatus.textContent = 'Dein Termin wurde erfolgreich storniert. Du erhältst eine Bestätigung per E-Mail.';
-        const fresh = await api('/booking/').catch(() => null);
-        if (fresh?.appointments) {
-          state.data.appointments = fresh.appointments;
-          paintAppointments();
-        }
+        document.dispatchEvent(new Event('aplus:booking-changed'));
+        if (!card.isConnected) return;
+        state.manageable.appointments = state.manageable.appointments.filter(item => String(item.id) !== String(id));
+        applyAppointment({ id, status: 'Storniert', status_code: 'cancelled' });
+        findRow(id)?.querySelector('[data-open-appointment]').focus({ preventScroll: true });
+        setFeedback('Dein Termin wurde storniert.', 'success');
+        await refreshAppointments();
       } catch (error) {
         target.disabled = false;
         target.textContent = 'Ja, Termin stornieren';
-        appointmentStatus.className = 'book-appointment-status is-error';
-        appointmentStatus.textContent = error.body?.message ||
+        setFeedback(error.body?.message ||
           (error.message === 'change_deadline_passed'
             ? 'Die Stornierungsfrist ist abgelaufen. Bitte kontaktiere die Praxis.'
-            : 'Die Stornierung konnte nicht bestätigt werden. Bitte erneut versuchen.');
+            : 'Die Stornierung konnte nicht bestätigt werden. Bitte erneut versuchen.'), 'error');
+      } finally {
+        mutationInFlight = false;
       }
     });
     void reloadCancellations();
@@ -508,12 +598,37 @@
       filterButton.addEventListener('click', () => applyServiceFilter(filterButton));
     });
 
-    services.querySelectorAll('[data-service-id]').forEach(button => button.addEventListener('click', () => {
-      state.service = state.data.services.find(item => Number(item.id) === Number(button.dataset.serviceId));
+    const bookingForm = host.querySelector('[data-confirm-form]');
+    const bookingError = host.querySelector('[data-booking-error]');
+    const submit = bookingForm.querySelector('button[type="submit"]');
+    const fields = bookingForm.querySelector('[data-booking-fields]');
+    const resetBooking = () => {
+      if (mutationInFlight) return;
+      state.requestId++;
+      state.service = null;
       state.staff = null;
       state.startsAt = '';
+      state.availability = [];
+      state.bookingAttempt = null;
+      state.changingAppointment = null;
+      setFeedback();
+      showStep(host, 1);
+    };
+    const chooseStaff = (service, changingAppointment = null) => {
+      if (mutationInFlight) return;
+      state.requestId++;
+      state.service = service;
+      state.staff = null;
+      state.startsAt = '';
+      state.changingAppointment = changingAppointment;
+      bookingError.hidden = true;
+      fields.hidden = fields.disabled = Boolean(changingAppointment);
+      bookingForm.toggleAttribute('data-confirm-form', !changingAppointment);
+      host.querySelector('[data-review-title]').textContent = changingAppointment ? 'Neuen Termin prüfen' : 'Deine Kontaktdaten';
+      submit.disabled = false;
+      submit.textContent = changingAppointment ? 'Termin verschieben' : 'Jetzt Termin buchen';
       const staffRoot = host.querySelector('[data-staff]');
-      const eligible = state.data.staff.filter(item => (item.service_ids || []).map(Number).includes(Number(state.service.id)));
+      const eligible = state.data.staff.filter(item => (item.service_ids || []).map(Number).includes(Number(service.id)));
       staffRoot.innerHTML = eligible.length ? eligible.map(item => {
         const initials = item.name.split(/\s+/).slice(0, 2).map(part => part[0]).join('');
         const photo = providerPhotos[item.name];
@@ -526,12 +641,18 @@
         await loadAvailability(state, host.querySelector('[data-slots]'));
       }));
       showStep(host, 2);
+    };
+    services.querySelectorAll('[data-service-id]').forEach(button => button.addEventListener('click', () => {
+      const service = state.data.services.find(item => Number(item.id) === Number(button.dataset.serviceId));
+      chooseStaff(service);
+    }));
+    host.querySelectorAll('[data-back]').forEach(button => button.addEventListener('click', () => {
+      if (mutationInFlight) return;
+      const step = Number(button.dataset.back);
+      if (step === 1) resetBooking();
+      else showStep(host, step);
     }));
 
-    host.querySelectorAll('[data-back]').forEach(button => button.addEventListener('click', () => showStep(host, Number(button.dataset.back))));
-
-    const bookingForm = host.querySelector('[data-confirm-form]');
-    const bookingError = host.querySelector('[data-booking-error]');
     const showBookingError = (message, chooseNewTime = false) => {
       if (!bookingError) return;
       bookingError.textContent = message;
@@ -549,30 +670,62 @@
         bookingError.append(pickAgain);
       }
     };
-    const showBookingSuccess = async (fresh = null) => {
-      const success = host.querySelector('[data-success-summary]');
-      success.innerHTML = host.querySelector('[data-book-summary]').innerHTML;
-      showStep(host, 5);
+    const showBookingResult = (appointment, changed, fresh = null) => {
+      document.dispatchEvent(new Event('aplus:booking-changed'));
+      if (!card.isConnected) return;
+      const confirmed = appointmentStatus(appointment) === 'confirmed';
+      const pending = appointmentStatus(appointment) === 'new';
+      const result = host.querySelector('.book-success');
+      const title = result.querySelector('h2');
+      result.classList.toggle('is-confirmed', confirmed);
+      result.querySelector('[data-result-icon]').innerHTML = confirmed ? window.AEstheticIconSet.appointments
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>';
+      title.textContent = confirmed ? (changed ? 'Termin verschoben' : 'Termin bestätigt')
+        : pending ? (changed ? 'Änderung eingegangen' : 'Terminanfrage eingegangen') : 'Terminstatus offen';
+      result.querySelector('[data-result-description]').textContent = confirmed
+        ? 'Dein Termin steht. Die Details findest du auch in deiner Terminübersicht.'
+        : pending ? 'Die Bestätigung steht noch aus. Den aktuellen Status siehst du unter „Deine Termine“.'
+          : 'Prüfe den aktuellen Status unter „Deine Termine“, bevor du erneut buchst.';
+      result.querySelector('[data-success-summary]').innerHTML = host.querySelector('[data-book-summary]').innerHTML;
       state.bookingAttempt = null;
-      if (fresh?.appointments) state.data.appointments = fresh.appointments;
-      else {
-        const refreshed = await api('/booking/').catch(() => null);
-        if (refreshed?.appointments) state.data.appointments = refreshed.appointments;
+      state.changingAppointment = null;
+      if (fresh) {
+        state.data = fresh;
+        paintAppointments();
+      } else if (appointment.id) {
+        applyAppointment(appointment);
       }
-      paintAppointments();
-      await reloadCancellations().catch(() => {});
+      showStep(host, 5);
+      title.focus({ preventScroll: true });
+      void (fresh ? reloadCancellations() : refreshAppointments().then(reloadCancellations));
     };
     bookingForm?.addEventListener('submit', async event => {
       event.preventDefault();
-      if (!state.service || !state.staff || !state.startsAt) return;
+      if (!state.service || !state.staff || !state.startsAt || mutationInFlight) return;
+      mutationInFlight = true;
       const button = event.currentTarget.querySelector('button[type="submit"]');
       const formData = new FormData(event.currentTarget);
       bookingError.hidden = true;
       bookingError.textContent = '';
       button.disabled = true;
-      button.textContent = 'Wird gebucht…';
+      const changing = state.changingAppointment;
+      button.textContent = changing ? 'Wird verschoben …' : 'Wird gebucht …';
+      const appointment = {
+        service_id: Number(state.service.id), service: state.service.name,
+        staff_id: Number(state.staff.id), staff: state.staff.name, starts_at: state.startsAt,
+      };
       let bookingSubmitted = false;
       try {
+        if (changing) {
+          bookingSubmitted = true;
+          const result = await api('/booking/'+encodeURIComponent(changing.id)+'/change/', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'reschedule', staff_id: appointment.staff_id, starts_at: appointment.starts_at }),
+          });
+          if (result.action !== 'reschedule' || !result.appointment) throw new Error('change_not_confirmed');
+          showBookingResult(result.appointment, true);
+          return;
+        }
         const nextPhone = String(formData.get('phone') || '').trim();
         const oldPhone = String(state.profile?.profile?.phone || '').trim();
         if (nextPhone && nextPhone !== oldPhone) {
@@ -586,7 +739,7 @@
           state.bookingAttempt = { identity, key: `app-${unique}` };
         }
         bookingSubmitted = true;
-        await api('/booking/', {
+        const result = await api('/booking/', {
           method: 'POST',
           headers: { 'Idempotency-Key': state.bookingAttempt.key },
           body: JSON.stringify({
@@ -596,7 +749,7 @@
             consent_acknowledged: true,
           }),
         });
-        await showBookingSuccess();
+        showBookingResult({ ...appointment, ...result, id: result.appointment_id }, false);
       } catch (error) {
         // A mobile connection can lose the HTTP response after Book committed
         // the appointment. Never tell the patient it failed without reconciling
@@ -604,13 +757,14 @@
         if (bookingSubmitted) {
           const fresh = await api('/booking/').catch(() => null);
           const exactBooking = (fresh?.appointments || []).find(item => (
-            Number(item.service_id) === Number(state.service.id)
-            && Number(item.staff_id) === Number(state.staff.id)
-            && new Date(item.starts_at).getTime() === new Date(state.startsAt).getTime()
-            && ['new', 'confirmed'].includes(String(item.status_code || '').toLowerCase())
+            (!changing || String(item.id) === String(changing.id))
+            && Number(item.service_id) === appointment.service_id
+            && Number(item.staff_id) === appointment.staff_id
+            && Date.parse(item.starts_at) === Date.parse(appointment.starts_at)
+            && isUpcoming(item)
           ));
           if (exactBooking) {
-            await showBookingSuccess(fresh);
+            showBookingResult(exactBooking, Boolean(changing), fresh);
             return;
           }
         }
@@ -625,17 +779,21 @@
           start_time_too_soon: 'Bitte wähle eine spätere Uhrzeit.',
         };
         const errorMessage = messages[error.message] || error.body?.message
-          || 'Die Buchung konnte nicht bestätigt werden. Bitte versuche es erneut oder kontaktiere die Praxis.';
+          || (changing ? 'Die Änderung konnte nicht bestätigt werden. Bitte versuche es erneut oder kontaktiere die Praxis.'
+            : 'Die Buchung konnte nicht bestätigt werden. Bitte versuche es erneut oder kontaktiere die Praxis.');
         showBookingError(errorMessage, error.message === 'time_not_available' || error.message === 'booking_attempt_closed');
         button.disabled = false;
-        button.textContent = 'Jetzt Termin buchen';
+        button.textContent = changing ? 'Termin verschieben' : 'Jetzt Termin buchen';
+      } finally {
+        mutationInFlight = false;
       }
     });
 
-    host.querySelector('[data-new-booking]')?.addEventListener('click', () => {
-      state.service = null; state.staff = null; state.startsAt = ''; state.availability = []; state.bookingAttempt = null;
-      showStep(host, 1);
+    host.querySelector('[data-result-appointments]').addEventListener('click', () => {
+      resetBooking();
+      card.querySelector('.book-my-appointments').scrollIntoView({ block: 'start' });
     });
+
   }
 
   function run() {
@@ -646,5 +804,8 @@
   const observer = new MutationObserver(run);
   observer.observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener('DOMContentLoaded', run);
+  window.addEventListener('pagehide', () => {
+    document.querySelector('[data-appointment-status]')?.replaceChildren();
+  });
   setTimeout(run, 0);
 })();

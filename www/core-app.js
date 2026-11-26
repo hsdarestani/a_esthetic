@@ -35,7 +35,51 @@
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
   const fmt = value => value ? new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Berlin'}).format(new Date(value)) : '—';
   const dateBits = value => { const d=new Date(value); return {day:d.toLocaleDateString('de-DE',{day:'2-digit',timeZone:'Europe/Berlin'}),month:d.toLocaleDateString('de-DE',{month:'short',timeZone:'Europe/Berlin'}),full:d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',timeZone:'Europe/Berlin'}),time:d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Berlin'})}; };
-  const isPast = a => new Date(a.starts_at).getTime() < Date.now() || ['cancelled','completed','done'].includes(String(a.status_code||a.status||'').toLowerCase());
+  const appointmentStatusAliases = new Map(Object.entries({
+    neu:'new', ausstehend:'new', pending:'new', bestätigt:'confirmed', abgesagt:'cancelled',
+    storniert:'cancelled', canceled:'cancelled', abgeschlossen:'completed', done:'completed',
+    'nicht erschienen':'no_show', abgelaufen:'expired', vergangen:'expired',
+  }));
+  const appointmentStatus = item => {
+    const rawStatus = String(item.status_code || item.status || '').trim().toLowerCase();
+    const status = appointmentStatusAliases.get(rawStatus) || rawStatus;
+    const syncState = String(item.simplybook_sync_state || '').trim().toLowerCase();
+    return status === 'confirmed' && ['sending','review'].includes(syncState) ? 'new' : status;
+  };
+  const isUpcoming = (item, now = Date.now()) =>
+    ['new','confirmed'].includes(appointmentStatus(item)) && Date.parse(item.starts_at) > now;
+  const nextAppointment = ({ appointments = [], next_appointment: next } = {}) => {
+    // Book returns only the 20 most recent records. Its next appointment may be outside that list.
+    const candidates = next && !appointments.some(item => String(item.id) === String(next.id))
+      ? [...appointments, next] : appointments;
+    const now = Date.now();
+    return candidates.reduce((earliest, item) => {
+      if (!isUpcoming(item, now)) return earliest;
+      return !earliest || Date.parse(item.starts_at) < Date.parse(earliest.starts_at) ? item : earliest;
+    }, null);
+  };
+  const appointmentChevron = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+
+  function renderNextAppointment(booking, dashboard = false) {
+    const next = nextAppointment(booking);
+    const date = next && dateBits(next.starts_at);
+    const action = next ? 'Termin öffnen' : 'Termin reservieren';
+    return `<section class="approved-next-card book-next-card${next?'':' is-empty'}" aria-label="Nächster Termin">
+      <div class="approved-next-label">Nächster Termin</div>
+      <div class="approved-next-main">
+        ${date ? `<div class="approved-date"><strong>${date.day}</strong><span>${date.month}</span></div>` :
+          `<span class="book-next-icon" aria-hidden="true">${navIcon('appointments')}</span>`}
+        <div class="approved-next-copy">
+          <strong>${next ? esc(next.service || 'Behandlung') : 'Kein bevorstehender Termin'}</strong>
+          <span>${next ? `${date.time} Uhr · ${esc(next.staff || 'A+ Esthetic')}` : 'Wähle deine Behandlung und Wunschzeit.'}</span>
+          ${next && appointmentStatus(next) === 'new' ? '<span class="book-next-pending">Bestätigung ausstehend</span>' : ''}
+        </div>
+        <button type="button" ${dashboard?'data-dash-book':`data-next-appointment="${esc(next?.id || '')}"`} aria-label="${action}">${appointmentChevron}</button>
+      </div>
+    </section>`;
+  }
+
+  window.APlusAppointmentUI = Object.freeze({ appointmentStatus, isUpcoming, appointmentChevron, renderNextAppointment });
   const firstName = () => {
     const raw=String(state.me?.profile?.first_name || state.me?.member?.name || '').trim();
     const candidate=raw.includes('@')?raw.split('@')[0].split(/[._\s-]/)[0]:raw.split(/\s+/)[0];
@@ -302,10 +346,9 @@
   window.addEventListener('pageshow',registerNativeBackButton);
 
   async function renderDashboard(){
+    const view = root.firstElementChild;
     const [dash,booking]=await Promise.all([request('/dashboard/'),request('/booking/')]);
-    const all=Array.isArray(booking.appointments)?booking.appointments:[];
-    const upcoming=all.filter(a=>!isPast(a)&&String(a.status_code||a.status||'').toLowerCase()!=='cancelled').sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
-    const next=upcoming[0];
+    if (!view.isConnected) return;
     const contact=dash.contact||{};
     const banners=dash.campaigns||[];
     // The authenticated dashboard selects the configured banner from Anrede.
@@ -324,25 +367,7 @@
       <div class="approved-home-image" aria-hidden="true"></div>
     </section>`;
 
-    if(next){
-      const d=dateBits(next.starts_at);
-      html+=`<section class="approved-next-card">
-        <div class="approved-next-label">NÄCHSTER TERMIN</div>
-        <div class="approved-next-main">
-          <div class="approved-date"><strong>${d.day}</strong><span>${d.month}</span></div>
-          <div class="approved-next-copy"><strong>${esc(next.service||'Behandlung')}</strong><span>${d.time} Uhr · ${esc(next.staff||'A+ Esthetic')}</span></div>
-          <button type="button" data-dash-book aria-label="Termin öffnen">›</button>
-        </div>
-      </section>`;
-    }else{
-      html+=`<section class="approved-next-card is-empty">
-        <div class="approved-next-label">NÄCHSTER TERMIN</div>
-        <div class="approved-next-main">
-          <div class="approved-next-copy"><strong>Noch kein Termin geplant</strong><span>Wunschbehandlung und Zeit direkt auswählen.</span></div>
-          <button type="button" data-dash-book aria-label="Termin reservieren">›</button>
-        </div>
-      </section>`;
-    }
+    html += renderNextAppointment(booking, true);
 
     html+=`<section class="approved-quick-actions">
       <button type="button" data-dash-book><span>${NAV_ICONS.appointments}</span><b>Reservieren</b></button>
@@ -371,12 +396,13 @@
   }
 
 
-  async function renderAppointments(){
-    const data=await request('/booking/');const all=data.appointments||[];const upcoming=all.filter(a=>!isPast(a)).sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
-    let html=pageHead('RESERVIERUNG','Termin reservieren','Behandlung, Behandler und Wunschzeit direkt auswählen.');
-    if(upcoming[0]){const d=dateBits(upcoming[0].starts_at);html+=`<section class="card appointment-feature"><div class="eyebrow">Nächster Termin</div><div class="appointment-time">${d.full} · ${d.time}</div><div class="appointment-meta">${esc(upcoming[0].service)} · ${esc(upcoming[0].staff||'')}</div></section>`;}
-    html+=`<section class="booking-request-card book-embedded-canonical"><form id="booking-form" data-booking></form></section>`;
-    shell(html);
+  document.addEventListener('aplus:booking-changed', () => {
+    if (state.me && state.route === 'dashboard') void renderDashboard().catch(() => {});
+  });
+
+  function renderAppointments(){
+    shell(pageHead('RESERVIERUNG','Termin reservieren')+
+      '<section class="booking-request-card book-embedded-canonical"><form id="booking-form"></form></section>');
   }
 
   function pointRows(items){const tx=(items||[]).filter(x=>x.kind==='coin');if(!tx.length)return '<div class="empty">Noch keine Punktebewegungen.</div>';return tx.map(t=>{const incoming=t.direction==='in';const amount=Math.abs(Number(t.coin_amount)||0);return `<article class="point-row"><div class="point-mark ${incoming?'is-in':'is-out'}">${incoming?'+':'−'}</div><div><strong>${esc(t.description||'A+ Punkte')}</strong><span>${fmt(t.created_at)}</span></div><b>${incoming?'+':'−'}${amount}</b></article>`;}).join('');}
