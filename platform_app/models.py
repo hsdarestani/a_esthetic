@@ -211,6 +211,8 @@ class Invoice(models.Model):
     created_by=models.ForeignKey(User,on_delete=models.PROTECT,related_name='created_invoices')
     created_at=models.DateTimeField(auto_now_add=True)
     issued_at=models.DateTimeField(null=True,blank=True)
+    draft_request_id=models.UUIDField(null=True,blank=True,unique=True)
+    draft_request_digest=models.CharField(max_length=64,blank=True)
     class Meta: ordering=['-created_at']
     def __str__(self): return self.number or f'Entwurf #{self.pk}'
 

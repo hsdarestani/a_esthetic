@@ -1,5 +1,6 @@
 import json
 from unittest.mock import patch
+from uuid import uuid4
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -59,6 +60,30 @@ class BookingBillingBridgeTests(TestCase):
         final = self.client.post(self.base + f"finalize/{invoice.pk}/",
                                  data=json.dumps({}), content_type="application/json")
         self.assertEqual(final.status_code, 409)
+
+    @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
+    def test_draft_retry_returns_existing_invoice_and_refuses_changed_request(self, verified):
+        payload = {
+            "billing_method": "goae", "customer_id": self.customer.pk,
+            "service_date": "2026-10-20", "goae_number": "1",
+            "goae_description": "Ärztliche Beratung", "goae_base_eur": "10,00",
+            "goae_factor": "2,30", "goae_vat_rate": "0",
+        }
+        def post_draft(data):
+            return self.client.post(self.base + "draft/", data, content_type="application/json")
+
+        self.assertEqual(post_draft(payload).status_code, 400)
+        request_id = str(uuid4())
+        payload["draft_request_id"] = request_id
+        first = post_draft(payload)
+        self.assertEqual(first.status_code, 201, first.content)
+        self.assertEqual(post_draft(dict(reversed(list(payload.items())))).json(), first.json())
+        self.assertEqual(post_draft({**payload, "service_date": "2026-10-21"}).status_code, 400)
+        self.assertEqual(post_draft({**payload, "draft_request_id": "invalid"}).status_code, 400)
+        invoice = Invoice.objects.get(draft_request_id=request_id)
+        self.assertEqual(invoice.status, "draft")
+        self.assertEqual(invoice.items.count(), 1)
+        self.assertEqual(Invoice.objects.count(), 1)
 
     @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
     def test_bridge_does_not_proxy_arbitrary_admin_paths(self, verified):
