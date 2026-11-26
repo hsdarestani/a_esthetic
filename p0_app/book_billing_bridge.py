@@ -24,7 +24,8 @@ from .billing_admin_views import (
 from platform_app.models import Invoice
 from platform_app.office_views import _invoice_pdf_bytes
 from platform_app.models import InvoiceSettings
-from platform_app.goae_billing import calculate_goae_lines, goae_preview_pdf_bytes
+from platform_app.goae_billing import calculate_goae_lines, calculate_quick_draft, create_goae_draft, goae_preview_pdf_bytes
+from platform_app.goae_quick import template_options
 from platform_app.goae_tariff import catalog_payload, TREATMENTS
 
 
@@ -54,7 +55,7 @@ def book_billing(request, operation, item_id=None):
     }
     if operation == "goae" and request.method == "GET":
         return JsonResponse({"ok": True, "catalog": catalog_payload(),
-                             "treatments": TREATMENTS,
+                             "treatments": TREATMENTS, "quick_templates": template_options(),
                              "review_required": True, "issuance_allowed": False})
     if operation == "patient-search" and request.method == "POST":
         try:
@@ -87,6 +88,33 @@ def book_billing(request, operation, item_id=None):
              'postal_code': patient.profile.postal_code, 'city': patient.profile.city}
             for patient in rows[:25]
         ], 'next_offset': offset + 25 if len(rows) > 25 else None}, headers={'Cache-Control': 'private, no-store, max-age=0'})
+    if operation in {'quick-quote', 'quick-draft'} and request.method == 'POST':
+        try:
+            data = json.loads(request.body) if len(request.body) <= 4096 else None
+            if not isinstance(data, dict):
+                raise ValueError('Ungültige Entwurfsangaben.')
+            patient_id = str(data.get('customer_id', ''))
+            if not patient_id.isdecimal() or len(patient_id) > 18:
+                raise ValueError('Ungültige Patienten-ID.')
+            patient = User.objects.filter(pk=int(patient_id), is_active=True, is_superuser=False,
+                                          profile__role='customer').first()
+            if patient is None:
+                raise ValueError('Patient nicht gefunden.')
+            service_date = date.fromisoformat(str(data.get('service_date', '')))
+            if operation == 'quick-draft':
+                if not data.get('draft_request_id') or not isinstance(data.get('quick_invoice'), dict):
+                    raise ValueError('Vorlage und Entwurfsreferenz erforderlich.')
+                draft = create_goae_draft(user=patient, actor=request._book_internal_billing_actor,
+                                          service_date=service_date, data=data, allow_quick=True)
+                return JsonResponse({'ok': True, 'invoice_id': draft.pk, 'total_cents': draft.total_cents})
+            rows, _metadata = calculate_quick_draft(data.get('quick_invoice'))
+            return JsonResponse({'ok': True, 'subtotal_cents': sum(row['net_cents'] for row in rows),
+                                 'tax_cents': sum(row['tax_cents'] for row in rows),
+                                 'total_cents': sum(row['gross_cents'] for row in rows),
+                                 'items': [{'number': row['goae_number'], 'description': row['description'],
+                                            'gross_cents': row['gross_cents']} for row in rows]})
+        except (ValueError, TypeError, UnicodeError) as exc:
+            return JsonResponse({'ok': False, 'message': str(exc)[:200]}, status=400)
     if operation == "quote" and request.method == "POST":
         try:
             data = json.loads(request.body.decode("utf-8"))
@@ -136,7 +164,7 @@ def book_billing(request, operation, item_id=None):
             service_date = date.fromisoformat(str(data.get('service_date', '')))
             settings = InvoiceSettings.objects.filter(pk=1).first() or InvoiceSettings()
             pdf = goae_preview_pdf_bytes(user=customer, actor=request._book_internal_billing_actor,
-                                         service_date=service_date, data=data, settings=settings)
+                                         service_date=service_date, data=data, settings=settings, allow_quick=True)
         except (ValueError, TypeError, UnicodeError) as exc:
             return JsonResponse({'ok': False, 'message': str(exc)[:200]}, status=400)
         response = HttpResponse(pdf, content_type='application/pdf')

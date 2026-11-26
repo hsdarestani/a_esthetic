@@ -70,7 +70,7 @@ def _agreement_evidence(row, *, user, service_date, category, verified):
     return document_id, signed_on
 
 
-def calculate_goae_lines(data, *, user=None, service_date=None):
+def calculate_goae_lines(data, *, user=None, service_date=None, approved_template_draft=False):
     rows = data.get("lines")
     if rows is None:
         rows = [data]  # existing Office one-line form
@@ -84,7 +84,7 @@ def calculate_goae_lines(data, *, user=None, service_date=None):
             desc = str(row.get("goae_description") or "").strip()
             evidence = str(row.get("material_receipt_reference") or "").strip()
             confirmation = row.get("material_eligible") is True
-            if not confirmation or not 4 <= len(desc) <= 220 or not 1 <= len(evidence) <= 250:
+            if not 4 <= len(desc) <= 220 or (not approved_template_draft and (not confirmation or not 1 <= len(evidence) <= 250)):
                 raise ValueError("Auslage nur mit bestätigter Berechnungsfähigkeit und Beleg erfassen.")
             # §10: exact eligible expenditure, no markup or flat-rate material fee.
             cost = to_decimal(row.get("goae_base_eur"))
@@ -101,7 +101,7 @@ def calculate_goae_lines(data, *, user=None, service_date=None):
             net = cents(cost) * int(quantity)
             tax = int((Decimal(net) * vat / 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
             result.append(dict(description=desc, goae_number="", goae_factor=None,
-                goae_base_cents=None, goae_justification="Auslage (§ 10), Beleg: "+evidence,
+                goae_base_cents=None, goae_justification=("Auslage (§ 10), Beleg: "+evidence if evidence else "Entwurf: Auslage und Beleg prüfen"),
                 quantity=quantity, unit_gross_cents=cents(cost * (1 + vat/100)),
                 vat_rate=vat, net_cents=net, tax_cents=tax, gross_cents=net+tax))
             continue
@@ -113,7 +113,7 @@ def calculate_goae_lines(data, *, user=None, service_date=None):
         verified = row.get("tariff_source") == "official_catalog"
         if verified:
             tariff = CATALOG.get(code)
-            if not tariff or row.get("clinical_confirmed") is not True:
+            if not tariff or (not approved_template_draft and row.get("clinical_confirmed") is not True):
                 raise ValueError("Amtliche Ziffer und tatsächlich erbrachte Leistung bestätigen.")
             # § 6(2)/§ 12(4): an analogous service requires an independently
             # documented description and a physician-reviewed equivalence.
@@ -138,6 +138,8 @@ def calculate_goae_lines(data, *, user=None, service_date=None):
         if not Decimal("1") <= factor <= Decimal("99.9999") or factor != factor.quantize(Decimal(".0001")):
             raise ValueError("Ungültiger Steigerungsfaktor (maximal vier Nachkommastellen).")
         agreement = None
+        if approved_template_draft and factor > threshold:
+            raise ValueError("GOÄ-Vorlage: Erhöhte Faktoren brauchen eine individuelle Begründung.")
         if factor > maximum:
             agreement = _agreement_evidence(row, user=user, service_date=service_date,
                                             category=category, verified=verified)
@@ -228,8 +230,19 @@ def _book_preview_details(data):
     return result
 
 
-def _prepare_goae_invoice(*, user, actor, service_date, data, create_profile=False):
-    items = calculate_goae_lines(data, user=user, service_date=service_date)
+def calculate_quick_draft(plan):
+    from .goae_quick import draft_lines
+
+    rows, metadata = draft_lines(plan)
+    return calculate_goae_lines({'lines': rows}, approved_template_draft=True), metadata
+
+
+def _prepare_goae_invoice(*, user, actor, service_date, data, create_profile=False, allow_quick=False):
+    quick_metadata = None
+    if allow_quick and 'quick_invoice' in data:
+        items, quick_metadata = calculate_quick_draft(data['quick_invoice'])
+    else:
+        items = calculate_goae_lines(data, user=user, service_date=service_date)
     target = data.get('target_total_cents')
     total = sum(row['gross_cents'] for row in items)
     if target is not None:
@@ -243,21 +256,23 @@ def _prepare_goae_invoice(*, user, actor, service_date, data, create_profile=Fal
                   customer_street=profile.street, customer_postal_code=profile.postal_code,
                   customer_city=profile.city, subtotal_cents=sum(row['net_cents'] for row in items),
                   tax_cents=sum(row['tax_cents'] for row in items), total_cents=total, created_by=actor)
-    if preview:
+    if preview or quick_metadata:
         fields['native_draft_data'] = {'book_preview': preview}
+    if quick_metadata:
+        fields['native_draft_data']['quick_invoice'] = quick_metadata
     return fields, items
 
 
-def goae_preview_pdf_bytes(*, user, actor, service_date, data, settings):
+def goae_preview_pdf_bytes(*, user, actor, service_date, data, settings, allow_quick=False):
     """Render the exact validated draft without writing any invoice or patient row."""
-    if data.get('target_total_cents') is None:
+    if data.get('target_total_cents') is None and not (allow_quick and 'quick_invoice' in data):
         raise ValueError('Bestätigter Gesamtbetrag fehlt.')
-    fields, items = _prepare_goae_invoice(user=user, actor=actor, service_date=service_date, data=data)
+    fields, items = _prepare_goae_invoice(user=user, actor=actor, service_date=service_date, data=data, allow_quick=allow_quick)
     invoice = Invoice(**fields)
     return goae_draft_pdf_bytes(invoice, settings, items=[InvoiceItem(**item) for item in items])
 
 
-def create_goae_draft(*, user, actor, service_date, data):
+def create_goae_draft(*, user, actor, service_date, data, allow_quick=False):
     request_id = data.get("draft_request_id")
     digest = ""
     if request_id is not None:
@@ -271,7 +286,7 @@ def create_goae_draft(*, user, actor, service_date, data):
         existing = Invoice.objects.filter(draft_request_id=request_id).first()
         if existing:
             return _check_draft_request(existing, user=user, actor=actor, digest=digest)
-    fields, items = _prepare_goae_invoice(user=user, actor=actor, service_date=service_date, data=data, create_profile=True)
+    fields, items = _prepare_goae_invoice(user=user, actor=actor, service_date=service_date, data=data, create_profile=True, allow_quick=allow_quick)
     fields['draft_request_digest'] = digest
     with transaction.atomic():
         if request_id is None:
