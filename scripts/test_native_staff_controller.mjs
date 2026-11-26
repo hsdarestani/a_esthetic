@@ -56,7 +56,7 @@ globalThis.fetch=async(url,opts)=>{
   if(path.endsWith('/overview/'))result={today:3,upcoming_count:14,patient_count:37,provider_count:2,intake_review_count:1,
     provider_today:[{id:1,name:'Demo clinician',count:3}],upcoming:[{id:44,customer_name:'Synthetic patient',date:'2026-11-23',start:'10:00',staff_name:'Demo clinician',service_name:'Consult',status:'confirmed'}]};
   else if(path.endsWith('/catalog/'))result={
-    providers:[{id:1,name:'Demo clinician'},{id:2,name:'A+ Esthetic (SimplyBook #7)',source_managed:true}],
+    providers:[{id:1,name:'Dr. Ariane Demo'},{id:2,name:'A+ Esthetic (SimplyBook #7)',source_managed:true}],
     services:[{id:1,name:'Consult',active:true},{id:2,name:'Imported',slug:'simplybook-event-7',active:true,source_managed:true}],
   };
   else if(path.endsWith('/calendar/')){
@@ -119,6 +119,8 @@ assert.equal(current.timeline.columns.length,1);
 assert.equal(current.timeline.firstHour,10);
 assert.equal(current.timeline.lastHour,20);
 assert.equal(current.timeline.providers.length,2);
+assert.equal(current.timeline.provider,'1','admin calendar initially filters to Ariane');
+assert.equal(current.fields.find(f=>f.id==='provider_filter').value,'1');
 assert.ok(current.timeline.events.some(e=>e.id==='block-info:90'));
 capture('02-calendar');
 await click('block-info:90');
@@ -212,6 +214,8 @@ await click('cal-provider:1');
 assert.equal(current.timeline.provider,'1');
 await click('cal-provider:all');
 assert.equal(current.timeline.provider,'all');
+await click('calendar');
+assert.equal(current.timeline.provider,'all','explicit All filter survives calendar reopen');
 await click('cal-today');
 assert.equal(current.timeline.date,selectedDay().slice('date:'.length),'selected week strip ID includes action prefix');
 await click('settings');
