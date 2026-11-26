@@ -1,7 +1,7 @@
 name: Admin V4 — native simulator ZIP and Android QA (no store submission)
 on:
   push:
-    branches: ['feature/admin-v4-native-20261124']
+    branches: ['feature/admin-v4-native-20261124', 'fix/admin-calendar-regression-20261126']
   workflow_dispatch:
 permissions:
   contents: read
@@ -72,16 +72,16 @@ jobs:
           if [[ -f ios/App/App/SceneDelegate.swift ]]; then
             grep -F '?? StaffBridgeViewController()' ios/App/App/SceneDelegate.swift
           fi
-      - name: Compile iOS Simulator build 63
+      - name: Compile iOS Simulator build 65
         run: |
           set -euo pipefail
           if [[ -d ios/App/App.xcworkspace ]]; then app=(-workspace ios/App/App.xcworkspace); else app=(-project ios/App/App.xcodeproj); fi
-          xcodebuild -quiet "${app[@]}" -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/admin-v4" ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO IPHONEOS_DEPLOYMENT_TARGET=16.0 MARKETING_VERSION=1.0.57 CURRENT_PROJECT_VERSION=63 build > "$RUNNER_TEMP/native-ios.log" 2>&1 || { grep -nE 'error:|fatal error:|unable to type-check|failed' "$RUNNER_TEMP/native-ios.log" | head -60 || true; tail -n 100 "$RUNNER_TEMP/native-ios.log"; exit 1; }
+          xcodebuild -quiet "${app[@]}" -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/admin-v4" ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO IPHONEOS_DEPLOYMENT_TARGET=16.0 MARKETING_VERSION=1.0.59 CURRENT_PROJECT_VERSION=65 build > "$RUNNER_TEMP/native-ios.log" 2>&1 || { grep -nE 'error:|fatal error:|unable to type-check|failed' "$RUNNER_TEMP/native-ios.log" | head -60 || true; tail -n 100 "$RUNNER_TEMP/native-ios.log"; exit 1; }
       - name: Compile unsigned device Release with actual minimum iOS
         run: |
           set -euo pipefail
           if [[ -d ios/App/App.xcworkspace ]]; then app=(-workspace ios/App/App.xcworkspace); else app=(-project ios/App/App.xcodeproj); fi
-          xcodebuild -quiet "${app[@]}" -scheme App -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/admin-v4-device" CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=16.0 MARKETING_VERSION=1.0.57 CURRENT_PROJECT_VERSION=63 build > "$RUNNER_TEMP/native-device.log" 2>&1 || { grep -nE 'error:|fatal error:' "$RUNNER_TEMP/native-device.log" | head -80 || true; tail -n 80 "$RUNNER_TEMP/native-device.log"; exit 1; }
+          xcodebuild -quiet "${app[@]}" -scheme App -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/admin-v4-device" CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=16.0 MARKETING_VERSION=1.0.59 CURRENT_PROJECT_VERSION=65 build > "$RUNNER_TEMP/native-device.log" 2>&1 || { grep -nE 'error:|fatal error:' "$RUNNER_TEMP/native-device.log" | head -80 || true; tail -n 80 "$RUNNER_TEMP/native-device.log"; exit 1; }
       - name: Package Appetize direct ZIP and verify actual source bundle
         if: always()
         run: |
@@ -89,15 +89,15 @@ jobs:
           mkdir -p artifacts
           app="$RUNNER_TEMP/admin-v4/Build/Products/Debug-iphonesimulator/App.app"
           test -s "$app/App"
-          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")" = "1.0.57"
-          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 63
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")" = "1.0.59"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 65
           test ! -e "$app/App.debug.dylib"
           grep -F 'VISIBLE_START_HOUR = 10' "$app/public/mobile/native-calendar-layout.mjs"
           grep -F 'calendar-sheet' "$app/public/mobile/native-workspace.mjs"
-          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-V4-1.0.57-B63-Appetize.zip
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-V4-1.0.59-B65-Appetize.zip
           python3 - <<'PY'
           import zipfile
-          with zipfile.ZipFile('artifacts/APlus-Esthetic-V4-1.0.57-B63-Appetize.zip') as z:
+          with zipfile.ZipFile('artifacts/APlus-Esthetic-V4-1.0.59-B65-Appetize.zip') as z:
               assert 'App.app/App' in z.namelist()
               assert 'App.app/Info.plist' in z.namelist()
               assert not z.testzip()
@@ -106,7 +106,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: APlus-Esthetic-V4-1.0.57-B63-Appetize
+          name: APlus-Esthetic-V4-1.0.59-B65-Appetize
           path: artifacts
           if-no-files-found: error
           retention-days: 30
@@ -143,7 +143,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Admin-V4-B63-iOS-visual-QA
+          name: Admin-V4-B65-iOS-visual-QA
           path: screenshots
           if-no-files-found: warn
   android:
@@ -165,14 +165,14 @@ jobs:
           path: qa-fixtures
       - name: Compile and verify Android package
         env:
-          APP_VERSION_NAME: '1.0.57'
+          APP_VERSION_NAME: '1.0.59'
           APP_BUILD_NUMBER: '63'
         run: |
           bash scripts/build-android.sh
           grep -R -F 'registerPlugin(NativeStaffPlugin.class);' android/app/src/main/java
           grep -R -F 'new NativeStaffV3Calendar(' android/app/src/main/java
           (cd android && ./gradlew assembleDebug --no-daemon)
-          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/APlus-Esthetic-V4-1.0.57-B63.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/APlus-Esthetic-V4-1.0.59-B65.apk
           git rev-parse HEAD > artifacts/source-commit.txt
       - name: Enable emulator acceleration
         run: |
@@ -205,7 +205,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: APlus-Esthetic-V4-1.0.57-B63-Android
-          path: artifacts/APlus-Esthetic-V4-1.0.57-B63.apk
+          name: APlus-Esthetic-V4-1.0.59-B65-Android
+          path: artifacts/APlus-Esthetic-V4-1.0.59-B65.apk
           if-no-files-found: error
           retention-days: 30
