@@ -1,183 +1,116 @@
 (() => {
   'use strict';
 
-  const APP_ORIGIN = 'https://app.a-esthetic.de';
-  const API_BASE = `${APP_ORIGIN}/api/mobile`;
-  const BOOK_ENTRY = 'https://book.a-esthetic.de/verwaltung/app/';
-  const nativeFetch = window.fetch.bind(window);
-  let adminState = null;
-  let adminCheck = null;
-  let redirecting = false;
+  const API = `${window.APlusRuntime.origin}/api/mobile/staff`;
+  let owner;
+  let closing=Promise.resolve();
+  let pendingRoute;
 
-  const token = () => localStorage.getItem('aplus_token') || '';
-
-  function consumeBookLogout() {
-    const params = new URLSearchParams(window.location.search || '');
-    if (params.get('admin_logout') !== '1') return false;
-
+  // Existing Book sessions can still return to this app with this logout marker.
+  const params = new URLSearchParams(location.search);
+  if (params.get('admin_logout') === '1') {
     localStorage.removeItem('aplus_token');
     sessionStorage.removeItem('aplus_admin_resume');
-    adminState = false;
-    adminCheck = null;
-    redirecting = false;
-
     params.delete('admin_logout');
-    const query = params.toString();
-    const clean = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash || ''}`;
-    window.history.replaceState(null, '', clean);
-    return true;
+    history.replaceState(null, '', location.pathname + (params.size ? '?' + params : '') + location.hash);
   }
 
-  const justLoggedOut = consumeBookLogout();
-
-  function blankForAdmin() {
-    document.documentElement.classList.add('aplus-admin-transition');
-    const app = document.getElementById('app');
-    if (app) {
-      app.innerHTML = '<main style="min-height:100vh;background:#fff;display:grid;place-items:center"><div style="font:14px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#746e62">Verwaltung wird geöffnet…</div></main>';
-    }
-  }
-
-  function clearAdminToken() {
-    localStorage.removeItem('aplus_token');
-    sessionStorage.removeItem('aplus_admin_resume');
-    adminState = false;
-    adminCheck = null;
-    redirecting = false;
-  }
-
-  function showAdminGateway() {
-    if (!token() || justLoggedOut || redirecting) return;
-    document.documentElement.classList.add('aplus-admin-transition');
-    const app = document.getElementById('app');
-    if (!app) return;
-    app.innerHTML = `
-      <main style="min-height:100vh;background:#f6f3ec;display:grid;place-items:center;padding:24px;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#29261f">
-        <section style="width:min(100%,380px);background:#fff;border:1px solid #e9e1d3;border-radius:22px;padding:28px;box-sizing:border-box;box-shadow:0 16px 50px #6b5a3d14;text-align:center">
-          <div style="width:54px;height:54px;margin:0 auto 16px;border-radius:50%;display:grid;place-items:center;background:#d8a73b;color:#fff;font:700 21px Georgia,serif">A+</div>
-          <h1 style="font:600 24px Georgia,serif;margin:0 0 8px">Verwaltung</h1>
-          <p style="margin:0 0 22px;color:#756f64;font-size:14px;line-height:1.5">Die Admin-Anmeldung ist vorhanden. Die Verwaltung wird aus Sicherheitsgründen nicht automatisch erneut geöffnet.</p>
-          <button type="button" data-admin-open style="width:100%;border:0;border-radius:12px;padding:13px 16px;background:#29261f;color:#fff;font-weight:650;cursor:pointer">Verwaltung öffnen</button>
-          <button type="button" data-admin-logout style="width:100%;border:0;background:transparent;color:#8a2c23;padding:13px 16px;margin-top:6px;cursor:pointer">Abmelden</button>
-        </section>
-      </main>`;
-    app.querySelector('[data-admin-open]')?.addEventListener('click', () => openExactBookAdmin());
-    app.querySelector('[data-admin-logout]')?.addEventListener('click', () => {
-      clearAdminToken();
-      window.location.reload();
+  async function resolve(token) {
+    const response = await fetch(API + '/session/', {
+      headers: {Authorization: 'Bearer ' + token, Accept: 'application/json'},
+      cache: 'no-store', aplusSilent: true, signal: AbortSignal.timeout(10000),
     });
+    if (!response.ok) {
+      const error = new Error('Sitzung konnte nicht geprüft werden.');
+      if (response.status === 401) error.code = 'staff_session_expired';
+      throw error;
+    }
+    return response.json();
   }
-
-  async function openExactBookAdmin(value = token(), patientId = null) {
-    if (!value || redirecting) return;
-    redirecting = true;
-    adminState = true;
-    blankForAdmin();
-    try {
-      const register = window.APlusNativePush?.register;
-      if (typeof register === 'function') {
-        await Promise.race([
-          register(),
-          new Promise(resolve => window.setTimeout(resolve, window.Capacitor?.getPlatform?.() === 'ios' ? 7000 : 1800)),
-        ]);
-      }
-    } catch (_) {
-      // Push registration is best-effort and must never block admin access.
-    }
-    // The bearer lives only in the fragment. The Book bridge immediately removes
-    // it from the address bar and exchanges it for a normal first-party staff session.
-    const id = String(patientId ?? '').trim();
-    const patient = /^[1-9][0-9]{0,11}$/.test(id) ? `?patient=${encodeURIComponent(id)}` : '';
-    window.location.replace(`${BOOK_ENTRY}${patient}#token=${encodeURIComponent(value)}`);
-  }
-
-  async function isAdmin(force = false) {
-    const value = token();
-    if (!value || justLoggedOut) {
-      adminState = false;
-      adminCheck = null;
-      return false;
-    }
-    if (adminState !== null && !force) return adminState;
-    if (adminCheck && !force) return adminCheck;
-
-    adminCheck = (async () => {
-      try {
-        const response = await nativeFetch(`${API_BASE}/admin/`, {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${value}`, Accept: 'application/json' },
-          cache: 'no-store',
-        });
-        if (response.status === 403) {
-          // Doctors use a separate, identity-scoped endpoint. They must not
-          // receive generic admin access to patients, wallets or settings.
-          const clinical = await nativeFetch(`${API_BASE}/doctor/`, {
-            method: 'GET',
-            headers: { Authorization: `Bearer ${value}`, Accept: 'application/json' },
-            cache: 'no-store',
-          });
-          const identity = clinical.ok ? await clinical.json().catch(() => ({})) : {};
-          adminState = Boolean(identity && identity.ok && identity.doctor);
-          if (adminState) showAdminGateway();
-          return adminState;
-        }
-        if (!response.ok) {
-          adminState = false;
-          return false;
-        }
-        const data = await response.json().catch(() => ({}));
-        adminState = Boolean(data && data.ok && data.admin);
-        if (adminState) showAdminGateway();
-        return adminState;
-      } catch (_) {
-        adminState = false;
-        return false;
-      } finally {
-        adminCheck = null;
-      }
-    })();
-    return adminCheck;
-  }
-
-  // Install before core-app.js. Existing admin sessions are resolved before the
-  // customer surface can call /me. Existing tokens stop at an explicit gateway
-  // instead of silently re-entering Book after a logout.
-  window.fetch = async function aplusRoleAwareFetch(input, init) {
-    const url = typeof input === 'string' ? input : (input && input.url) || '';
-    const isMobileApi = url.startsWith(API_BASE);
-    const isLogin = url.includes('/login/');
-    const isAdminApi = url.includes('/admin/');
-
-    if (isMobileApi && !isLogin && !isAdminApi && token() && adminState === null) {
-      const admin = await isAdmin();
-      if (admin || redirecting) return new Promise(() => {});
-    }
-
-    const response = await nativeFetch(input, init);
-
-    // A fresh admin login is an explicit user action, so it may enter Book directly.
-    if (isMobileApi && isLogin && response.ok) {
-      try {
-        const data = await response.clone().json();
-        if (data && data.token && data.admin === true) {
-          localStorage.setItem('aplus_token', data.token);
-          await openExactBookAdmin(data.token);
-          return new Promise(() => {});
-        }
-        if (data && data.token && data.admin === false) adminState = false;
-      } catch (_) {}
-    }
-    return response;
-  };
-
-  if (!justLoggedOut && token()) void isAdmin();
 
   window.APlusAdminMode = {
-    open: (options = {}) => openExactBookAdmin(token(), options?.patientId),
-    check: () => isAdmin(true),
-    logout: () => {
-      clearAdminToken();
-      window.location.reload();
+    resolve,
+    mount(root, token, role, logout, {forceWeb=false,navigation}={}) {
+      const native = Boolean(window.Capacitor?.isNativePlatform?.()) && !forceWeb;
+      if(owner?.token===token && owner.native===native)return owner.ready;
+      if(owner)this.unmount();
+      const instance={token,native,abort:new AbortController()};
+      owner=instance;
+      instance.ready=closing.then(async()=>{
+        if(owner!==instance)return;
+        const initialRoute=pendingRoute;
+        pendingRoute=null;
+        instance.workspace=await createWorkspace(root,token,role,logout,{native,navigation,signal:instance.abort.signal,initialRoute});
+        if(owner===instance && pendingRoute){
+          const route=pendingRoute;
+          pendingRoute=null;
+          openRoute(instance.workspace,route);
+        }
+      }).catch(error=>{
+        if(owner!==instance)return;
+        owner=null;
+        throw error;
+      });
+      return instance.ready;
+    },
+    open({patientId} = {}) {
+      const ident=Number(patientId);
+      const route=ident>0?ident:'calendar';
+      if(owner?.workspace)openRoute(owner.workspace,route);
+      else if(localStorage.getItem('aplus_token'))pendingRoute=route;
+    },
+    back() {
+      return owner ? (owner.workspace?.back() ?? true) : false;
+    },
+    unmount() {
+      pendingRoute=null;
+      const former=owner;
+      owner=null;
+      if(former){
+        former.abort.abort();
+        closing=former.ready.catch(()=>{}).then(()=>former.workspace?.destroy()).catch(()=>{});
+      }
+      return closing;
     },
   };
+
+  function openRoute(workspace,route){
+    if(route==='calendar')workspace.openCalendar();
+    else workspace.openPatient(route);
+  }
+
+  async function createWorkspace(root,token,role,logout,{native,navigation,signal,initialRoute}){
+      if (native) {
+        try {
+          await import('./mobile/native-staff-bridge.js');
+        } catch (cause) {
+          const error = new Error('Die Native-Bridge konnte nicht geladen werden.');
+          error.code = 'NATIVE_BRIDGE_IMPORT';
+          throw error;
+        }
+        const renderer = window.APlusNativeStaff || window.Capacitor?.Plugins?.NativeStaff;
+        if (!renderer) {
+          const error = new Error('Die NativeStaff-Schnittstelle wurde nicht registriert.');
+          error.code = 'NATIVE_PLUGIN_NOT_REGISTERED';
+          throw error;
+        }
+        try {
+          const {mountNativeWorkspace} = await import('./mobile/native-workspace.mjs');
+          return await mountNativeWorkspace({token,identity:role,origin:window.APlusRuntime.origin,logout,navigation,signal,
+            initialPatient:typeof initialRoute==='number'?initialRoute:null,initialCalendar:initialRoute==='calendar'});
+        } catch (cause) {
+          const error = new Error(cause?.message || 'Native Ansicht konnte nicht geöffnet werden.');
+          error.code = String(cause?.code || 'NATIVE_SCREEN_OPEN_FAILED').slice(0,64);
+          error.status = cause?.status;
+          throw error;
+        }
+      }
+      // Explicit, user-selected temporary Web management when a device fails
+      // to open Native. Never pretend this fallback is SwiftUI.
+      const {mountWorkspace} = await import('./mobile/workspace.mjs');
+      signal.throwIfAborted();
+      const workspace=mountWorkspace({root,token,identity:role,origin:window.APlusRuntime.origin,logout});
+      if(initialRoute)openRoute(workspace,initialRoute);
+      return workspace;
+  }
 })();

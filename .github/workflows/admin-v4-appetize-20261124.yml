@@ -1,0 +1,219 @@
+name: A+ Esthetic B66 native simulator and Android QA
+on:
+  pull_request:
+    branches: ['remediation/native-staff-contract-session-03']
+    paths: ['.github/workflows/admin-v4-appetize-20261124.yml', 'native/**', 'www/**', 'p0_app/**', 'platform_app/**']
+concurrency:
+  group: admin-v4-qa-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  controller:
+    if: github.head_ref == 'remediation/native-build-66'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          node --check www/core-app.js
+          node --test scripts/test-mobile-lifecycle.js scripts/test-android-system-back.js scripts/test-ios-onboarding-recovery.js scripts/test-booking-details-login.js
+          if grep -F 'data-intake>Aufnahmebogen & Rechnungsadresse' www/core-app.js; then exit 1; fi
+          python3 scripts/test_native_calendar_colors.py
+          node scripts/test_native_calendar_layout.mjs
+          APLUS_NATIVE_QA_FIXTURES=qa-fixtures node scripts/test_native_staff_controller.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-v4-synthetic-fixtures
+          path: qa-fixtures
+  backend:
+    if: github.head_ref == 'remediation/native-build-66'
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_DEBUG: '1'
+      PATIENT_SYNC_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install -r requirements.txt
+          python scripts/run_offline_django_tests.py p0_app.test_native_office p0_app.test_mobile_staff_workspace --verbosity 1
+      - uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/book
+          ref: 69116b985b5a78e1d7a7a6043649c772164059da
+          path: book-api
+      - run: |
+          python -m venv /tmp/book-v4
+          /tmp/book-v4/bin/python -m pip install -r book-api/requirements.txt
+          cd book-api
+          /tmp/book-v4/bin/python ../scripts/run_offline_django_tests.py booking.test_mobile_staff_workspace booking.test_patient_identity_review --verbosity 1
+  ios:
+    needs: [controller, backend]
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-v4-synthetic-fixtures
+          path: qa-fixtures
+      - name: Generate exact iOS native target
+        run: |
+          npm pkg delete scripts.capacitor:sync:after
+          npm install --no-audit --no-fund
+          npx cap add ios
+          python3 scripts/configure_native_camera_permissions.py
+          python3 scripts/install_native_staff.py
+          grep -F 'StaffSimplyBookV3(state: state, model: calendar)' ios/App/App/AppDelegate.swift
+          grep -F 'PRACTICE MANAGEMENT' ios/App/App/AppDelegate.swift
+          if [[ -f ios/App/App/SceneDelegate.swift ]]; then
+            grep -F '?? StaffBridgeViewController()' ios/App/App/SceneDelegate.swift
+          fi
+      - name: Compile iOS Simulator build 66
+        run: |
+          set -euo pipefail
+          if [[ -d ios/App/App.xcworkspace ]]; then app=(-workspace ios/App/App.xcworkspace); else app=(-project ios/App/App.xcodeproj); fi
+          xcodebuild -quiet "${app[@]}" -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/admin-v4" ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO IPHONEOS_DEPLOYMENT_TARGET=16.0 MARKETING_VERSION=1.0.59 CURRENT_PROJECT_VERSION=66 build > "$RUNNER_TEMP/native-ios.log" 2>&1 || { grep -nE 'error:|fatal error:|unable to type-check|failed' "$RUNNER_TEMP/native-ios.log" | head -60 || true; tail -n 100 "$RUNNER_TEMP/native-ios.log"; exit 1; }
+      - name: Compile unsigned device Release with actual minimum iOS
+        run: |
+          set -euo pipefail
+          if [[ -d ios/App/App.xcworkspace ]]; then app=(-workspace ios/App/App.xcworkspace); else app=(-project ios/App/App.xcodeproj); fi
+          xcodebuild -quiet "${app[@]}" -scheme App -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/admin-v4-device" CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=16.0 MARKETING_VERSION=1.0.59 CURRENT_PROJECT_VERSION=66 build > "$RUNNER_TEMP/native-device.log" 2>&1 || { grep -nE 'error:|fatal error:' "$RUNNER_TEMP/native-device.log" | head -80 || true; tail -n 80 "$RUNNER_TEMP/native-device.log"; exit 1; }
+      - name: Package Appetize direct ZIP and verify actual source bundle
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          app="$RUNNER_TEMP/admin-v4/Build/Products/Debug-iphonesimulator/App.app"
+          test -s "$app/App"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")" = "1.0.59"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")" = 66
+          test ! -e "$app/App.debug.dylib"
+          grep -F 'VISIBLE_START_HOUR = 10' "$app/public/mobile/native-calendar-layout.mjs"
+          grep -F 'calendar-sheet' "$app/public/mobile/native-workspace.mjs"
+          ditto -c -k --keepParent "$app" artifacts/APlus-Esthetic-V4-1.0.59-B66-Appetize.zip
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('artifacts/APlus-Esthetic-V4-1.0.59-B66-Appetize.zip') as z:
+              assert 'App.app/App' in z.namelist()
+              assert 'App.app/Info.plist' in z.namelist()
+              assert not z.testzip()
+          PY
+          git rev-parse HEAD > artifacts/source-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: APlus-Esthetic-V4-1.0.59-B66-Appetize
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 30
+      - name: Focused iPhone visual QA (synthetic fixtures)
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          mkdir -p screenshots/ios-phone
+          app="$RUNNER_TEMP/admin-v4/Build/Products/Debug-iphonesimulator/App.app"
+          udid=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; x=json.load(sys.stdin); print(next(d["udid"] for ds in x["devices"].values() for d in ds if d["name"].startswith("iPhone")))')
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$app"
+          data=$(xcrun simctl get_app_container "$udid" de.aplusesthetic.app data)
+          mkdir -p "$data/Documents"
+          ready="$data/Documents/native-staff-simulator-ready"
+          for fixture in qa-fixtures/01-dashboard.json qa-fixtures/02-calendar.json qa-fixtures/13-patient-profile.json qa-fixtures/16a-patient-contact.json qa-fixtures/16-patient-account.json qa-fixtures/03-new-appointment.json qa-fixtures/04-block.json qa-fixtures/05-appointment-details.json qa-fixtures/06-working-hours.json; do
+            id=$(basename "$fixture" .json)
+            rm -f "$ready"
+            python3 -c 'import json,sys; f=json.load(open(sys.argv[1])); f["qaId"]=sys.argv[2]; print(json.dumps(f))' "$fixture" "$id" > "$data/Documents/native-staff-simulator-fixture.json"
+            xcrun simctl launch --terminate-running-process "$udid" de.aplusesthetic.app
+            matched=false
+            for attempt in $(seq 1 25); do
+              if [[ -f "$ready" && "$(cat "$ready")" == "$id" ]]; then matched=true; break; fi
+              sleep 1
+            done
+            if [[ "$matched" != true ]]; then
+              xcrun simctl io "$udid" screenshot "screenshots/ios-phone/$id-failed.png"
+              echo "Native fixture did not appear: $id" >&2
+              exit 1
+            fi
+            xcrun simctl io "$udid" screenshot "screenshots/ios-phone/$id.png"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Admin-V4-B66-iOS-visual-QA
+          path: screenshots
+          if-no-files-found: warn
+  android:
+    needs: [controller, backend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-v4-synthetic-fixtures
+          path: qa-fixtures
+      - name: Compile and verify Android package
+        env:
+          APP_VERSION_NAME: '1.0.59'
+          APP_BUILD_NUMBER: '66'
+        run: |
+          bash scripts/build-android.sh
+          grep -R -F 'registerPlugin(NativeStaffPlugin.class);' android/app/src/main/java
+          grep -R -F 'new NativeStaffV3Calendar(' android/app/src/main/java
+          (cd android && ./gradlew assembleDebug --no-daemon)
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/APlus-Esthetic-V4-1.0.59-B66.apk
+          git rev-parse HEAD > artifacts/source-commit.txt
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install screenshot pixel QA dependency
+        run: python3 -m pip install --break-system-packages Pillow
+      - name: Android native rendering QA (synthetic fixtures only)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          script: |
+            export APLUS_QA_APK=artifacts/APlus-Esthetic-V4-1.0.59-B66.apk
+            bash scripts/capture_native_v4_android.sh
+            python3 scripts/test_native_calendar_colors.py screenshots/android/02-calendar.png
+            adb shell wm size 720x1600
+            adb shell wm density 360
+            APLUS_QA_OUTPUT=screenshots/android-narrow APLUS_QA_FIXTURES='qa-fixtures/01-dashboard.json qa-fixtures/13-patient-profile.json qa-fixtures/16a-patient-contact.json qa-fixtures/16-patient-account.json qa-fixtures/03-new-appointment.json' bash scripts/capture_native_v4_android.sh
+            adb shell wm size reset
+            adb shell wm density reset
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Admin-V4-Android-visual-QA
+          path: screenshots
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: APlus-Esthetic-V4-1.0.59-B66-Android
+          path: |
+            artifacts/APlus-Esthetic-V4-1.0.59-B66.apk
+            artifacts/source-commit.txt
+          if-no-files-found: error
+          retention-days: 30

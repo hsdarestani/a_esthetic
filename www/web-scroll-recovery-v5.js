@@ -24,6 +24,7 @@
   }
 
   function recoverScroll() {
+    if (document.querySelector('#app > .mw,.settings-overlay:not(.is-closing):not([aria-hidden="true"]),.contact-overlay,.book-cancel-confirm:not([hidden])')) return;
     neutralizeClosedLayers();
     if (!document.body) return;
 

@@ -182,6 +182,24 @@ path.write_text(text, encoding='utf-8')
 print(f'Applied native system-bar inset handling to {path}')
 PY
 
+# MainActivity is regenerated above, after Capacitor's sync hook. Reinstall
+# the local plugin now and fail closed if its registration was lost.
+python3 scripts/install_native_staff.py
+python3 - <<'PY'
+from pathlib import Path
+import re
+main, = Path('android/app/src/main/java').rglob('MainActivity.java')
+code = main.read_text()
+registration = 'registerPlugin(NativeStaffPlugin.class);'
+assert code.count(registration) == 1, 'NativeStaff must be registered exactly once'
+assert code.index(registration) < code.index('super.onCreate(savedInstanceState);'), 'NativeStaff must be registered before Capacitor bridge initialization'
+plugin = main.with_name('NativeStaffPlugin.java')
+assert plugin.is_file(), 'NativeStaff plugin implementation missing'
+assert re.search(r'@CapacitorPlugin\s*\(\s*name\s*=\s*"NativeStaff"', plugin.read_text()), 'NativeStaff annotation missing'
+assert 'setOnApplyWindowInsetsListener' in code, 'Android inset handling lost'
+print('NativeStaff plugin registration verified in final Android MainActivity')
+PY
+
 # Apply the version supplied by A+ Publisher before Gradle packages the bundle.
 python3 scripts/configure_android_release.py
 
