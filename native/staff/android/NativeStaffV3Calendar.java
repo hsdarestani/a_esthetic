@@ -234,8 +234,8 @@ final class NativeStaffV3Calendar {
                 nextRenderer.verticalScroll.scrollTo(0,scrollY);
                 incoming.scrollTo(scrollX,0);
                 if(slide){
-                    old.animate().translationX(-direction*width).setDuration(240).start();
-                    incoming.animate().translationX(0).setDuration(240).withEndAction(()->{
+                    old.animate().translationX(-direction*width).setDuration(300).setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f)).start();
+                    incoming.animate().translationX(0).setDuration(300).setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f)).withEndAction(()->{
                         if(epoch==generation&&old.getParent()==timelineHost)timelineHost.removeView(old);
                     }).start();
                 }else if(old!=null&&old.getParent()==timelineHost)timelineHost.removeView(old);
@@ -534,11 +534,11 @@ final class NativeStaffV3Calendar {
         @Override public boolean onTouchEvent(MotionEvent e){
             switch(e.getActionMasked()){
                 case MotionEvent.ACTION_DOWN:
-                    downX=e.getX();downY=e.getY();lastDelta=0;
+                    downX=e.getRawX();downY=e.getRawY();lastDelta=0;
                     draggingHorizontal=false;consumingGesture=false;
                     return true;
                 case MotionEvent.ACTION_MOVE: {
-                    float dx=e.getX()-downX,dy=e.getY()-downY;
+                    float dx=e.getRawX()-downX,dy=e.getRawY()-downY;
                     if(!draggingHorizontal && Math.abs(dx)>d(14) && Math.abs(dx)>Math.abs(dy)*1.45f){
                         draggingHorizontal=true;
                         if("day".equals(mode()))getParent().requestDisallowInterceptTouchEvent(true);
@@ -551,7 +551,7 @@ final class NativeStaffV3Calendar {
                     return true;
                 }
                 case MotionEvent.ACTION_UP:{
-                    float dx=e.getX()-downX,dy=e.getY()-downY;
+                    float dx=e.getRawX()-downX,dy=e.getRawY()-downY;
                     if("day".equals(mode())&&draggingHorizontal&&Math.abs(dx)>d(60)&&
                         Math.abs(dx)>Math.abs(dy)*1.4f){
                         int dir=dx<0?1:-1;
@@ -596,10 +596,10 @@ final class NativeStaffV3Calendar {
         void setOnSwipe(Swipe action){swipe=action;}
         @Override public boolean onInterceptTouchEvent(MotionEvent e){
             if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
-                downX=e.getX();downY=e.getY();sliding=false;
+                downX=e.getRawX();downY=e.getRawY();sliding=false;
             } else if(e.getActionMasked()==MotionEvent.ACTION_MOVE){
-                if(Math.abs(e.getX()-downX)>d(14)&&
-                   Math.abs(e.getX()-downX)>Math.abs(e.getY()-downY)*1.4f){
+                if(Math.abs(e.getRawX()-downX)>d(14)&&
+                   Math.abs(e.getRawX()-downX)>Math.abs(e.getRawY()-downY)*1.4f){
                     sliding=true;return true;
                 }
             }
@@ -608,23 +608,23 @@ final class NativeStaffV3Calendar {
         @Override public boolean onTouchEvent(MotionEvent e){
             if(!sliding)return super.onTouchEvent(e);
             if(e.getActionMasked()==MotionEvent.ACTION_MOVE){
-                if(getChildCount()>0)getChildAt(0).setTranslationX(
-                    Math.max(-d(130),Math.min(d(130),e.getX()-downX)));
+                if(getChildCount()>0)setTranslationX(
+                    Math.max(-d(130),Math.min(d(130),e.getRawX()-downX)));
                 return true;
             }
             if(e.getActionMasked()==MotionEvent.ACTION_UP){
-                float dx=e.getX()-downX;
+                float dx=e.getRawX()-downX;
                 if(Math.abs(dx)>d(55)&&swipe!=null){
-                    if(getChildCount()>0)getChildAt(0).animate().translationX(0)
+                    if(getChildCount()>0)animate().translationX(0)
                         .setDuration(175).start();
                     swipe.release(dx<0?1:-1);
                 }else if(getChildCount()>0){
-                    getChildAt(0).animate().translationX(0).setDuration(160).start();
+                    animate().translationX(0).setDuration(160).start();
                 }
                 sliding=false;return true;
             }
             if(e.getActionMasked()==MotionEvent.ACTION_CANCEL){
-                if(getChildCount()>0)getChildAt(0).animate().translationX(0).setDuration(160).start();
+                if(getChildCount()>0)animate().translationX(0).setDuration(160).start();
                 sliding=false;return true;
             }
             return true;
