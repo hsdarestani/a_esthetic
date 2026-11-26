@@ -86,6 +86,22 @@ class BookingBillingBridgeTests(TestCase):
         self.assertEqual(Invoice.objects.count(), 1)
 
     @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
+    def test_patient_search_queries_the_full_active_customer_catalog(self, verified):
+        filler = User.objects.bulk_create([User(username=f'patient-test-{i}', last_name='A') for i in range(1001)])
+        UserProfile.objects.bulk_create([UserProfile(user=user, role='customer') for user in filler])
+        self.customer.first_name = 'Synthetic'
+        self.customer.last_name = 'Ziel'
+        self.customer.save(update_fields=['first_name', 'last_name'])
+        other = User.objects.create_user('synthetic-admin-name', first_name='Synthetic', last_name='Ziel', is_staff=True)
+        UserProfile.objects.create(user=other, role='admin')
+        reply = self.client.post(self.base + 'patient-search/', {'query': 'Synthetic Ziel'}, content_type='application/json')
+        self.assertEqual(reply.status_code, 200)
+        self.assertEqual(reply.json()['patients'], [
+            {'id': self.customer.pk, 'name': 'Synthetic Ziel', 'email': self.customer.email},
+        ])
+        self.assertIn('no-store', reply['Cache-Control'])
+
+    @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
     def test_bridge_does_not_proxy_arbitrary_admin_paths(self, verified):
         response = self.client.get(self.base + "users/")
         self.assertEqual(response.status_code, 404)
