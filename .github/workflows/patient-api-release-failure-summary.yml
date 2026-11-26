@@ -39,4 +39,25 @@ jobs:
             if grep -q 'Applying platform_app.0006_native_office_identity_and_visit' "$log"; then echo 'NATIVE_IDENTITY_MIGRATION_ATTEMPTED=yes'; fi
             if grep -q 'Applying platform_app.0007_office_intake_review' "$log"; then echo 'NATIVE_REVIEW_MIGRATION_ATTEMPTED=yes'; fi
             if grep -q 'Applying platform_app.0008_goae_draft_revision' "$log"; then echo 'NATIVE_REVISION_MIGRATION_ATTEMPTED=yes'; fi
+            if grep -q 'InconsistentMigrationHistory' "$log"; then echo 'HISTORY_INCONSISTENT=yes'; fi
+            if grep -q 'NodeNotFoundError' "$log"; then echo 'MIGRATION_NODE_MISSING=yes'; fi
+            cd /opt/a-esthetic-mobile
+            set -a
+            source mobile.env
+            set +a
+            venv/bin/python manage.py shell <<'PY'
+            from django.db import connection
+            from django.db.migrations.recorder import MigrationRecorder
+            applied = MigrationRecorder(connection).applied_migrations()
+            for app, name in (
+                ('platform_app', '0007_goae_agreement_precision'),
+                ('platform_app', '0006_native_office_identity_and_visit'),
+                ('platform_app', '0007_office_intake_review'),
+                ('platform_app', '0008_goae_draft_request'),
+                ('platform_app', '0008_goae_draft_revision'),
+                ('platform_app', '0009_public_intake_forms'),
+                ('p0_app', '0010_package_booking_lifecycle'),
+            ):
+                print(f'MIGRATION_APPLIED {app}.{name}={int((app,name) in applied)}')
+            PY
             systemctl is-active --quiet a-esthetic-mobile.service && echo 'SERVICE_ACTIVE=yes'
