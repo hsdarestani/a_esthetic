@@ -45,6 +45,7 @@
     finally { end(); }
   };
   document.addEventListener('submit', event => {
+    if (event.target?.matches?.('[data-own-submit]')) return;
     const button = event.target?.querySelector?.('button[type="submit"]');
     if (!button) return;
     button.disabled = true;

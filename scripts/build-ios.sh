@@ -163,6 +163,7 @@ keys = (
     "PROVISIONING_PROFILE_SPECIFIER",
     "CODE_SIGN_IDENTITY",
     "PRODUCT_BUNDLE_IDENTIFIER",
+    "IPHONEOS_DEPLOYMENT_TARGET",
 )
 
 def pbx_value(value: str) -> str:
@@ -187,6 +188,8 @@ def rewrite(match):
         settings.append(f"PROVISIONING_PROFILE_SPECIFIER = {pbx_value(profile)};")
         settings.append(f"CODE_SIGN_IDENTITY = {pbx_value(identity)};")
     settings.append(f"PRODUCT_BUNDLE_IDENTIFIER = {pbx_value(bundle_id)};")
+    # Native SwiftUI Layout and scrollContentBackground require iOS 16.
+    settings.append("IPHONEOS_DEPLOYMENT_TARGET = 16.0;")
 
     needle = re.search(r"(?m)^([ \t]*)INFOPLIST_FILE = App/Info\.plist;", body)
     if not needle:
@@ -214,6 +217,7 @@ XCODE_ARGS=(
   MARKETING_VERSION="$VERSION"
   CURRENT_PROJECT_VERSION="$BUILD"
   TARGETED_DEVICE_FAMILY=1
+  IPHONEOS_DEPLOYMENT_TARGET=16.0
 )
 
 if [ "$SIGNING_STYLE" = "Manual" ]; then
@@ -229,6 +233,16 @@ elif [ "${IOS_ALLOW_PROVISIONING_UPDATES:-0}" = "1" ]; then
   XCODE_ARGS+=(-allowProvisioningUpdates)
 fi
 
+# Check the same Release target that will be archived, not only a simulator build.
+xcodebuild "${XCODE_ARGS[@]}" -showBuildSettings -json > build/ios/release-settings.json
+python3 - build/ios/release-settings.json <<'PY'
+import json, sys
+with open(sys.argv[1]) as f:
+    settings = json.load(f)
+app = [x["buildSettings"] for x in settings if x.get("target") == "App"]
+assert app and all(x.get("IPHONEOS_DEPLOYMENT_TARGET") == "16.0" for x in app), "Native iOS Release target is not 16.0"
+print("PASS: iOS device Release minimum target 16.0")
+PY
 xcodebuild "${XCODE_ARGS[@]}" clean archive
 
 EXPORT_PLIST="$ROOT/build/ios/ExportOptions.plist"
@@ -313,7 +327,8 @@ schemes = [scheme for entry in info.get("CFBundleURLTypes", [])
            for scheme in entry.get("CFBundleURLSchemes", [])]
 if "de.aplusesthetic.app" not in schemes:
     raise SystemExit("FATAL: distributable IPA is missing Google OAuth return scheme")
-print("PASS: signed IPA contains the de.aplusesthetic.app URL scheme.")
+assert tuple(int(x) for x in info["MinimumOSVersion"].split(".")) >= (16, 0), "Signed IPA minimum OS does not support native UI"
+print("PASS: signed IPA contains the de.aplusesthetic.app URL scheme and compatible minimum OS.")
 PY
 
 # Never distribute an iOS build without the actual signed APNs entitlement.
