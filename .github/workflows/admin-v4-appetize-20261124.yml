@@ -3,6 +3,9 @@ on:
   push:
     branches: ['feature/admin-v4-native-20261124', 'fix/admin-calendar-regression-20261126']
   workflow_dispatch:
+concurrency:
+  group: admin-v4-qa-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -40,13 +43,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: hsdarestani/book
-          ref: 1fe0d05723730707b52e26b0d6a11574c0153b5e
+          ref: cf8a7d9e16ccefba7bc01430e9be1ad4ebf404c1
           path: book-api
       - run: |
           python -m venv /tmp/book-v4
           /tmp/book-v4/bin/python -m pip install -r book-api/requirements.txt
           cd book-api
-          /tmp/book-v4/bin/python ../scripts/run_offline_django_tests.py booking.test_mobile_staff_workspace --verbosity 1
+          /tmp/book-v4/bin/python ../scripts/run_offline_django_tests.py booking.test_mobile_staff_workspace booking.test_admin_notification_routing booking.test_customer_email booking.test_simplybook_writeback --verbosity 1
   ios:
     needs: controller
     runs-on: macos-15
