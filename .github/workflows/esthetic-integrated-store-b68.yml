@@ -1,0 +1,24 @@
+name: A+ Esthetic integrated store candidate QA
+on:
+  push:
+    branches: [release/esthetic-store-b68-20261126]
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          node --check www/core-app.js
+          node --check www/booking-book-flow.js
+          node --test scripts/test-mobile-lifecycle.js scripts/test-android-system-back.js scripts/test-ios-onboarding-recovery.js scripts/test-booking-details-login.js
+          python3 scripts/test_native_calendar_colors.py
+          node scripts/test_native_calendar_layout.mjs
+          node scripts/test_native_staff_controller.mjs
+          python3 scripts/store_positioning_check.py
+          npm install --no-audit --no-fund
+          test -s www/mobile/native-staff-bridge.js

@@ -254,7 +254,7 @@
     if (scroll) root.querySelector(`.book-date-chip[data-day-index="${index}"]`)?.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
   }
 
-  function showStep(host, step) {
+  function showStep(host, step, scroll=true) {
     host.querySelectorAll('[data-book-step]').forEach(section => section.classList.toggle('is-active', Number(section.dataset.bookStep) === step));
     host.querySelectorAll('[data-book-progress]').forEach(dot => {
       const n = Number(dot.dataset.bookProgress);
@@ -262,7 +262,8 @@
       dot.classList.toggle('is-done', step > n);
     });
     host.querySelector('.book-progress').hidden = step === 5;
-    host.scrollIntoView({ block: 'start' });
+    if(scroll)host.scrollIntoView({ block: 'start' });
+    host.dispatchEvent(new Event('aplus-booking-navigation',{bubbles:true}));
   }
 
   function renderSummary(state, host) {
@@ -614,8 +615,9 @@
       setFeedback();
       showStep(host, 1);
     };
-    const chooseStaff = (service, changingAppointment = null) => {
-      if (mutationInFlight) return;
+    let selectStaff;
+    const chooseStaff = (service, changingAppointment = null, scroll=true) => {
+      if (mutationInFlight || !service) return false;
       state.requestId++;
       state.service = service;
       state.staff = null;
@@ -634,13 +636,18 @@
         const photo = providerPhotos[item.name];
         return `<button type="button" class="book-choice-card book-staff-card" data-staff-id="${item.id}"><span class="book-staff-avatar">${photo ? `<img src="${esc(photo)}" alt="${esc(item.name)}">` : esc(initials)}</span><span class="book-staff-copy"><strong>${esc(item.name)}</strong><span class="book-doctor-badge">${item.name.toLowerCase().includes('frau') ? 'Ärztin' : 'Arzt'}</span><small>Ästhetische Medizin</small></span><span class="book-staff-arrow">›</span></button>`;
       }).join('') : '<div class="book-slot-empty">Für diese Behandlung sind aktuell keine Online-Termine freigeschaltet.</div>';
-      staffRoot.querySelectorAll('[data-staff-id]').forEach(staffButton => staffButton.addEventListener('click', async () => {
-        state.staff = eligible.find(item => Number(item.id) === Number(staffButton.dataset.staffId));
-        state.startsAt = '';
-        showStep(host, 3);
-        await loadAvailability(state, host.querySelector('[data-slots]'));
-      }));
-      showStep(host, 2);
+      selectStaff=async (id, scroll=true)=>{
+        const staff=eligible.find(item=>Number(item.id)===Number(id));
+        if(!staff)return false;
+        state.staff=staff;
+        state.startsAt='';
+        showStep(host,3,scroll);
+        await loadAvailability(state,host.querySelector('[data-slots]'));
+        return true;
+      };
+      staffRoot.querySelectorAll('[data-staff-id]').forEach(button=>button.addEventListener('click',()=>void selectStaff(button.dataset.staffId)));
+      showStep(host,2,scroll);
+      return true;
     };
     services.querySelectorAll('[data-service-id]').forEach(button => button.addEventListener('click', () => {
       const service = state.data.services.find(item => Number(item.id) === Number(button.dataset.serviceId));
@@ -794,6 +801,47 @@
       card.querySelector('.book-my-appointments').scrollIntoView({ block: 'start' });
     });
 
+    let restoring;
+    const savedDraft=card.aplusRestoreBooking;
+    card.aplusBookingDraft=()=>restoring||(state.changingAppointment?null:({
+      step:Number(host.querySelector('.book-step.is-active')?.dataset.bookStep)||1,
+      filter:filters?.querySelector('.is-active[data-service-filter]')?.dataset.serviceFilter,
+      serviceId:state.service?.id,staffId:state.staff?.id,
+      day:state.availability[state.dayIndex]?.date,startsAt:state.startsAt,
+      expandedAppointment:state.expandedAppointment,attempt:state.bookingAttempt,
+      fields:[...bookingForm.querySelectorAll('input[name]')].map(input=>[input.name,input.type==='checkbox'?input.checked:input.value]),
+    }));
+    card.aplusRestoreBooking=async draft=>{
+      restoring=draft;
+      try{
+        if(draft.filter)applyServiceFilter([...filters.querySelectorAll('[data-service-filter]')].find(button=>button.dataset.serviceFilter===draft.filter));
+        if(draft.expandedAppointment){state.expandedAppointment=draft.expandedAppointment;paintAppointments();}
+        for(const [name,value] of draft.fields||[]){
+          const input=bookingForm.elements.namedItem(name);
+          if(!input)continue;
+          if(input.type==='checkbox')input.checked=value===true;
+          else if(typeof value==='string')input.value=value;
+        }
+        if(draft.step<2 || draft.step>4 || !chooseStaff(state.data.services.find(item=>Number(item.id)===Number(draft.serviceId)),null,false))return;
+        if(draft.step<3 || !await selectStaff(draft.staffId,false) || !card.isConnected)return;
+        const day=state.availability.findIndex(row=>row.date===draft.day);
+        const slots=host.querySelector('[data-slots]');
+        if(day<0)return;
+        selectDay(state,slots,day,false);
+        if(draft.step!==4 || !state.availability[day].slots.includes(draft.startsAt))return;
+        state.startsAt=draft.startsAt;
+        state.slotLabel=timeLabel(state.startsAt);
+        state.dateLabel=formatDay(state.availability[day].date).full;
+        const identity=`${state.service.id}:${state.staff.id}:${state.startsAt}`;
+        if(draft.attempt?.identity===identity)state.bookingAttempt=draft.attempt;
+        renderSummary(state,host);
+        showStep(host,4,false);
+      }finally{
+        restoring=null;
+        host.dispatchEvent(new Event('aplus-booking-navigation',{bubbles:true}));
+      }
+    };
+    if(savedDraft)await card.aplusRestoreBooking(savedDraft);
   }
 
   function run() {

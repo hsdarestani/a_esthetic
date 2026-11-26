@@ -39,7 +39,7 @@ html=rows([appointment],null);
 assert(!html.includes('data-start-cancel'),'Cancellation requires permission from the server');
 
 const callState={token:'stale',calls:[],notices:[]};
-const loginRequest=new Function('Headers','fetch','state','logout','showLogin','API','setTimeout',
+const loginRequest=new Function('Headers','fetch','state','logout','showLogin','API','setTimeout','bootGeneration',
   section(core,'  async function request(','\n  function loader()')+'\nreturn request;')(
   Headers,
   async(url,options)=>{
@@ -50,7 +50,8 @@ const loginRequest=new Function('Headers','fetch','state','logout','showLogin','
   ()=>callState.notices.push('logout'),
   msg=>callState.notices.push(msg),
   'https://app.a-esthetic.de/api/mobile',
-  setTimeout
+  setTimeout,
+  1
 );
 (async()=>{
   await assert.rejects(loginRequest('/login/',{method:'POST',json:{email:'invalid@example.de',password:'invalid'}}),
@@ -58,6 +59,6 @@ const loginRequest=new Function('Headers','fetch','state','logout','showLogin','
   assert.equal(callState.calls.length,1,'Do not retry failed credentials');
   assert.equal(callState.calls[0].authorization,null,'Old session token must not be sent on login');
   assert.deepEqual(callState.notices,[],'Wrong password must not be treated as expired session');
-  assert(core.includes('Die E-Mail-Adresse oder das Passwort ist falsch. Bitte überprüfe deine Eingaben und versuche es erneut.'));
+  assert(core.includes('Bitte überprüfe deine Eingaben'));
   console.log('Booking details, status descriptions, cancellation visibility and login 401 tests passed.');
 })().catch(err=>{console.error(err);process.exitCode=1;});

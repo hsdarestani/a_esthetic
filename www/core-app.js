@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_ORIGIN = 'https://app.a-esthetic.de';
+  const APP_ORIGIN = window.APlusRuntime.origin;
   const API = `${APP_ORIGIN}/api/mobile`;
   const LEGAL = {
     privacy: `${APP_ORIGIN}/datenschutz/`,
@@ -31,6 +31,8 @@
   const root = document.getElementById('app');
   const routeHistory = [];
   let nativeBackListenerRegistered = false;
+  let navigation, routeGeneration=0;
+  let customerScreenReady=false, checkpointFrame=0;
 
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
   const fmt = value => value ? new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Berlin'}).format(new Date(value)) : '—';
@@ -88,17 +90,22 @@
   };
 
   async function request(path, options={}) {
+    const generation=bootGeneration;
+    const token=state.token;
     const headers = new Headers(options.headers || {});
-    if (state.token && path!=='/login/') headers.set('Authorization', `Bearer ${state.token}`);
+    if (token && path!=='/login/') headers.set('Authorization', `Bearer ${token}`);
     if (options.json !== undefined) { headers.set('Content-Type','application/json'); options.body=JSON.stringify(options.json); }
     let response = await fetch(`${API}${path}`, {...options,headers,cache:'no-store'});
-    if (response.status===401 && path!=='/login/' && state.token && !options._authRetried) {
+    const stillCurrent=()=>generation===bootGeneration && token===state.token;
+    if (response.status===401 && path!=='/login/' && token && !options._authRetried && stillCurrent()) {
       await new Promise(resolve => setTimeout(resolve, 700));
+      if(!stillCurrent()) throw new Error('session_changed');
       response = await fetch(`${API}${path}`, {...options,headers,cache:'no-store'});
     }
+    if(!stillCurrent()) throw new Error('session_changed');
     if (response.status===401 && path==='/login/') {
       const payload=await response.json().catch(()=>({}));
-      const error=new Error('Die E-Mail-Adresse oder das Passwort ist falsch. Bitte überprüfe deine Eingaben und versuche es erneut.');
+      const error=new Error('Die E Mail Adresse oder das Passwort ist falsch. Bitte überprüfe deine Eingaben und versuche es erneut.');
       error.code=payload?.error || 'invalid_credentials';
       throw error;
     }
@@ -111,6 +118,7 @@
     }
     const type=response.headers.get('content-type')||'';
     const data=type.includes('application/json')?await response.json():await response.text();
+    if(!stillCurrent()) throw new Error('session_changed');
     if(!response.ok||data?.ok===false){const error=new Error(data?.message||data?.error||`HTTP ${response.status}`);error.code=data?.error;throw error;}
     return data;
   }
@@ -141,7 +149,7 @@
     document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());
     const node=document.createElement('div');node.className='settings-overlay';
     node.innerHTML=`<div class="settings-card"><div class="settings-head"><h2>Einstellungen & Recht</h2><button class="core-icon-btn" data-close>×</button></div>
-      <div class="settings-user"><strong>${esc(state.me?.member?.name||'A+ Kunde')}</strong><span>${esc(email)}</span></div>
+      <div class="settings-user"><strong>${esc(state.me?.member?.name||'A+ Patient')}</strong><span>${esc(email)}</span></div>
       <form data-profile-salutation class="a39-profile-choice">
         <label for="a39-salutation">Anrede für dein Startseitenbild</label>
         <div class="a39-profile-choice-controls">
@@ -185,7 +193,63 @@
     });
   }
 
-  function logout(render=true){document.querySelectorAll('.settings-overlay').forEach(n=>n.remove());localStorage.removeItem('aplus_token');state.token='';state.me=null;state.cache={};routeHistory.length=0;if(render)showLogin();}
+  async function showPatientIntake(node,email){
+    const en=localStorage.getItem('aplus_language')==='en';
+    const tr=(de,english)=>en?english:de;
+    const card=node.querySelector('.settings-card');
+    const head=title=>`<div class="settings-head"><h2>${esc(title)}</h2><button type="button" class="core-icon-btn" data-close aria-label="${esc(tr('Zurück','Back'))}">×</button></div>`;
+    const back=()=>showSettings(email);
+    card.innerHTML=head(tr('Aufnahmebogen','Intake form'))+loader();
+    card.querySelector('[data-close]').onclick=back;
+    try {
+      const result=await request('/staff/office/intake/');
+      if(!node.isConnected)return;
+      const p=result.patient, address=p.address||{};
+      const field=(name,label,value,type='text',autocomplete='off',max='')=>`<label class="ma-field"><span>${esc(label)}</span><span class="ma-input"><input type="${type}" name="${name}" value="${esc(value)}" autocomplete="${autocomplete}" ${max?'maxlength="'+max+'"':''} required></span></label>`;
+      card.innerHTML=head(tr('Aufnahmebogen','Intake form'))+
+        `<div class="settings-user"><strong>${esc(p.name)}</strong><span>${esc(p.email)}</span></div>
+        <form data-intake-form class="ma-form">
+          <p class="ma-description">${esc(tr('Deine vorhandenen Angaben werden übernommen. Die Adresse kann für spätere Rechnungen verwendet werden.','Your saved information is prefilled. Your address can be used for later invoices.'))}</p>
+          ${field('date_of_birth',tr('Geburtsdatum','Date of birth'),p.date_of_birth,'date','bday')}
+          ${field('street',tr('Straße und Hausnummer','Street and house number'),address.street,'text','street-address',180)}
+          ${field('postal_code',tr('Postleitzahl','Postal code'),address.postal_code,'text','postal-code',20)}
+          ${field('city',tr('Ort','City'),address.city,'text','address-level2',120)}
+          <p role="status" aria-live="polite" data-intake-message></p>
+          <button type="submit" class="ma-primary">${esc(tr('Speichern','Save'))}</button>
+        </form>`;
+      card.querySelector('[data-close]').onclick=back;
+      card.querySelector('[data-intake-form]').onsubmit=async event=>{
+        event.preventDefault();
+        const form=event.currentTarget, button=form.querySelector('button'), msg=form.querySelector('[data-intake-message]');
+        button.disabled=true;
+        try {
+          await request('/staff/office/intake/',{method:'POST',json:Object.fromEntries(new FormData(form))});
+          msg.textContent=tr('Angaben gespeichert.','Information saved.');
+        } catch(error) {
+          msg.textContent=error.code==='identity_verification_required'?tr('Geburtsdatum muss von der Praxis geprüft werden.','The clinic must verify a change to your date of birth.'):tr('Angaben konnten nicht gespeichert werden.','Unable to save your details.');
+        } finally {button.disabled=false;}
+      };
+    } catch(error) {
+      if(!node.isConnected)return;
+      card.innerHTML=head(tr('Aufnahmebogen','Intake form'))+errorBox(new Error(tr('Aufnahmebogen konnte nicht geladen werden.','Unable to load intake form.')));
+      card.querySelector('[data-close]').onclick=back;
+    }
+  }
+
+  function logout(render=true){
+    bootGeneration++;
+    routeGeneration++;
+    bootPhase='idle';
+    lastStaffRole=null;
+    window.APlusAdminMode?.unmount();
+    navigation?.clear();
+    navigation=null;
+    document.querySelectorAll('.settings-overlay,.contact-overlay').forEach(n=>n.remove());
+    localStorage.removeItem('aplus_token');
+    state.token='';state.me=null;state.cache={};state.route='dashboard';state.screen='dashboard';state.recordsFlash=null;
+    routeHistory.length=0;
+    if(render)showLogin();
+  }
 
   function showContactPicker(){
     document.querySelectorAll('.contact-overlay').forEach(node=>node.remove());
@@ -202,31 +266,64 @@
     node.querySelector('[data-contact-close]')?.addEventListener('click',close);
   }
 
-  function showLogin(message=''){
-    // A production login must never prefill a stored test account.
+  function showLogin(message = '') {
     localStorage.removeItem('aplus_login_email');
-    root.innerHTML=`<div class="login-shell login-shell-auth"><form class="login-card" data-login><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div><div class="login-kicker">A+ ESTHETIC</div><h1>Anmelden</h1><p>Termine, Patientenakte und A+ Punkte an einem Ort.</p>${message?`<div class="notice error">${esc(message)}</div>`:''}<label class="field"><span>E-Mail</span><input name="email" type="email" autocomplete="off" autocapitalize="none" spellcheck="false" required></label><label class="field"><span>Passwort</span><input name="password" type="password" autocomplete="current-password" required></label><a class="login-password-reset" data-forgot-password href="${APP_ORIGIN}/accounts/password/reset/">Passwort vergessen?</a><button class="primary wide" type="submit">Anmelden</button></form></div>`;
-    root.querySelector('[data-forgot-password]')?.addEventListener('click',async event=>{
-      const browser=window.Capacitor?.Plugins?.Browser;
-      if (!browser?.open) return;
-      event.preventDefault();
-      try { await browser.open({url:event.currentTarget.href}); }
-      catch (_) { window.location.assign(event.currentTarget.href); }
+    window.APlusAuth.login({
+      message,
+      authenticate: async (email, password) => {
+        const data = await request('/login/', {method: 'POST', json: {email, password}, aplusSilent: true});
+        if (!data.token) throw new Error('invalid_response');
+        localStorage.setItem('aplus_token', data.token);
+        await boot(data.account_type ? {role: data.account_type, ...data.admin_profile} : null);
+      },
+      signup: back => window.APlusOnboarding.signup(back),
     });
-    root.querySelector('[data-login]').addEventListener('submit',async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button');btn.disabled=true;btn.textContent='Anmeldung …';try{const fd=new FormData(e.currentTarget);const data=await request('/login/',{method:'POST',json:{email:fd.get('email'),password:fd.get('password')}});state.token=data.token;localStorage.setItem('aplus_token',state.token);await boot();}catch(err){
-      const invalid=err?.code==='invalid_credentials'||err?.code==='authentication_required';
-      const hint=invalid
-        ? 'Die E-Mail-Adresse oder das Passwort ist falsch. Bitte überprüfe deine Eingaben und versuche es erneut.'
-        : 'Die Anmeldung ist gerade nicht möglich. Bitte prüfe deine Verbindung und versuche es erneut.';
-      showLogin(hint);
-    }});
   }
 
-  function showReconnect(message='Verbindung wird wiederhergestellt …'){
-    root.innerHTML=`<div class="login-shell login-shell-auth"><section class="login-card"><div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div><h1>Willkommen zurück</h1><p>${esc(message)}</p><div class="spinner"></div><button class="secondary wide" type="button" data-reconnect>Erneut verbinden</button></section></div>`;
-    root.querySelector('[data-reconnect]')?.addEventListener('click',boot);
+  let lastStaffRole = null;
+  function showReconnect(message='Verbindung wird wiederhergestellt …', {failed=false, stage='', code=''}={}){
+    // Never present a permanent loading spinner as an error. Keep an explicit
+    // sign-out path and a safe diagnostic stage for iOS Simulator QA.
+    const detail = failed ? `<p role="alert" class="notice error" data-staff-error>${esc(message)}</p>
+      <small data-staff-stage style="display:block;margin:8px 0;color:#465a51">Diagnose: ${esc(stage||'Unbekannt')}${code?' · '+esc(code):''}</small>`
+      : `<p>${esc(message)}</p><div class="spinner" role="status" aria-label="Verbindung wird geprüft"></div>`;
+    root.innerHTML=`<div class="login-shell login-shell-auth"><section class="login-card">
+      <div class="login-logo"><img class="login-brand-logo" src="./assets/logo.svg" alt="A+ Esthetic"></div>
+      <h1>${failed?'Verbindung prüfen':'Willkommen zurück'}</h1>${detail}
+      <button class="secondary wide" type="button" data-reconnect>${failed?'Erneut versuchen':'Erneut verbinden'}</button>
+      ${failed && stage==='native-staff-mount' ? '<button class="secondary wide" type="button" data-staff-web-fallback>Vorübergehend Webverwaltung öffnen</button>' : ''}
+      <button class="text-btn wide" type="button" data-reconnect-logout>Abmelden und neu anmelden</button>
+    </section></div>`;
+    root.querySelector('[data-reconnect]')?.addEventListener('click',()=>void boot());
+    root.querySelector('[data-reconnect-logout]')?.addEventListener('click',()=>logout());
+    root.querySelector('[data-staff-web-fallback]')?.addEventListener('click', async event=>{
+      const button=event.currentTarget;
+      if(!lastStaffRole || !state.token)return;
+      button.disabled=true;
+      button.textContent='Webverwaltung wird geöffnet …';
+      try {
+        await window.APlusAdminMode.mount(root,state.token,lastStaffRole,()=>logout(),{forceWeb:true});
+        if(lastStaffRole && state.token)bootPhase='ready';
+      } catch(error) {
+        if(!button.isConnected)return;
+        showReconnect('Auch die Webverwaltung konnte nicht geöffnet werden.',
+          {failed:true,stage:'staff-web-fallback',code:String(error?.name||'ERROR').slice(0,40)});
+      }
+    });
   }
   let bootGeneration = 0;
+  let bootPhase = 'idle';
+  async function nativeNavigation(token){
+    const bridge=window.APlusNativeStaff;
+    if(window.Capacitor?.getPlatform?.()!=='android' || !bridge || !globalThis.crypto?.subtle)return;
+    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token));
+    const session=Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('');
+    return {
+      async read(scope){return (await bridge.readNavigation({session,scope}).catch(()=>null))?.state;},
+      save(scope,state){void bridge.saveNavigation({session,scope,state}).catch(()=>{});},
+      clear(){void bridge.clearNavigation({session}).catch(()=>{});},
+    };
+  }
   async function readAuthProfile(){
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
@@ -243,71 +340,160 @@
       clearTimeout(timeout);
     }
   }
-  async function boot(){
+  async function boot(identity = null){
+    if (bootPhase==='booting' || bootPhase==='ready') return;
+    identity = identity?.role ? identity : null;
     const generation = ++bootGeneration;
     state.token = localStorage.getItem('aplus_token') || '';
     if(!state.token) return showLogin();
-    // Always render a recoverable screen before awaiting the network. On iOS
-    // a paused WebView fetch must never leave #app completely blank.
+    bootPhase = 'booting';
+    let stage = 'staff-session';
     showReconnect('Anmeldung wird überprüft …');
     try {
+      const role = identity || await window.APlusAdminMode.resolve(state.token);
+      if (generation !== bootGeneration) return;
+      const sessionNavigation = await nativeNavigation(state.token);
+      if (generation !== bootGeneration) return;
+      navigation=sessionNavigation;
+      lastStaffRole = role && (role.role==='admin'||role.role==='doctor') ? role : null;
+      if (role.role === 'admin' || role.role === 'doctor') {
+        stage = 'native-staff-mount';
+        await window.APlusAdminMode.mount(root, state.token, role, () => logout(), {navigation});
+        if(generation===bootGeneration)bootPhase='ready';
+        return;
+      }
+      stage = 'patient-profile';
       const profile = await readAuthProfile();
       if(generation !== bootGeneration) return;
       state.me = profile;
       if(profile?.account?.locked){
+        stage = 'patient-onboarding';
+        bootPhase='onboarding';
         if(window.APlusOnboarding?.start) await window.APlusOnboarding.start();
         else showReconnect('Die Registrierung wird geladen …');
         return;
       }
-      await go(new URLSearchParams(window.location.search).get('bereich')==='termine'?'appointments':'dashboard',{resetHistory:true});
+      stage = 'patient-dashboard';
+      const saved=await navigation?.read('customer');
+      if(generation!==bootGeneration)return;
+      const defaultRoute=new URLSearchParams(window.location.search).get('bereich')==='termine'?'appointments':'dashboard';
+      bootPhase='ready';
+      await go(saved?.route || defaultRoute,{restore:saved,resetHistory:true});
     } catch(err) {
       if(generation !== bootGeneration) return;
+      if(err?.code === 'staff_session_expired'){ logout(); return; }
       if(err?.code === 'profile_completion_required'){
+        bootPhase='onboarding';
         if(window.APlusOnboarding?.start) await window.APlusOnboarding.start();
         else showReconnect('Die Registrierung wird geladen …');
         return;
       }
-      if(state.token) showReconnect('Die Verbindung ist gerade nicht verfügbar. Ihre Anmeldung bleibt gespeichert.');
-      else showLogin('Bitte melden Sie sich erneut an.');
+      if(state.token){
+        const safeCode = [err?.code,err?.name].filter(x=>typeof x==='string' && /^[\w.-]{1,45}$/.test(x)).join(' / ');
+        const safeMessage = err?.message && typeof err.message==='string'
+          ? err.message.slice(0,160) : 'Die Anmeldung konnte nicht abgeschlossen werden.';
+        // Diagnostic details stay on device; never print bearer tokens or patient data.
+        showReconnect(safeMessage,{failed:true,stage,code:safeCode});
+      } else showLogin('Bitte melden Sie sich erneut an.');
+    } finally {
+      if(generation===bootGeneration && bootPhase==='booting')bootPhase='idle';
     }
   }
   // The SMS verification flow can refresh the verified session in-place,
   // without a fragile native WebView location.reload().
   window.APlusRefreshAuth = boot;
-  function recoverBlankNativeView(){
-    if(!state.token || document.visibilityState === 'hidden') return;
-    const noScreen = !root?.firstElementChild;
-    const reconnect = Boolean(root?.querySelector?.('[data-reconnect]'));
-    if(noScreen || reconnect) boot();
+  window.APlusSignOut = logout;
+
+  const draftControls = 'input[name]:not([type=file]):not([type=password]):not([type=hidden]),select[name],textarea[name]';
+  function customerDraftInputs(){
+    return Array.from(document.querySelectorAll('.core-main :is('+draftControls+'),.settings-overlay :is('+draftControls+')'))
+      .filter(input=>!input.closest('.book-booking-card-host'));
   }
-  document.addEventListener('visibilitychange', recoverBlankNativeView);
-  window.addEventListener('pageshow', recoverBlankNativeView);
-  try {
-    window.Capacitor?.Plugins?.App?.addListener?.('appStateChange', event => {
-      if(event?.isActive) recoverBlankNativeView();
-    });
-  } catch(_) { /* Web fallback remains available. */ }
+  function saveCustomerNavigation(){
+    if(!navigation || !state.me || !customerScreenReady)return;
+    const booking=root.querySelector('.book-embedded-canonical');
+    navigation.save('customer',{route:state.screen||state.route,history:routeHistory,
+      scroll:window.scrollY,mainScroll:root.querySelector('.core-main')?.scrollTop,
+      recordFilter:root.querySelector('[data-record-filter].is-active')?.dataset.recordFilter,
+      settings:Boolean(document.querySelector('.settings-overlay:not(.is-closing)')),
+      booking:booking?.aplusBookingDraft?.()||(typeof booking?.aplusRestoreBooking==='object'?booking.aplusRestoreBooking:undefined),
+      values:customerDraftInputs().map(input=>[input.name,input.type==='checkbox'||input.type==='radio'?input.checked:input.value])});
+  }
+  function scheduleCustomerCheckpoint(){
+    if(!navigation || checkpointFrame || !customerScreenReady)return;
+    checkpointFrame=requestAnimationFrame(()=>{checkpointFrame=0;saveCustomerNavigation();});
+  }
+  for(const event of ['input','change','click','scroll','aplus-booking-navigation']){
+    document.addEventListener(event,scheduleCustomerCheckpoint,{capture:true,passive:true});
+  }
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='hidden')saveCustomerNavigation();
+  });
+  function restoreCustomerNavigation(saved){
+    if(!saved)return;
+    if(saved.settings)root.querySelector('[data-settings]')?.click();
+    if(saved.recordFilter)Array.from(root.querySelectorAll('[data-record-filter]')).find(button=>button.dataset.recordFilter===saved.recordFilter)?.click();
+    const booking=root.querySelector('.book-embedded-canonical');
+    if(booking && saved.booking){
+      if(typeof booking.aplusRestoreBooking==='function')void booking.aplusRestoreBooking(saved.booking);
+      else booking.aplusRestoreBooking=saved.booking;
+    }
+    for(const [i,input] of customerDraftInputs().entries()){
+      const entry=saved.values?.[i];
+      if(entry?.[0]!==input.name)continue;
+      if(input.type==='checkbox'||input.type==='radio')input.checked=entry[1]===true;
+      else if(typeof entry[1]==='string')input.value=entry[1];
+    }
+    const main=root.querySelector('.core-main');
+    if(main)main.scrollTop=Number(saved.mainScroll)||0;
+    window.scrollTo(0,Number(saved.scroll)||0);
+  }
   async function go(route, options={}){
+    const generation=++routeGeneration;
+    const session=bootGeneration;
+    const current=()=>generation===routeGeneration&&session===bootGeneration;
     const displayRoute=route==='reviews'?'points':route;
     const nextRoute=routes.some(item=>item[0]===displayRoute)?displayRoute:'dashboard';
+    const nextScreen=route==='reviews'?'reviews':nextRoute;
+    const previous=state.screen||state.route;
     if(options.resetHistory)routeHistory.length=0;
-    else if(!options.fromBack && state.me && nextRoute!==state.route){
-      routeHistory.push(state.route);
+    else if(!options.fromBack && state.me && nextScreen!==previous){
+      routeHistory.push(previous);
       if(routeHistory.length>25)routeHistory.shift();
     }
+    if(options.resetHistory && Array.isArray(options.restore?.history))
+      routeHistory.push(...options.restore.history.filter(r=>r==='reviews'||routes.some(([id])=>id===r)).slice(-25));
     state.route=nextRoute;
+    state.screen=nextScreen;
+    customerScreenReady=false;
     shell(loader());
+    const renderShell=content=>{
+      if(!current())return false;
+      shell(content);
+      return true;
+    };
     try{
-      if(route==='reviews'){await renderReviews();return;}
-      if(nextRoute==='dashboard')await renderDashboard();
-      if(nextRoute==='appointments')await renderAppointments();
-      if(nextRoute==='records')await renderRecords();
-      if(nextRoute==='points')await renderPoints();
-      if(nextRoute==='friends')await renderFriends();
-    }catch(err){shell(`${pageHead('A+ Esthetic','Fehler')} ${errorBox(err)}`);}
+      if(route==='reviews')await renderReviews(renderShell);
+      else if(nextRoute==='dashboard')await renderDashboard(renderShell);
+      else if(nextRoute==='appointments')await renderAppointments(renderShell);
+      else if(nextRoute==='records')await renderRecords(renderShell);
+      else if(nextRoute==='points')await renderPoints(renderShell);
+      else if(nextRoute==='friends')await renderFriends(renderShell);
+      if(!current())return;
+      restoreCustomerNavigation(options.restore);
+      customerScreenReady=true;
+      saveCustomerNavigation();
+    }catch(err){
+      if(!current())return;
+      renderShell(`${pageHead('A+ Esthetic','Fehler')} ${errorBox(err)} <button class="secondary wide" data-route-retry>Erneut versuchen</button>`);
+      root.querySelector('[data-route-retry]')?.addEventListener('click',()=>void go(route,{...options,resetHistory:false}));
+    }
   }
 
   function handleNativeBack(){
+    if (window.APlusAdminMode?.back()) return;
+    const authBack = document.querySelector('[data-ma-back]');
+    if (authBack) { authBack.click(); return; }
     const settings=document.querySelector('.settings-overlay');
     if(settings){const close=settings.querySelector('[data-close]');if(close)close.click();else settings.remove();return;}
     const contact=document.querySelector('.contact-overlay');
@@ -322,13 +508,15 @@
     if(state.token && state.me){
       while(routeHistory.length){
         const previous=routeHistory.pop();
-        if(previous!==state.route){void go(previous,{fromBack:true});return;}
+        if(previous!==(state.screen||state.route)){void go(previous,{fromBack:true});return;}
       }
       if(state.route!=='dashboard'){void go('dashboard',{fromBack:true});return;}
     }
     // Exit only after returning to the home screen, consistent with Android.
-    window.Capacitor?.Plugins?.App?.exitApp?.();
+    if(window.Capacitor?.getPlatform?.()!=='ios')window.Capacitor?.Plugins?.App?.exitApp?.();
   }
+
+  window.APlusNativeBack = handleNativeBack;
 
   function registerNativeBackButton(){
     if(nativeBackListenerRegistered)return;
@@ -345,10 +533,8 @@
   document.addEventListener('DOMContentLoaded',registerNativeBackButton,{once:true});
   window.addEventListener('pageshow',registerNativeBackButton);
 
-  async function renderDashboard(){
-    const view = root.firstElementChild;
+  async function renderDashboard(renderShell=shell){
     const [dash,booking]=await Promise.all([request('/dashboard/'),request('/booking/')]);
-    if (!view.isConnected) return;
     const contact=dash.contact||{};
     const banners=dash.campaigns||[];
     // The authenticated dashboard selects the configured banner from Anrede.
@@ -388,7 +574,7 @@
       </article>`).join('')}</div>`;
     }
 
-    shell(html);
+    if(renderShell(html)===false)return;
     root.querySelectorAll('[data-dash-book]').forEach(button=>button.addEventListener('click',()=>go('appointments')));
     root.querySelector('[data-dash-call]')?.addEventListener('click',showContactPicker);
     root.querySelector('[data-dash-points]')?.addEventListener('click',()=>go('points'));
@@ -397,17 +583,18 @@
 
 
   document.addEventListener('aplus:booking-changed', () => {
-    if (state.me && state.route === 'dashboard') void renderDashboard().catch(() => {});
+    if (state.me && state.route === 'dashboard' && state.screen === 'dashboard') void go('dashboard',{fromBack:true});
   });
 
-  function renderAppointments(){
-    shell(pageHead('RESERVIERUNG','Termin reservieren')+
+  async function renderAppointments(renderShell=shell){
+    await request('/booking/');
+    renderShell(pageHead('RESERVIERUNG','Termin reservieren')+
       '<section class="booking-request-card book-embedded-canonical"><form id="booking-form"></form></section>');
   }
 
   function pointRows(items){const tx=(items||[]).filter(x=>x.kind==='coin');if(!tx.length)return '<div class="empty">Noch keine Punktebewegungen.</div>';return tx.map(t=>{const incoming=t.direction==='in';const amount=Math.abs(Number(t.coin_amount)||0);return `<article class="point-row"><div class="point-mark ${incoming?'is-in':'is-out'}">${incoming?'+':'−'}</div><div><strong>${esc(t.description||'A+ Punkte')}</strong><span>${fmt(t.created_at)}</span></div><b>${incoming?'+':'−'}${amount}</b></article>`;}).join('');}
 
-  async function renderPoints(){
+  async function renderPoints(renderShell=shell){
     const [wallet,reviews,pass]=await Promise.all([request('/wallet/'),request('/reviews/'),request('/wallet-pass/').catch(()=>({}))]);
     const verified=(reviews.activities||[]).filter(x=>x.status==='verified');
     const card=pass.card||{};
@@ -446,7 +633,7 @@
     html+=`<section class="approved-quote">“ Schönheit ist die beste<br>Form der Selbstliebe. ”</section>`;
     html+=`<div class="approved-section-head"><h2>Punkteverlauf</h2><span>${(wallet.transactions||[]).filter(x=>x.kind==='coin').length}</span></div>${pointRows(wallet.transactions)}`;
     if(verified.length)html+=`<div class="notice success">${verified.length} Google-Bewertung${verified.length===1?'':'en'} verifiziert.</div>`;
-    shell(html);
+    if(renderShell(html)===false)return;
     root.querySelector('[data-review-route]')?.addEventListener('click',()=>go('reviews'));
     root.querySelector('[data-friends-route]')?.addEventListener('click',()=>go('friends'));
     const exclusiveButton=root.querySelector('[data-exclusive-benefits]');
@@ -521,13 +708,13 @@
   }
 
 
-  async function renderReviews(){
+  async function renderReviews(renderShell=shell){
     const data=await request('/reviews/');const items=data.activities||[];
     let html=pageHead('PUNKTE SAMMELN','Google Bewertung',`Nach erfolgreicher Verifizierung erhalten Sie ${Number(data.verified_review_points||250)} Punkte.`);
     html+=`<section class="review-cta"><div class="eyebrow">Google</div><h2>Erfahrung teilen</h2><p class="row-sub">Punkte werden erst gutgeschrieben, nachdem die Bewertung tatsächlich geprüft und verifiziert wurde.</p><button class="primary wide" data-open-review>Bei Google bewerten</button></section>`;
     html+=`<section class="card"><h2 style="margin-bottom:14px">Bewertung zur Prüfung melden</h2><form data-review-submit><label class="field"><span>Sterne (optional)</span><select name="rating"><option value="">Nicht angeben</option>${[5,4,3,2,1].map(n=>`<option value="${n}">${'★'.repeat(n)}</option>`).join('')}</select></label><button class="secondary wide">Zur Verifizierung einreichen</button></form></section>`;
     html+=`<div class="section-title"><h2>Status</h2><small>${items.length}</small></div>${items.length?items.map(r=>`<article class="review-row"><div class="review-row-head"><strong>${r.rating?`${'★'.repeat(r.rating)}`:'Google Bewertung'}</strong><span class="status ${r.status}">${esc(r.status_label)}</span></div><div class="row-sub">${fmt(r.submitted_at||r.opened_at||r.created_at)}</div>${r.points_awarded?`<div class="point-earned">+${r.points_value} Punkte</div>`:''}</article>`).join(''):'<div class="empty">Noch keine Bewertung eingereicht.</div>'}`;
-    shell(html);root.querySelector('[data-open-review]').onclick=async()=>{try{await request('/reviews/',{method:'POST',json:{action:'opened'}});}catch(_){}window.open(data.review_url,'_blank','noopener');};root.querySelector('[data-review-submit]').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);try{await request('/reviews/',{method:'POST',json:{action:'submitted',rating:fd.get('rating')||null}});await renderReviews();}catch(err){e.currentTarget.insertAdjacentHTML('beforebegin',errorBox(err));}};
+    if(renderShell(html)===false)return;root.querySelector('[data-open-review]').onclick=async()=>{try{await request('/reviews/',{method:'POST',json:{action:'opened'}});}catch(_){}window.open(data.review_url,'_blank','noopener');};root.querySelector('[data-review-submit]').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);try{await request('/reviews/',{method:'POST',json:{action:'submitted',rating:fd.get('rating')||null}});await renderReviews(renderShell);}catch(err){e.currentTarget.insertAdjacentHTML('beforebegin',errorBox(err));}};
   }
 
 
@@ -541,18 +728,18 @@
     ).join(''):'<div class="empty">Noch keine Empfehlungen.</div>';
   }
 
-  async function renderFriends(){
+  async function renderFriends(renderShell=shell){
     const data=await request('/club/');
     const refs=Array.isArray(data.referrals)?data.referrals:[];
     let html=pageHead('EMPFEHLUNGEN','Freunde einladen','300 Punkte für Sie nach der ersten Buchung Ihrer Empfehlung.');
     html+='<section class="card referral-premium"><h2>Persönlich einladen</h2>'+
       '<p>Die eingeladene Person erhält nach erfolgreicher Registrierung mit Ihrem Code 300 Punkte. Ihre 300 Punkte werden nach der ersten Buchung gutgeschrieben.</p>'+
-      '<form data-referral><label class="field"><span>E-Mail</span><input name="invited_email" type="email" placeholder="name@example.com" autocomplete="email" required></label>'+
+      '<form data-referral><label class="field"><span>E Mail</span><input name="invited_email" type="email" placeholder="name@example.com" autocomplete="email" required></label>'+
       '<button class="primary wide" type="submit">Einladung senden</button>'+
       '<div data-referral-feedback role="status" aria-live="polite" hidden></div></form></section>';
     html+='<div class="section-title"><h2>Bisherige Einladungen</h2><small data-referral-count>'+refs.length+'</small></div>'+
       '<div data-referral-list aria-live="polite">'+referralRows(refs)+'</div>';
-    shell(html);
+    if(renderShell(html)===false)return;
     const form=root.querySelector('[data-referral]');
     const emailField=form.querySelector('[name=invited_email]');
     const button=form.querySelector('button[type=submit]');
@@ -599,10 +786,10 @@
         if(result.points_awarded)alert('+'+result.points_awarded+' Punkte');
       }catch(error){
         const messages={
-          valid_email_required:'Bitte geben Sie eine gültige E-Mail-Adresse ein.',
+          valid_email_required:'Bitte geben Sie eine gültige E Mail Adresse ein.',
           cannot_refer_yourself:'Sie können sich nicht selbst einladen.',
           already_referred:'Diese Person wurde bereits eingeladen und die Punkte wurden gutgeschrieben.',
-          referral_email_failed:'Die Einladung konnte nicht per E-Mail versendet werden. Bitte versuchen Sie es später erneut.'
+          referral_email_failed:'Die Einladung konnte nicht per E Mail versendet werden. Bitte versuchen Sie es später erneut.'
         };
         showFeedback(messages[error.code]||error.message||'Die Einladung konnte nicht versendet werden.',false);
       }finally{
@@ -613,7 +800,7 @@
     });
   }
 
-  async function renderRecords(){
+  async function renderRecords(renderShell=shell){
     const data=await request('/patient-records/');
     const records=(data.records||[]).sort((a,b)=>new Date(b.captured_at||b.created_at)-new Date(a.captured_at||a.created_at));
     let html=`<section class="approved-page-head"><h1>Meine Akte</h1><p>Deine Dokumente, Fotos und Notizen.<br>Sicher. Persönlich. Jederzeit verfügbar.</p></section>`;
@@ -644,7 +831,7 @@
     </div>`;
     html+=`<div class="approved-section-head records-head"><h2>Zuletzt gespeichert</h2><span>${records.length}</span></div>
       <section class="approved-record-timeline">${records.length?records.map(recordRow).join(''):'<div class="empty">Ihre Patientenakte enthält noch keine Einträge.</div>'}</section>`;
-    shell(html);
+    if(renderShell(html)===false)return;
     bindRecordActions();
     root.querySelectorAll('[data-record-filter]').forEach(button=>button.addEventListener('click',()=>{
       const filter=button.dataset.recordFilter;
