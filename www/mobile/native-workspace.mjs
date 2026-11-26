@@ -404,7 +404,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         row('',appointment.date+' · '+appointment.start+' – '+appointment.end, appointment.staff_name),
         row('',tr('Status','Status'),appointment.status),row('',tr('Notiz','Note'),appointment.notes||''),
         row('',tr('Patient','Patient'),appointment.customer_name),row('',tr('Telefon','Phone'),contact.phone||tr('Nicht angegeben','Not provided')),row('','E Mail',contact.email||tr('Nicht angegeben','Not provided')),
-      ],actions:[...(contact.phone?[row('appointment-call',tr('Patient anrufen','Call patient')),row('appointment-whatsapp',tr('WhatsApp Erinnerung vorbereiten','Prepare WhatsApp reminder'))]:[]),...(appointment.customer_id?[row('patient:'+appointment.customer_id,tr('Patientenakte öffnen','Open patient record'))]:[]),...(appointment.source_managed && !(admin&&appointment.source_editable)
+      ],actions:[...(['new','confirmed'].includes(appointment.status)&&appointment.date>=today()?[row('appointment-reminder',tr('App Erinnerung senden','Send app reminder'))]:[]),...(contact.phone?[row('appointment-call',tr('Patient anrufen','Call patient')),row('appointment-whatsapp',tr('WhatsApp Erinnerung vorbereiten','Prepare WhatsApp reminder'))]:[]),...(appointment.customer_id?[row('patient:'+appointment.customer_id,tr('Patientenakte öffnen','Open patient record'))]:[]),...(appointment.source_managed && !(admin&&appointment.source_editable)
         ? [row('calendar',tr('Zurück zum Kalender','Back to calendar'))]
         : [row('edit-appointment',tr('Bearbeiten','Edit')),row('cancel-appointment',tr('Absagen','Cancel'))])],
     }));
@@ -449,8 +449,10 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   }
   async function blockForm(edit){
     catalog=catalog||await book('catalog/');
-    return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Neue Notiz','New note'),{layout:'simplybook-form',formType:'block',fields:[
-      value('staff_id',tr('Behandler','Provider'),edit?currentBlock.staff_id:catalog.providers.find(p=>!isSyncedProvider(p))?.id,optionFor(catalog.providers.filter(p=>!isSyncedProvider(p)))),
+    const localProviders=catalog.providers.filter(p=>!isSyncedProvider(p));
+    if(!localProviders.length)throw new Error(tr('Keine lokal verwalteten Behandler verfügbar.','No locally managed providers available.'));
+    return render(view(edit?tr('Kalendereintrag bearbeiten','Edit calendar entry'):tr('Notiz oder Sperrzeit','Note or blocked time'),{layout:'simplybook-form',formType:'block',fields:[
+      value('staff_id',tr('Behandler','Provider'),edit?currentBlock.staff_id:(localProviders.find(p=>String(p.id)===String(providerFilter))||localProviders[0]).id,optionFor(edit?localProviders.filter(p=>Number(p.id)===Number(currentBlock.staff_id)):localProviders)),
       value('date',tr('Datum','Date'),edit?currentBlock.date:date),
       value('kind',tr('Zeitraum ist geblockt','Time is blocked'),edit?currentBlock.kind:'note',[option('block',tr('Sperrzeit','Blocked time')),option('note',tr('Notiz','Note'))]),
       value('start',tr('Startzeit','Start time'),edit?currentBlock.start:'10:00'),
@@ -458,10 +460,13 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       value('text',tr('Text der Notiz','Note text'),edit?currentBlock.text:''),
     ],actions:[row(edit?'save-block-edit':'save-block-new',tr('Speichern','Save')),...(edit?[row('remove-block',tr('Eintrag löschen','Delete entry'))]:[])]}));
   }
-  async function availabilityForm(id){
+  let availabilityTarget=null;
+  async function availabilityForm(id, loaded=false){
     catalog=await book('catalog/');
-    const provider=catalog.providers.find(p=>String(p.id)===String(id))||catalog.providers[0];
+    const provider=catalog.providers.find(p=>String(p.id)===String(id??providerFilter))||catalog.providers.find(p=>!isSyncedProvider(p))||catalog.providers[0];
     if(!provider)throw new Error(tr('Kein Behandler','No provider'));
+    availabilityTarget=null;
+    if(!loaded)return render(view(tr('Arbeitszeiten','Working hours'),{layout:'simplybook-form',formType:'availability',fields:[value('staff_id',tr('Behandler','Provider'),provider.id,optionFor(catalog.providers)),value('date',tr('Datum','Date'),date)],actions:[row('load-availability',tr('Weiter','Continue'))]}));
     const data=await book('calendar/?start='+date+'&days=1');
     const current=data.availability.find(r=>r.staff_id===provider.id&&r.date===date);
     const ranges=current?.ranges||[];
@@ -477,14 +482,14 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           row('calendar',tr('Zurück zum Kalender','Back to calendar'))],
       }));
     }
-    return render(view(tr('Arbeitszeit','Working hours'),{layout:'simplybook-form',formType:'availability',subtitle:date,fields:[
-      value('staff_id',tr('Behandler','Provider'),provider.id,optionFor(catalog.providers)),value('date',tr('Datum','Date'),date),
+    availabilityTarget={staff_id:String(provider.id),date};
+    return render(view(tr('Arbeitszeit','Working hours'),{layout:'simplybook-form',formType:'availability',subtitle:provider.name+' · '+date,message:provider.name+' · '+germanDate(date),fields:[
       value('operation',tr('Gültigkeit','Scope'),'daily',[option('daily',tr('Diesen Tag','This day')),option('weekly',tr('Wöchentlich','Weekly')),option('reset',tr('Tagesausnahme zurücksetzen','Reset override'))]),
       value('closed',tr('Geschlossen','Closed'),ranges.length?'no':'yes',[option('no',tr('Nein','No')),option('yes',tr('Ja','Yes'))]),
       value('start_1',tr('Beginn','Start'),ranges[0]?.start||'09:00'),value('end_1',tr('Ende','End'),ranges[0]?.end||'18:00'),
       value('start_2',tr('Zweiter Beginn (optional)','Second start (optional)'),ranges[1]?.start||''),
       value('end_2',tr('Zweites Ende (optional)','Second end (optional)'),ranges[1]?.end||''),
-    ],actions:[row('load-availability',tr('Behandler / Datum laden','Load provider / date')),row('save-availability',tr('Speichern','Save'))]}));
+    ],actions:[row('save-availability',tr('Speichern','Save')),row('availability',tr('Behandler oder Datum ändern','Change provider or date'))]}));
   }
   let billingUser, billingVisits, reviewPair, intakeRecord, invoiceLines=[], invoiceMeta={}, editingInvoice=null, selectedInvoice=null, tariffCatalog=null, officeSettingsRevision=null, currentPatientAccount;
   async function showBilling(id) {
@@ -821,6 +826,13 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       }
       if(id.startsWith('patient:'))return await showPatient(Number(id.split(':')[1]));
       if(id.startsWith('appointment:'))return await showAppointment(Number(id.split(':')[1]));
+      if(id==='appointment-reminder'){
+        return await render(view(tr('Terminerinnerung','Appointment reminder'),{subtitle:appointment.customer_name,message:tr('App Benachrichtigung an diesen Patienten senden?','Send an app notification to this patient?'),actions:[row('confirm-appointment-reminder',tr('Erinnerung senden','Send reminder')),row('appointment:'+appointment.id,tr('Abbrechen','Cancel'))]}));
+      }
+      if(id==='confirm-appointment-reminder'){
+        await command('book/appointment-reminder/',{id:appointment.id});
+        return await render(view(tr('Erinnerung erstellt','Reminder created'),{message:tr('Die Erinnerung wurde im App Postfach erstellt. Push Zustellung hängt von den Geräteeinstellungen ab.','The reminder was created in the app inbox. Push delivery depends on device settings.'),actions:[row('appointment:'+appointment.id,tr('Zurück zum Termin','Back to appointment'))]}));
+      }
       if(id==='appointment-call'||id==='appointment-whatsapp'){
         // Re-fetch authorized contact before opening a native external action.
         const detail=await book('patient/'+appointment.customer_id+'/');
@@ -861,14 +873,16 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         if(id==='remove-block'){
           await command('book/block/',{operation:'delete',staff_id:currentBlock.staff_id,id:currentBlock.id});
         } else {
+          if(!fields.date||!fields.staff_id||!['note','block'].includes(fields.kind)||!fields.start||!fields.end||fields.start>=fields.end||(fields.kind==='note'&&!String(fields.text||'').trim()))throw new Error(tr('Bitte Datum, Behandler, Zeitraum und Notiz prüfen.','Check date, provider, time range and note.'));
           await command('book/block/',{...fields,staff_id:Number(fields.staff_id),operation:id==='save-block-new'?'create':'update',...(id==='save-block-edit'?{id:currentBlock.id}:{})});
+          date=fields.date;
         }
         calendarCache.clear();
         return await screen('calendar');
       }
       if(id==='availability')return await availabilityForm();
-      if(id==='load-availability'){date=fields.date||date;return await availabilityForm(fields.staff_id);}
-      if(id==='save-availability'){await command('book/availability/',{...fields,staff_id:Number(fields.staff_id),closed:fields.closed==='yes'});calendarCache.clear();date=fields.date;return await screen('calendar');}
+      if(id==='load-availability'){if(!fields.date||!fields.staff_id)throw new Error(tr('Bitte Behandler und Datum auswählen.','Choose provider and date.'));date=fields.date;return await availabilityForm(fields.staff_id,true);}
+      if(id==='save-availability'){if(!availabilityTarget)throw new Error(tr('Arbeitszeit bitte neu laden.','Reload working hours.'));await command('book/availability/',{...fields,staff_id:Number(availabilityTarget.staff_id),date:availabilityTarget.date,closed:fields.closed==='yes'});calendarCache.clear();date=availabilityTarget.date;availabilityTarget=null;return await screen('calendar');}
       if(admin&&id.startsWith('service:')){
         currentService=catalog.services.find(s=>s.id===Number(id.split(':')[1]));
         if(!currentService)return;
