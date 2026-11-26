@@ -73,8 +73,13 @@ class BookingBillingBridgeTests(TestCase):
             return self.client.post(self.base + "draft/", data, content_type="application/json")
 
         self.assertEqual(post_draft(payload).status_code, 400)
+        quote = self.client.post(self.base + 'quote/', payload, content_type='application/json')
+        self.assertEqual(quote.status_code, 200, quote.content)
+        cents = quote.json()['total_cents']
+        self.assertEqual(cents, 2300)
+        self.assertFalse(Invoice.objects.exists())
         request_id = str(uuid4())
-        payload["draft_request_id"] = request_id
+        payload.update(draft_request_id=request_id, target_total_cents=cents)
         first = post_draft(payload)
         self.assertEqual(first.status_code, 201, first.content)
         self.assertEqual(post_draft(dict(reversed(list(payload.items())))).json(), first.json())
@@ -84,6 +89,12 @@ class BookingBillingBridgeTests(TestCase):
         self.assertEqual(invoice.status, "draft")
         self.assertEqual(invoice.items.count(), 1)
         self.assertEqual(Invoice.objects.count(), 1)
+        self.assertEqual(invoice.total_cents, cents)
+        with patch('reportlab.rl_config.pageCompression', 0):
+            pdf = self.client.get(self.base + f'pdf/{invoice.pk}/')
+        self.assertEqual(pdf.status_code, 200)
+        self.assertIn(b'(23.00 EUR)', pdf.content)
+        self.assertIn(b'ENTWURF', pdf.content)
 
     @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
     def test_patient_search_queries_the_full_active_customer_catalog(self, verified):
