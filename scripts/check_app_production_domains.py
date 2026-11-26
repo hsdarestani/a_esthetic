@@ -46,14 +46,21 @@ def check():
             if RETIRED in body:
                 errors.append(f"Retired host found in packaged asset: {item.relative_to(ROOT)}")
 
+    runtime = (WEB / "mobile/runtime.js").read_text(encoding="utf-8")
+    if "location.protocol === 'http:' && location.hostname === '127.0.0.1'" not in runtime or f"location.origin : '{CANONICAL}'" not in runtime:
+        errors.append("Runtime origin is not pinned to canonical production outside loopback")
     for name in MODULES:
         body = (WEB / name).read_text(encoding="utf-8")
-        if f"const APP_ORIGIN = '{CANONICAL}';" not in body:
+        if not any(marker in body for marker in (
+            f"const APP_ORIGIN = '{CANONICAL}';",
+            "const APP_ORIGIN = window.APlusRuntime.origin;",
+            "const API = \`${window.APlusRuntime.origin}/api/mobile/staff\`;".replace("\\", ""),
+        )):
             errors.append(f"Wrong mobile origin: {name}")
 
-    core = (WEB / "core-app.js").read_text(encoding="utf-8")
-    if 'data-forgot-password href="${APP_ORIGIN}/accounts/password/reset/"' not in core:
-        errors.append("Missing canonical password reset link")
+    auth = (WEB / "mobile/auth.js").read_text(encoding="utf-8")
+    if not all(marker in auth for marker in ("const origin = window.APlusRuntime.origin;", "data-forgot-password", "origin + '/api/mobile/password-recovery/'")):
+        errors.append("Missing canonical native password recovery flow")
     onboarding = (WEB / "account-onboarding.js").read_text(encoding="utf-8")
     if "${APP_ORIGIN}/accounts/${provider}/login/" not in onboarding:
         errors.append("Native OAuth browser flow missing canonical origin")
