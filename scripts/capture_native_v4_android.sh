@@ -35,6 +35,9 @@ for fixture in "${fixtures[@]}"; do
     adb logcat -d -s APlusCalendarQA:I '*:S' | grep -F 'PASS B62 calendar header and native root retained across day/week updates'
   fi
   adb exec-out screencap -p > "$target/$(basename "$fixture" .json).png"
+  if [[ "$(basename "$fixture")" == "02b-calendar-week.json" ]]; then
+    python3 scripts/test_native_calendar_swipe.py "$target/02b-calendar-week.png"
+  fi
   if [[ "$(basename "$fixture")" == "13-patient-profile.json" ]]; then
     adb shell input keyevent KEYCODE_HOME
     adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n de.aplusesthetic.app/.MainActivity

@@ -3,7 +3,7 @@
 // Native UI owns no patient data, booking state or credentials.
 import SwiftUI
 
-private struct StaffCalendarHorizontalOffset: PreferenceKey {
+private struct StaffCalendarVerticalOffset: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
@@ -17,8 +17,8 @@ struct StaffSimplyBookV3: View {
     @State private var showActions = false
     @State private var showViewModes = false
     @State private var slideForward = true
-    @State private var horizontalOffset: CGFloat = 0
-    @Namespace private var timelineScrollSpace
+    @State private var verticalOffset: CGFloat = 0
+    @Namespace private var timelineVerticalSpace
     @GestureState(resetTransaction: Transaction(animation: .easeOut(duration: 0.22))) private var liveSwipe: CGFloat = 0
     @GestureState(resetTransaction: Transaction(animation: .easeOut(duration: 0.22))) private var stripSwipe: CGFloat = 0
 
@@ -128,11 +128,8 @@ struct StaffSimplyBookV3: View {
                 ZStack {
                     timeline(availableWidth: geometry.size.width)
                         .id(selectedDate+"-"+mode)
-                        .transition(.asymmetric(
-                            insertion:.move(edge:slideForward ? .trailing : .leading),
-                            removal:.move(edge:slideForward ? .leading : .trailing)
-                        ))
-                        .offset(x:liveSwipe)
+                        .onChange(of: selectedDate) { _ in verticalOffset = 0 }
+                        .onChange(of: mode) { _ in verticalOffset = 0 }
                 }
                 .clipped()
                 .animation(.easeOut(duration:0.30),value:selectedDate)
@@ -283,54 +280,64 @@ struct StaffSimplyBookV3: View {
         let width: CGFloat = mode == "day"
             ? max(200, availableWidth - rulerWidth)
             : referenceWeekColumnWidth
-        return ScrollView(.horizontal, showsIndicators: mode != "day") {
+        // The left ruler is a sibling, not a child, of the horizontal viewport.
+        // Only vertical movement is synchronized with the right-hand grid.
+        return HStack(alignment: .top, spacing: 0) {
             VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    Color.white.frame(width: rulerWidth, height: 39)
-                        .offset(x: horizontalOffset)
-                        .zIndex(1)
-                    ForEach(Array(columns.enumerated()), id: \.offset) { _, col in
+                Color.white.frame(height: 39)
+                Rectangle().fill(rule).frame(height: 0.6)
+                GeometryReader { _ in
+                    hourRuler.offset(y: verticalOffset)
+                }
+                .clipped()
+            }
+            .frame(width: rulerWidth)
+            .background(rulerFill)
+            .zIndex(1)
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                    ForEach(Array(columns.enumerated()), id: \.offset) { index, col in
                         Text(columnHeading(col))
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(ink)
                             .frame(width: width, height: 39)
                             .overlay(alignment: .leading) { Rectangle().fill(rule).frame(width: 0.6) }
+                            .accessibilityIdentifier("calendar-column-\(index)")
                     }
-                }
-                .background(.white)
-                Rectangle().fill(rule).frame(height: 0.6)
-                ScrollView(.vertical, showsIndicators: false) {
+                    }
+                    .background(.white)
+                    Rectangle().fill(rule).frame(height: 0.6)
+                    ScrollView(.vertical, showsIndicators: false) {
                         HStack(alignment: .top, spacing: 0) {
-                            hourRuler
-                                .offset(x: horizontalOffset)
-                                .zIndex(1)
                             ForEach(Array(columns.enumerated()), id: \.offset) { index, column in
                                 gridColumn(index: index, column: column, width: width)
                             }
                         }
                         .frame(height: hourHeight * CGFloat(hourCount), alignment: .top)
+                        .background {
+                            GeometryReader { proxy in
+                                Color.clear.preference(key: StaffCalendarVerticalOffset.self,
+                                                       value: proxy.frame(in: .named(timelineVerticalSpace)).minY)
+                            }
+                        }
                     }
-            }
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(key: StaffCalendarHorizontalOffset.self,
-                                           value: -proxy.frame(in: .named(timelineScrollSpace)).minX)
+                    .coordinateSpace(name: timelineVerticalSpace)
                 }
             }
+            .offset(x: mode == "day" ? liveSwipe : 0)
+            .clipped()
+            // Weekly/provider views pan the grid; day view swipes change dates.
+            .simultaneousGesture(swipeGesture(weekNavigation:false),
+                                 including:mode == "day" ? .all : .none)
         }
-        .coordinateSpace(name: timelineScrollSpace)
-        .onPreferenceChange(StaffCalendarHorizontalOffset.self) { offset in
-            // Counteract only horizontal scrolling; the ruler shares the grid's vertical scroll.
+        .onPreferenceChange(StaffCalendarVerticalOffset.self) { offset in
             var transaction = Transaction()
             transaction.disablesAnimations = true
-            withTransaction(transaction) { horizontalOffset = offset }
+            withTransaction(transaction) { verticalOffset = offset }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.white)
-        // In weekly/provider views the grid must scroll horizontally through
-        // columns; only the sticky date strip changes weeks via a swipe.
-        .simultaneousGesture(swipeGesture(weekNavigation:false),
-                             including:mode == "day" ? .all : .none)
     }
 
     private func columnHeading(_ column: [String: Any]) -> String {
@@ -352,6 +359,7 @@ struct StaffSimplyBookV3: View {
                     .frame(width: rulerWidth - 6, height: hourHeight, alignment: .topTrailing)
                     .padding(.trailing, 5)
                     .id("ruler-\(String(format: "%02d", hour))")
+                    .accessibilityIdentifier("calendar-ruler-time-\(hour)")
             }
         }
         .frame(width: rulerWidth)

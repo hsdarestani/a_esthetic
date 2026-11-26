@@ -57,6 +57,7 @@ final class NativeStaffV3Calendar {
     private final int rulerWidth;
     private View animatedPage;
     private ScrollView verticalScroll;
+    private HorizontalScrollView horizontalScroll;
     private FrameLayout dateHost, timelineHost;
     private TextView headerTitle, monthLabel;
     private NativeStaffV3Calendar gridRenderer;
@@ -205,7 +206,8 @@ final class NativeStaffV3Calendar {
         View previous=gridView;
         int scrollY=preserveScroll&&gridRenderer!=null&&gridRenderer.verticalScroll!=null
             ?gridRenderer.verticalScroll.getScrollY():0;
-        int scrollX=preserveScroll&&previous!=null?previous.getScrollX():0;
+        int scrollX=preserveScroll&&gridRenderer!=null&&gridRenderer.horizontalScroll!=null
+            ?gridRenderer.horizontalScroll.getScrollX():0;
         // Each outgoing renderer keeps its own immutable timeline snapshot.
         // Cancel interrupted transitions and retain the most recent page only.
         if(previous!=null){
@@ -222,9 +224,6 @@ final class NativeStaffV3Calendar {
         staging.removeView(incoming);
         incoming.setBackgroundColor(Color.WHITE);
         gridRenderer=nextRenderer;gridView=incoming;animatedPage=incoming;
-        int width=timelineHost.getWidth();
-        boolean slide=previous!=null&&direction!=0&&width>0;
-        if(slide)incoming.setTranslationX(direction*width);
         timelineHost.addView(incoming,new FrameLayout.LayoutParams(-1,-1));
         final View old=previous;
         incoming.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener(){
@@ -232,22 +231,19 @@ final class NativeStaffV3Calendar {
                 if(incoming.getViewTreeObserver().isAlive())incoming.getViewTreeObserver().removeOnPreDrawListener(this);
                 if(epoch!=generation)return true;
                 nextRenderer.verticalScroll.scrollTo(0,scrollY);
-                incoming.scrollTo(scrollX,0);
-                if(slide){
-                    old.animate().translationX(-direction*width).setDuration(300).setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f)).start();
-                    incoming.animate().translationX(0).setDuration(300).setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f)).withEndAction(()->{
-                        if(epoch==generation&&old.getParent()==timelineHost)timelineHost.removeView(old);
-                    }).start();
-                }else if(old!=null&&old.getParent()==timelineHost)timelineHost.removeView(old);
+                nextRenderer.horizontalScroll.scrollTo(scrollX,0);
+                // Never translate the entire page: its ruler must remain fixed
+                // during both panning and date transitions.
+                if(old!=null&&old.getParent()==timelineHost)timelineHost.removeView(old);
                 return true;
             }
         });
     }
     int scrollY(){return gridRenderer==null?0:gridRenderer.verticalScroll.getScrollY();}
-    int scrollX(){return gridView==null?0:gridView.getScrollX();}
+    int scrollX(){return gridRenderer==null?0:gridRenderer.horizontalScroll.getScrollX();}
     void restoreScroll(int x,int y){
         if(gridView==null || gridRenderer==null)return;
-        View horizontal=gridView;
+        View horizontal=gridRenderer.horizontalScroll;
         ScrollView vertical=gridRenderer.verticalScroll;
         horizontal.post(()->{horizontal.scrollTo(x,0);vertical.scrollTo(0,y);});
     }
@@ -312,6 +308,18 @@ final class NativeStaffV3Calendar {
         page.addView(strip,lp(-1,d(60)));
     }
     private void buildTimeline(LinearLayout page){
+        LinearLayout pane=horizontal();
+        LinearLayout fixedRuler=vertical();
+        TextView blank=text("",11,INK,false);
+        blank.setBackgroundColor(Color.WHITE);
+        fixedRuler.addView(blank,lp(rulerWidth,d(39)));
+        FrameLayout rulerViewport=new FrameLayout(ctx);
+        rulerViewport.setClipChildren(true);
+        rulerViewport.setClipToPadding(true);
+        RulerView ruler=new RulerView(ctx);
+        rulerViewport.addView(ruler,new FrameLayout.LayoutParams(rulerWidth,(hourEnd-hourStart)*hourHeight));
+        fixedRuler.addView(rulerViewport,new LinearLayout.LayoutParams(rulerWidth,0,1));
+        pane.addView(fixedRuler,new LinearLayout.LayoutParams(rulerWidth,-1));
         HorizontalScrollView horizontal=new HorizontalScrollView(ctx) {
             @Override public boolean onInterceptTouchEvent(MotionEvent event) {
                 // A one-column day grid uses a native follow-finger date swipe;
@@ -325,17 +333,13 @@ final class NativeStaffV3Calendar {
         };
         horizontal.setHorizontalScrollBarEnabled(false);
         horizontal.setFillViewport(true);
+        horizontalScroll=horizontal;
         LinearLayout inner=vertical();
         JSONArray cols=array("columns");
         int screenWidth=ctx.getResources().getDisplayMetrics().widthPixels;
         int colWidth="day".equals(mode())?Math.max(d(190),screenWidth-rulerWidth):d(165);
-        int wholeWidth=rulerWidth+cols.length()*colWidth;
+        int wholeWidth=cols.length()*colWidth;
         LinearLayout heading=horizontal();
-        TextView blank=text("",11,INK,false);
-        blank.setBackgroundColor(Color.WHITE);
-        blank.setElevation(d(2));
-        blank.setOutlineProvider(null);
-        heading.addView(blank,lp(rulerWidth,d(39)));
         for(int i=0;i<cols.length();i++){
             JSONObject col=at(cols,i);
             String label="week".equals(mode())?formatted(str(col,"date"),"EEE dd.MM")
@@ -352,10 +356,6 @@ final class NativeStaffV3Calendar {
         vertical.setVerticalScrollBarEnabled(false);
         LinearLayout grid=horizontal();
         grid.setGravity(Gravity.TOP);
-        RulerView ruler=new RulerView(ctx);
-        ruler.setElevation(d(2));
-        ruler.setOutlineProvider(null);
-        grid.addView(ruler,lp(rulerWidth,(hourEnd-hourStart)*hourHeight));
         for(int i=0;i<cols.length();i++){
             final int index=i;
             JSONObject col=at(cols,i);
@@ -365,13 +365,11 @@ final class NativeStaffV3Calendar {
         vertical.addView(grid,new ScrollView.LayoutParams(wholeWidth,(hourEnd-hourStart)*hourHeight));
         inner.addView(vertical,new LinearLayout.LayoutParams(wholeWidth,0,1));
         horizontal.addView(inner,new HorizontalScrollView.LayoutParams(wholeWidth,-1));
-        // Pin the opaque ruler and its header to the viewport without splitting
-        // vertical scrolling or disturbing horizontal date/provider gestures.
-        horizontal.setOnScrollChangeListener((view,x,y,oldX,oldY)->{
-            blank.setTranslationX(x);
-            ruler.setTranslationX(x);
-        });
-        page.addView(horizontal,new LinearLayout.LayoutParams(-1,0,1));
+        // Stationary left sibling. Only the grid's vertical scroll moves the
+        // hour labels; horizontal motion cannot affect the ruler's x position.
+        vertical.setOnScrollChangeListener((view,x,y,oldX,oldY)->ruler.setTranslationY(-y));
+        pane.addView(horizontal,new LinearLayout.LayoutParams(0,-1,1));
+        page.addView(pane,new LinearLayout.LayoutParams(-1,0,1));
         animatedPage=horizontal;
     }
     private void showModePicker(){

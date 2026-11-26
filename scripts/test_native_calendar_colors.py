@@ -25,12 +25,13 @@ assert 'red: 227.0/255, green: 171.0/255, blue: 91.0/255' in ios
 assert 'fab.setBackground(oval(BLUE))' in android
 assert '.background(blue, in: Circle())' in ios
 # Source-level sticky-ruler regression guards; actual scrolling still requires UI QA.
-assert 'value: -proxy.frame(in: .named(timelineScrollSpace)).minX' in ios
-assert ios.count('.offset(x: horizontalOffset)') == 2
+assert 'value: proxy.frame(in: .named(timelineVerticalSpace)).minY' in ios
+assert 'hourRuler.offset(y: verticalOffset)' in ios
+assert 'horizontalOffset' not in ios
 assert '.zIndex(1)' in ios and 'transaction.disablesAnimations = true' in ios
-assert 'ruler.setTranslationX(x);' in android and 'blank.setTranslationX(x);' in android
-assert 'ruler.setElevation(d(2));' in android and 'blank.setElevation(d(2));' in android
-assert 'horizontal.setOnScrollChangeListener' in android
+assert 'pane.addView(fixedRuler,' in android and 'pane.addView(horizontal,' in android
+assert 'ruler.setTranslationY(-y)' in android
+assert 'ruler.setTranslationX' not in android and 'blank.setTranslationX' not in android
 linear = lambda v: v/12.92 if v <= .04045 else ((v+.055)/1.055)**2.4
 luminance = sum(a*linear(v/255) for a,v in zip((.2126,.7152,.0722),(0,125,166)))
 assert 1.05/(luminance+.05) >= 4.5

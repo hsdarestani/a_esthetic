@@ -123,6 +123,10 @@ assert.equal(current.timeline.provider,'1','admin calendar initially filters to 
 assert.equal(current.fields.find(f=>f.id==='provider_filter').value,'1');
 assert.ok(current.timeline.events.some(e=>e.id==='block-info:90'));
 capture('02-calendar');
+await click('cal-mode:week');
+assert.equal(current.timeline.columns.length,7);
+capture('02b-calendar-week');
+await click('cal-mode:day');
 await click('block-info:90');
 assert.match(current.message,/SimplyBook/);
 assert.ok(!current.actions.some(x=>x.id==='save-block-edit'));
