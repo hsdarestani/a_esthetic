@@ -1,4 +1,4 @@
-name: Guarded GOÄ Quick Invoice API release
+name: Guarded incomplete GOÄ draft API release
 on:
   push:
     branches: [remediation/goae-draft-session-03]
@@ -9,8 +9,8 @@ concurrency:
   group: a-esthetic-mobile-api-production
   cancel-in-progress: false
 env:
-  PATIENT_BASELINE: b1ff43e28c331ce142519ad760042e38a059eb5c
-  PATIENT_TARGET: 7bdc99fa966bfa9c8cbe7af7ded1d81b2cc60e45
+  PATIENT_BASELINE: 7bdc99fa966bfa9c8cbe7af7ded1d81b2cc60e45
+  PATIENT_TARGET: 47e3f969313fd2eb629cb3208142365896a9b2fe
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -29,7 +29,7 @@ jobs:
         run: |
           python manage.py makemigrations --check --dry-run
           python manage.py check
-          python manage.py test p0_app.test_book_billing_bridge.BookingBillingBridgeTests.test_quick_template_calculates_and_saves_only_a_draft --noinput
+          python manage.py test p0_app.test_book_billing_bridge.BookingBillingBridgeTests.test_quick_template_calculates_and_saves_only_a_draft p0_app.test_book_billing_bridge.BookingBillingBridgeTests.test_unapproved_treatment_saves_only_an_incomplete_draft --noinput
   release:
     needs: validate
     runs-on: ubuntu-latest
