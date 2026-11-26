@@ -633,6 +633,17 @@ public final class NativeStaffPlugin extends Plugin {
             }catch(Exception ignored){closeWorkspace();}
         },700);
     }
+    @PluginMethod public void openContact(PluginCall call) {
+        String phone=call.getString("phone",""),channel=call.getString("channel","");
+        if(!phone.matches("\\+[1-9][0-9]{6,14}")){call.reject("Invalid phone number");return;}
+        final android.content.Intent intent;
+        if("phone".equals(channel))intent=new android.content.Intent(android.content.Intent.ACTION_DIAL,android.net.Uri.parse("tel:"+phone));
+        else if("whatsapp".equals(channel)){
+            android.net.Uri uri=new android.net.Uri.Builder().scheme("https").authority("wa.me").appendPath(phone.substring(1)).appendQueryParameter("text",call.getString("message","")).build();
+            intent=new android.content.Intent(android.content.Intent.ACTION_VIEW,uri);
+        }else{call.reject("Invalid contact action");return;}
+        getActivity().runOnUiThread(()->{try{getActivity().startActivity(intent);call.resolve();}catch(android.content.ActivityNotFoundException e){call.reject("Contact application unavailable");}});
+    }
     @PluginMethod public void probe(PluginCall call) {
         JSObject result=new JSObject();result.put("ok",true);result.put("native",true);
         result.put("bridge","NativeStaff");call.resolve(result);
