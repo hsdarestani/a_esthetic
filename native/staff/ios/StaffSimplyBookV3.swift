@@ -12,8 +12,8 @@ struct StaffSimplyBookV3: View {
     @State private var showActions = false
     @State private var showViewModes = false
     @State private var slideForward = true
-    @GestureState private var liveSwipe: CGFloat = 0
-    @GestureState private var stripSwipe: CGFloat = 0
+    @GestureState(resetTransaction: Transaction(animation: .easeOut(duration: 0.22))) private var liveSwipe: CGFloat = 0
+    @GestureState(resetTransaction: Transaction(animation: .easeOut(duration: 0.22))) private var stripSwipe: CGFloat = 0
 
     private let navy = Color(red: 32/255, green: 43/255, blue: 61/255)
     private let pink = Color(red: 249/255, green: 27/255, blue: 82/255)
@@ -39,7 +39,7 @@ struct StaffSimplyBookV3: View {
         navigate("date:"+day, forward: day >= selectedDate)
     }
     private func swipeGesture(weekNavigation: Bool) -> some Gesture {
-        DragGesture(minimumDistance: 18)
+        DragGesture(minimumDistance: 14, coordinateSpace: .global)
             .updating(weekNavigation ? $stripSwipe : $liveSwipe) { drag, value, transaction in
                 transaction.animation = nil
                 if abs(drag.translation.width) > abs(drag.translation.height) * 1.25 {
@@ -48,7 +48,8 @@ struct StaffSimplyBookV3: View {
             }
             .onEnded { drag in
                 let dx = drag.translation.width
-                guard abs(dx)>75, abs(dx)>abs(drag.translation.height)*1.4 else {
+                let predicted = drag.predictedEndTranslation.width
+                guard (abs(dx)>65 || (abs(dx)>28 && abs(predicted)>110)), abs(dx)>abs(drag.translation.height)*1.4 else {
                     return
                 }
                 let forward=dx < 0
@@ -114,7 +115,7 @@ struct StaffSimplyBookV3: View {
                         .offset(x:stripSwipe)
                 }
                 .clipped()
-                .animation(.easeInOut(duration:0.34),value:week.first ?? selectedDate)
+                .animation(.easeOut(duration:0.30),value:week.first ?? selectedDate)
                 .animation(.easeInOut(duration:0.25),value:selectedDate)
                 Rectangle().fill(rule).frame(height: 0.6)
                 ZStack {
@@ -127,8 +128,8 @@ struct StaffSimplyBookV3: View {
                         .offset(x:liveSwipe)
                 }
                 .clipped()
-                .animation(.easeInOut(duration:0.34),value:selectedDate)
-                .animation(.easeInOut(duration:0.34),value:mode)
+                .animation(.easeOut(duration:0.30),value:selectedDate)
+                .animation(.easeOut(duration:0.30),value:mode)
 
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
