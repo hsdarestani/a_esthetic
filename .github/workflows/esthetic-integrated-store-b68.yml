@@ -22,3 +22,5 @@ jobs:
           python3 scripts/store_positioning_check.py
           npm install --no-audit --no-fund
           test -s www/mobile/native-staff-bridge.js
+
+# Exact integration gate for signed Publisher builds.
