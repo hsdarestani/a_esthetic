@@ -171,7 +171,7 @@ struct StaffNativeScreen: View {
     }
     private func sbNativePicker(_ key: String, label: String, isDate: Bool) -> some View {
         DatePicker(label, selection: sbPickerBinding(key, isDate: isDate), displayedComponents: isDate ? .date : .hourAndMinute)
-            .labelsHidden().datePickerStyle(.compact)
+            .labelsHidden().datePickerStyle(.compact).fixedSize(horizontal: true, vertical: false)
             .environment(\.locale, Locale(identifier: english ? "en_GB" : "de_DE"))
             .environment(\.timeZone, TimeZone(identifier: "Europe/Berlin") ?? .current)
             .accessibilityLabel(label)
@@ -181,10 +181,14 @@ struct StaffNativeScreen: View {
             HStack(spacing:15) {
                 Image(systemName:"calendar").font(.system(size:19)).foregroundColor(sbNavy).frame(width:25)
                 VStack(alignment:.leading,spacing:4) {
-                    HStack(spacing:5) { if time != "end" { sbNativePicker("date", label:t("Datum","Date"), isDate:true) }; sbNativePicker(time, label:label, isDate:false) }.font(.system(size:16,weight:.bold)).foregroundColor(sbNavy)
-                    Text(label).font(.system(size:13)).foregroundColor(.gray)
-                }; Spacer(minLength:0); Image(systemName:"pencil").foregroundColor(sbNavy)
-            }.padding(.horizontal,19).padding(.vertical,13).frame(minHeight:68)
+                    HStack(spacing:5) {
+                        if time != "end" { sbNativePicker("date", label:t("Datum","Date"), isDate:true) }
+                        sbNativePicker(time, label:label, isDate:false)
+                    }.font(.system(size:16,weight:.bold)).foregroundColor(sbNavy)
+                    Text(label).font(.system(size:13)).foregroundColor(.gray).fixedSize(horizontal:false,vertical:true)
+                }.frame(maxWidth:.infinity,alignment:.leading)
+                Image(systemName:"pencil").font(.system(size:18)).foregroundColor(sbNavy).frame(width:18)
+            }.padding(.horizontal,19).padding(.vertical,12).frame(maxWidth:.infinity,minHeight:65,alignment:.leading).background(Color.white)
             Rectangle().fill(sbLine).frame(height:1)
         }
     }
@@ -219,14 +223,23 @@ struct StaffNativeScreen: View {
                     }.buttonStyle(.plain).accessibilityLabel(label)
                 } else {
                     VStack(alignment:.leading,spacing:4) {
-                        if kind == "multiline" { TextEditor(text:binding).frame(minHeight:58).font(.system(size:16)).scrollContentBackground(.hidden).accessibilityLabel(label) }
-                        else if key == "date" || key.hasPrefix("start") || key.hasPrefix("end") { HStack { sbNativePicker(key,label:label,isDate:key=="date"); if key.hasSuffix("_2") { Button(t("Leeren","Clear")) { binding.wrappedValue="" }.buttonStyle(.plain) } }; if binding.wrappedValue.isEmpty { Text(t("Nicht festgelegt","Not set")).font(.caption) } }
+                        if kind == "multiline" {
+                            TextField(t("Notiz hinzufügen","Add a note"),text:binding,axis:.vertical)
+                                .font(.system(size:16)).lineLimit(1...4).accessibilityLabel(label)
+                        }
+                        else if key == "date" || key.hasPrefix("start") || key.hasPrefix("end") {
+                            HStack(spacing:8) {
+                                sbNativePicker(key,label:label,isDate:key=="date")
+                                if key.hasSuffix("_2") { Button(t("Leeren","Clear")) { binding.wrappedValue="" }.buttonStyle(.plain) }
+                            }.frame(maxWidth:.infinity,alignment:.leading)
+                            if binding.wrappedValue.isEmpty { Text(t("Nicht festgelegt","Not set")).font(.caption) }
+                        }
                         else { TextField(label,text:binding).font(.system(size:17,weight:.semibold)).keyboardType(keyboardType(kind)).autocorrectionDisabled().accessibilityLabel(label) }
-                        StaffWordText(label).font(.system(size:13)).foregroundColor(.gray)
-                    }.foregroundColor(sbNavy)
-                    Image(systemName:"pencil").font(.system(size:18)).foregroundColor(sbNavy)
+                        StaffWordText(key == "date" ? t("Datum","Date") : label).font(.system(size:13)).foregroundColor(.gray).fixedSize(horizontal:false,vertical:true)
+                    }.foregroundColor(sbNavy).frame(maxWidth:.infinity,alignment:.leading)
+                    Image(systemName:"pencil").font(.system(size:18)).foregroundColor(sbNavy).frame(width:18)
                 }
-            }.padding(.horizontal,19).padding(.vertical,12).frame(minHeight:65).background(Color.white)
+            }.padding(.horizontal,19).padding(.vertical,12).frame(maxWidth:.infinity,minHeight:65,alignment:.leading).background(Color.white)
             Rectangle().fill(sbLine).frame(height:1)
         }
     }
