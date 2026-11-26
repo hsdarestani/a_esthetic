@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 env:
   PATIENT_BASELINE: 6d85d20edb718ca132eb92e787c94e747a84ebae
-  PATIENT_TARGET: 45cc6b1fc5efede40f473e6feb353d8bc042a549
+  PATIENT_TARGET: 5de94d4b7fa015f3d2e954bb8775f4f42cc80d3e
 jobs:
   validate:
     runs-on: ubuntu-latest
