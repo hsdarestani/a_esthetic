@@ -33,8 +33,8 @@
   let nativeBackListenerRegistered = false;
 
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
-  const fmt = value => value ? new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)) : '—';
-  const dateBits = value => { const d=new Date(value); return {day:d.toLocaleDateString('de-DE',{day:'2-digit'}),month:d.toLocaleDateString('de-DE',{month:'short'}),full:d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'}),time:d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}; };
+  const fmt = value => value ? new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Berlin'}).format(new Date(value)) : '—';
+  const dateBits = value => { const d=new Date(value); return {day:d.toLocaleDateString('de-DE',{day:'2-digit',timeZone:'Europe/Berlin'}),month:d.toLocaleDateString('de-DE',{month:'short',timeZone:'Europe/Berlin'}),full:d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',timeZone:'Europe/Berlin'}),time:d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Berlin'})}; };
   const isPast = a => new Date(a.starts_at).getTime() < Date.now() || ['cancelled','completed','done'].includes(String(a.status_code||a.status||'').toLowerCase());
   const firstName = () => {
     const raw=String(state.me?.profile?.first_name || state.me?.member?.name || '').trim();
