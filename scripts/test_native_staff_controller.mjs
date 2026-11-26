@@ -156,6 +156,7 @@ await click('calendar');
 await click('availability');
 assert.equal(current.layout,'simplybook-form');
 assert.equal(current.formType,'availability');
+assert.ok(!current.actions.some(a=>a.id==='save-availability'),'provider and date must be loaded before editing');
 capture('06-working-hours');
 await click('load-availability',{staff_id:'2',date:'23.11.2026'});
 assert.match(current.message,/SimplyBook/);
