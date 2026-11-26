@@ -332,6 +332,9 @@ final class NativeStaffV3Calendar {
         int wholeWidth=rulerWidth+cols.length()*colWidth;
         LinearLayout heading=horizontal();
         TextView blank=text("",11,INK,false);
+        blank.setBackgroundColor(Color.WHITE);
+        blank.setElevation(d(2));
+        blank.setOutlineProvider(null);
         heading.addView(blank,lp(rulerWidth,d(39)));
         for(int i=0;i<cols.length();i++){
             JSONObject col=at(cols,i);
@@ -349,7 +352,10 @@ final class NativeStaffV3Calendar {
         vertical.setVerticalScrollBarEnabled(false);
         LinearLayout grid=horizontal();
         grid.setGravity(Gravity.TOP);
-        grid.addView(new RulerView(ctx),lp(rulerWidth,(hourEnd-hourStart)*hourHeight));
+        RulerView ruler=new RulerView(ctx);
+        ruler.setElevation(d(2));
+        ruler.setOutlineProvider(null);
+        grid.addView(ruler,lp(rulerWidth,(hourEnd-hourStart)*hourHeight));
         for(int i=0;i<cols.length();i++){
             final int index=i;
             JSONObject col=at(cols,i);
@@ -359,6 +365,12 @@ final class NativeStaffV3Calendar {
         vertical.addView(grid,new ScrollView.LayoutParams(wholeWidth,(hourEnd-hourStart)*hourHeight));
         inner.addView(vertical,new LinearLayout.LayoutParams(wholeWidth,0,1));
         horizontal.addView(inner,new HorizontalScrollView.LayoutParams(wholeWidth,-1));
+        // Pin the opaque ruler and its header to the viewport without splitting
+        // vertical scrolling or disturbing horizontal date/provider gestures.
+        horizontal.setOnScrollChangeListener((view,x,y,oldX,oldY)->{
+            blank.setTranslationX(x);
+            ruler.setTranslationX(x);
+        });
         page.addView(horizontal,new LinearLayout.LayoutParams(-1,0,1));
         animatedPage=horizontal;
     }

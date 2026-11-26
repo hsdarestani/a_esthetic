@@ -3,6 +3,11 @@
 // Native UI owns no patient data, booking state or credentials.
 import SwiftUI
 
+private struct StaffCalendarHorizontalOffset: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 struct StaffSimplyBookV3: View {
     @ObservedObject var state: StaffScreenState
     let model: [String: Any]
@@ -12,6 +17,8 @@ struct StaffSimplyBookV3: View {
     @State private var showActions = false
     @State private var showViewModes = false
     @State private var slideForward = true
+    @State private var horizontalOffset: CGFloat = 0
+    @Namespace private var timelineScrollSpace
     @GestureState(resetTransaction: Transaction(animation: .easeOut(duration: 0.22))) private var liveSwipe: CGFloat = 0
     @GestureState(resetTransaction: Transaction(animation: .easeOut(duration: 0.22))) private var stripSwipe: CGFloat = 0
 
@@ -279,7 +286,9 @@ struct StaffSimplyBookV3: View {
         return ScrollView(.horizontal, showsIndicators: mode != "day") {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    Color.clear.frame(width: rulerWidth, height: 39)
+                    Color.white.frame(width: rulerWidth, height: 39)
+                        .offset(x: horizontalOffset)
+                        .zIndex(1)
                     ForEach(Array(columns.enumerated()), id: \.offset) { _, col in
                         Text(columnHeading(col))
                             .font(.system(size: 12, weight: .medium))
@@ -293,6 +302,8 @@ struct StaffSimplyBookV3: View {
                 ScrollView(.vertical, showsIndicators: false) {
                         HStack(alignment: .top, spacing: 0) {
                             hourRuler
+                                .offset(x: horizontalOffset)
+                                .zIndex(1)
                             ForEach(Array(columns.enumerated()), id: \.offset) { index, column in
                                 gridColumn(index: index, column: column, width: width)
                             }
@@ -300,6 +311,19 @@ struct StaffSimplyBookV3: View {
                         .frame(height: hourHeight * CGFloat(hourCount), alignment: .top)
                     }
             }
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: StaffCalendarHorizontalOffset.self,
+                                           value: -proxy.frame(in: .named(timelineScrollSpace)).minX)
+                }
+            }
+        }
+        .coordinateSpace(name: timelineScrollSpace)
+        .onPreferenceChange(StaffCalendarHorizontalOffset.self) { offset in
+            // Counteract only horizontal scrolling; the ruler shares the grid's vertical scroll.
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { horizontalOffset = offset }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.white)
