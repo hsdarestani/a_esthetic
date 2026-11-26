@@ -166,7 +166,7 @@ jobs:
       - name: Compile and verify Android package
         env:
           APP_VERSION_NAME: '1.0.59'
-          APP_BUILD_NUMBER: '63'
+          APP_BUILD_NUMBER: '65'
         run: |
           bash scripts/build-android.sh
           grep -R -F 'registerPlugin(NativeStaffPlugin.class);' android/app/src/main/java
