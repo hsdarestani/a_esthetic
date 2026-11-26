@@ -107,9 +107,14 @@ class BookingBillingBridgeTests(TestCase):
         UserProfile.objects.create(user=other, role='admin')
         reply = self.client.post(self.base + 'patient-search/', {'query': 'Synthetic Ziel'}, content_type='application/json')
         self.assertEqual(reply.status_code, 200)
-        self.assertEqual(reply.json()['patients'], [
-            {'id': self.customer.pk, 'name': 'Synthetic Ziel', 'email': self.customer.email},
-        ])
+        row = reply.json()['patients'][0]
+        self.assertEqual([row['id'], row['name'], row['email']],
+                         [self.customer.pk, 'Synthetic Ziel', self.customer.email])
+        self.assertEqual(len(reply.json()['patients']), 1)
+        UserProfile.objects.filter(user=self.customer).update(phone='+49 (170) 123-456', street='Testweg 4', postal_code='12345', city='Testort')
+        by_phone = self.client.post(self.base + 'patient-search/', {'query': '170123456'}, content_type='application/json')
+        self.assertEqual(by_phone.json()['patients'][0]['id'], self.customer.pk)
+        self.assertEqual(by_phone.json()['patients'][0]['street'], 'Testweg 4')
         self.assertIn('no-store', reply['Cache-Control'])
 
     @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
