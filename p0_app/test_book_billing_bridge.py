@@ -170,3 +170,39 @@ class BookingBillingBridgeTests(TestCase):
             (folder / 'preview.pdf').write_bytes(preview.content)
             (folder / 'saved.pdf').write_bytes(stored.content)
             (folder / 'long.pdf').write_bytes(long_pdf.content)
+
+    @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
+    def test_quick_template_calculates_and_saves_only_a_draft(self, verified):
+        template = {'consult': {'label': 'Testberatung', 'version': '1', 'approved_by': 'Fixture',
+                                'lines': [{'number': '1', 'quantity': 1, 'per_unit': True,
+                                           'factor': '2.30', 'vat_rate': '19'},
+                                          {'kind': 'material', 'description': 'Testmaterial', 'quantity': 1,
+                                           'unit_cost_eur': '5.00', 'vat_rate': '19'}]}}
+        payload = {'customer_id': self.customer.pk, 'service_date': '2026-10-20',
+                   'book_preview': {'invoice_date': '2026-10-21'},
+                   'quick_invoice': {'treatment': 'consult', 'version': '1', 'quantity': 2, 'desired_cents': 50000}}
+        def post(operation, data):
+            return self.client.post(self.base + operation + '/', data, content_type='application/json')
+        with self.settings(GOAE_QUICK_TEMPLATES=template):
+            self.assertIn('consult', self.client.get(self.base + 'goae/').json()['quick_templates'])
+            quote = post('quick-quote', payload)
+            self.assertEqual(quote.status_code, 200, quote.content)
+            self.assertNotEqual(quote.json()['total_cents'], 50000)
+            self.assertEqual(len(quote.json()['items']), 2)
+            self.assertFalse(Invoice.objects.exists())
+            payload['draft_request_id'] = str(uuid4())
+            saved = post('quick-draft', payload)
+            self.assertEqual(saved.status_code, 200, saved.content)
+            self.assertEqual(post('quick-draft', payload).json(), saved.json())
+            invoice = Invoice.objects.get()
+            self.assertEqual(invoice.status, 'draft')
+            self.assertEqual(invoice.total_cents, quote.json()['total_cents'])
+            self.assertEqual(invoice.native_draft_data['quick_invoice']['desired_cents'], 50000)
+            self.assertEqual(str(invoice.items.get(goae_number='1').goae_factor), '2.3000')
+            with patch('reportlab.rl_config.pageCompression', 0):
+                pdf = self.client.get(self.base + f'pdf/{invoice.pk}/')
+            self.assertEqual(pdf.status_code, 200)
+            self.assertIn(b'ENTWURF', pdf.content)
+            self.assertEqual(post(f'finalize/{invoice.pk}', {}).status_code, 409)
+
+        self.assertEqual(post('quick-quote', payload).status_code, 400)
