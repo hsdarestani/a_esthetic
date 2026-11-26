@@ -569,9 +569,29 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
         CAPPluginMethod(name: "pickPDF", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pickPhoto", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "takePhoto", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openContact", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "probe", returnType: CAPPluginReturnPromise)
     ]
     // Non-sensitive native bridge health check. No patient data or credentials.
+    @objc func openContact(_ call: CAPPluginCall) {
+        let phone=call.getString("phone") ?? ""
+        let channel=call.getString("channel") ?? ""
+        guard phone.range(of:"^\\+[1-9][0-9]{6,14}$",options:.regularExpression) != nil else { call.reject("Invalid phone number");return }
+        var url:URL?
+        if channel=="phone" { url=URL(string:"tel:"+phone) }
+        else if channel=="whatsapp" {
+            var parts=URLComponents()
+            parts.scheme="https";parts.host="wa.me";parts.path="/"+String(phone.dropFirst())
+            parts.queryItems=[URLQueryItem(name:"text",value:call.getString("message") ?? "")]
+            url=parts.url
+        }
+        guard let target=url else { call.reject("Invalid contact action");return }
+        DispatchQueue.main.async {
+            UIApplication.shared.open(target,options:[:]) { ok in
+                if ok { call.resolve() } else { call.reject("Contact application unavailable") }
+            }
+        }
+    }
     @objc func probe(_ call: CAPPluginCall) {
         call.resolve(["ok": true, "native": true, "bridge": "NativeStaff"])
     }
