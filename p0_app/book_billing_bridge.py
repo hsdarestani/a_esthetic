@@ -106,7 +106,8 @@ def book_billing(request, operation, item_id=None):
                     raise ValueError('Vorlage und Entwurfsreferenz erforderlich.')
                 draft = create_goae_draft(user=patient, actor=request._book_internal_billing_actor,
                                           service_date=service_date, data=data, allow_quick=True)
-                return JsonResponse({'ok': True, 'invoice_id': draft.pk, 'total_cents': draft.total_cents})
+                return JsonResponse({'ok': True, 'invoice_id': draft.pk, 'total_cents': draft.total_cents,
+                                     'requires_approval': bool(draft.native_draft_data.get('quick_invoice', {}).get('requires_approval'))})
             rows, _metadata = calculate_quick_draft(data.get('quick_invoice'))
             return JsonResponse({'ok': True, 'subtotal_cents': sum(row['net_cents'] for row in rows),
                                  'tax_cents': sum(row['tax_cents'] for row in rows),

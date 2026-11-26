@@ -206,3 +206,25 @@ class BookingBillingBridgeTests(TestCase):
             self.assertEqual(post(f'finalize/{invoice.pk}', {}).status_code, 409)
 
         self.assertEqual(post('quick-quote', payload).status_code, 400)
+
+    @patch("p0_app.book_billing_bridge._internal_authorized", return_value=True)
+    def test_unapproved_treatment_saves_only_an_incomplete_draft(self, verified):
+        payload = {'customer_id': self.customer.pk, 'service_date': '2026-10-20',
+                   'draft_request_id': str(uuid4()),
+                   'quick_invoice': {'treatment': 'clinic-service', 'version': '', 'quantity': 1, 'desired_cents': None}}
+        def post(operation):
+            return self.client.post(self.base + operation + '/', payload, content_type='application/json')
+        with self.settings(GOAE_QUICK_TEMPLATES={}):
+            self.assertEqual(post('quick-quote').status_code, 400)
+            draft = post('quick-draft')
+            self.assertEqual(draft.status_code, 200, draft.content)
+            self.assertTrue(draft.json()['requires_approval'])
+            self.assertEqual(post('quick-draft').json(), draft.json())
+            invoice = Invoice.objects.get()
+            self.assertFalse(invoice.items.exists())
+            self.assertEqual(invoice.status, 'draft')
+            with patch('reportlab.rl_config.pageCompression', 0):
+                pdf = self.client.get(self.base + f'pdf/{invoice.pk}/')
+            self.assertIn(b'ENTWURF', pdf.content)
+            self.assertIn(b'GO', pdf.content)
+            self.assertEqual(post(f'finalize/{invoice.pk}').status_code, 409)
