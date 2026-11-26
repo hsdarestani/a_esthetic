@@ -9,6 +9,8 @@ test.add_dependency(app)
 test.build_configurations.each do |config|
   config.build_settings.merge!({
     'PRODUCT_BUNDLE_IDENTIFIER' => 'de.aplusesthetic.app.NativeCalendarUITests',
+    'PRODUCT_NAME' => 'NativeCalendarUITests',
+    'PRODUCT_MODULE_NAME' => 'NativeCalendarUITests',
     'TEST_TARGET_NAME' => 'App',
     'GENERATE_INFOPLIST_FILE' => 'YES',
     'SWIFT_VERSION' => '5.0',

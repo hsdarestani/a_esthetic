@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       android_changed: ${{ steps.android_delta.outputs.changed }}
+      ios_changed: ${{ steps.android_delta.outputs.ios_changed }}
     steps:
       - uses: actions/checkout@v4
       - id: android_delta
@@ -24,6 +25,11 @@ jobs:
             echo 'changed=false' >> "$GITHUB_OUTPUT"
           else
             echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+          if git diff --quiet 8477adde2a5b801c7badff943c2dc2e4a2cfcf44 HEAD -- native/staff/ios/StaffSimplyBookV3.swift native/staff/ios/NativeStaff.swift www scripts/install_native_staff.py package.json package-lock.json; then
+            echo 'ios_changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ios_changed=true' >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/setup-node@v4
         with:
@@ -65,12 +71,13 @@ jobs:
             grep -F '?? StaffBridgeViewController()' ios/App/App/SceneDelegate.swift
           fi
       - name: Compile iOS Simulator build 67
+        if: needs.controller.outputs.ios_changed == 'true'
         run: |
           set -euo pipefail
           if [[ -d ios/App/App.xcworkspace ]]; then app=(-workspace ios/App/App.xcworkspace); else app=(-project ios/App/App.xcodeproj); fi
           xcodebuild -quiet "${app[@]}" -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/admin-v4" ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO IPHONEOS_DEPLOYMENT_TARGET=16.0 MARKETING_VERSION=1.0.59 CURRENT_PROJECT_VERSION=67 build > "$RUNNER_TEMP/native-ios.log" 2>&1 || { grep -nE 'error:|fatal error:|unable to type-check|failed' "$RUNNER_TEMP/native-ios.log" | head -60 || true; tail -n 100 "$RUNNER_TEMP/native-ios.log"; exit 1; }
       - name: Package Appetize direct ZIP and verify actual source bundle
-        if: always()
+        if: always() && needs.controller.outputs.ios_changed == 'true'
         run: |
           set -euo pipefail
           mkdir -p artifacts
@@ -91,7 +98,7 @@ jobs:
           PY
           git rev-parse HEAD > artifacts/source-commit.txt
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && needs.controller.outputs.ios_changed == 'true'
         with:
           name: APlus-Esthetic-V4-1.0.59-B67-Appetize
           path: artifacts
