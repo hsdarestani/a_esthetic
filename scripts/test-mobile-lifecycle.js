@@ -82,7 +82,10 @@ test('customer recreation restores the route and Back history, and sign-out clea
   };
   vm.runInNewContext(source,{window,document,fetch,crypto,TextEncoder,URLSearchParams,Headers,AbortController,setTimeout,clearTimeout,
     localStorage:{getItem:key=>storage.get(key),removeItem:key=>storage.delete(key)}});
-  for(let i=0;i<30&&!root.innerHTML.includes('booking-form');i++)await settle();
+  // WebCrypto navigation hashing runs on a worker thread. A fixed number of
+  // setImmediate turns can expire before that worker is scheduled on CI.
+  const deadline=Date.now()+3000;
+  while(!root.innerHTML.includes('booking-form')&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,10));
   assert.match(root.innerHTML,/booking-form/);
   assert.equal(window.scrollY,91);
   events.get('pageshow')?.({persisted:true});
