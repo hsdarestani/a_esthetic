@@ -389,6 +389,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   async function showAppointment(id) {
     activeTab='calendar';
     appointment=await getAppointment(id);
+    let contact={};
+    if(appointment.customer_id){try { const detail=await book('patient/'+appointment.customer_id+'/'); contact=detail.patient||{}; } catch(err) { if(err.status!==404) throw err; }}
     return render(view(appointment.customer_name,{
       subtitle:displayCopy(appointment.service_name),
       message:appointment.source_managed
@@ -401,9 +403,10 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       rows:[
         row('',appointment.date+' · '+appointment.start+' – '+appointment.end, appointment.staff_name),
         row('',tr('Status','Status'),appointment.status),row('',tr('Notiz','Note'),appointment.notes||''),
-      ],actions:appointment.source_managed && !(admin&&appointment.source_editable)
+        row('',tr('Patient','Patient'),appointment.customer_name),row('',tr('Telefon','Phone'),contact.phone||tr('Nicht angegeben','Not provided')),row('','E Mail',contact.email||tr('Nicht angegeben','Not provided')),
+      ],actions:[...(appointment.customer_id?[row('patient:'+appointment.customer_id,tr('Patientenakte öffnen','Open patient record'))]:[]),...(appointment.source_managed && !(admin&&appointment.source_editable)
         ? [row('calendar',tr('Zurück zum Kalender','Back to calendar'))]
-        : [row('edit-appointment',tr('Bearbeiten','Edit')),row('cancel-appointment',tr('Absagen','Cancel'))],
+        : [row('edit-appointment',tr('Bearbeiten','Edit')),row('cancel-appointment',tr('Absagen','Cancel'))])],
     }));
   }
   async function appendForm(edit=false, chosenPatient=null, slot={}) {
@@ -411,6 +414,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     const r=await book('patients/?q='+encodeURIComponent(search));
     const options=r.items.map(x=>({...option(x.id,x.name),detail:[x.email,x.phone].filter(Boolean).join(' / ')}));
     if(chosenPatient&&!options.some(x=>x.value===String(chosenPatient.id)))options.unshift(option(chosenPatient.id,chosenPatient.name));
+    // The current booking's patient may be outside the paginated search results.
+    if(edit && appointment?.customer_id && !options.some(x=>x.value===String(appointment.customer_id))) options.unshift(option(appointment.customer_id,appointment.customer_name));
     const syncedEdit=Boolean(edit&&appointment?.source_managed&&appointment?.source_editable&&admin);
     const providersForBooking=syncedEdit
       ? catalog.providers.filter(p=>Number(p.id)===Number(appointment.staff_id))
@@ -924,7 +929,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           payload.staff_id=appointment.staff_id;
           payload.service_id=appointment.service_id;
         }
-        for(const k of ['customer_id','staff_id','service_id'])payload[k]=Number(payload[k]);
+        if(id==='save-edit') for(const k of ['customer_id','staff_id','service_id']) if(payload[k]==null || payload[k]==='') payload[k]=appointment[k];
+        for(const k of ['customer_id','staff_id','service_id']) { payload[k]=Number(payload[k]); if(!Number.isSafeInteger(payload[k])||payload[k]<=0) throw new Error(tr('Ungültige Buchungsdaten.','Invalid booking data.')); }
         if(id==='save-edit'){payload.id=appointment.id;payload.revision=appointment.revision;payload.status=appointment.status;}
         await command('book/appointment/',payload);appointmentsById.clear();calendarCache.clear();return await screen('calendar');
       }
