@@ -70,12 +70,14 @@ globalThis.fetch=async(url,opts)=>{
   };
   else if(path.endsWith('/calendar/')){
     lastCalendar=new URL(url).searchParams.get('start');
+    const diagnostic=new URL(url).searchParams.get('diagnose');
     result={
+      calendar_editability_contract:'source-revisions-v2',calendar_actor_role:'admin',
       appointments:[{id:44,customer_id:23,customer_name:'Synced patient',service_name:'Consult',staff_name:'Demo clinician',staff_id:1,service_id:1,
         date:'2026-11-23',start:'10:00',end:'10:30',
         start_at:'2026-11-23T10:00:00+01:00',treatment_end_at:'2026-11-23T10:20:00+01:00',end_at:'2026-11-23T10:30:00+01:00',source_managed:!localBooking,source_editable:sourceEditEnabled,status:'confirmed',revision:'synthetic-revision'}],
       blocks:[
-        {id:90,staff_id:1,editable:false,source_managed:true,date:'2026-11-23',start:'12:00',end:'13:00',
+        {id:90,record_id:90,staff_id:1,editable:false,source_editable:false,source_revision_available:false,source_managed:true,source_editability_reason:'source_revision_missing',...(diagnostic==='block:90'?{source_readback_diagnostic:'source_scope_not_supported'}:{}),date:'2026-11-23',start:'12:00',end:'13:00',
           kind:'block',text:'Synced SimplyBook note',start_at:'2026-11-23T12:00:00+01:00',end_at:'2026-11-23T13:00:00+01:00'},
         {id:91,staff_id:1,editable:false,source_managed:false,date:'2026-11-23',start:'13:00',end:'14:00',
           kind:'note',text:'Legacy Book note',start_at:'2026-11-23T13:00:00+01:00',end_at:'2026-11-23T14:00:00+01:00'},
@@ -150,6 +152,11 @@ await click('cal-mode:day');
 await click('block-info:90');
 assert.match(current.message,/SimplyBook/);
 assert.ok(!current.actions.some(x=>x.id==='save-block-edit'));
+await click('block-editability-diagnostic');
+assert.equal(current.title,'Editability diagnostic');
+assert.ok(current.rows.some(x=>x.label==='API contract'&&x.detail==='source-revisions-v2'));
+assert.ok(current.rows.some(x=>x.label==='Source readback'&&x.detail==='source_scope_not_supported'));
+assert.ok(current.rows.some(x=>x.label==='source_editable'&&x.detail==='false'));
 await click('calendar');
 await click('block-info:91');
 assert.match(current.message,/Book administration/);

@@ -472,16 +472,44 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       const fresh=await book('calendar/?start='+startWeek(known.date)+'&days=7');
       rememberAppointments(fresh.appointments);
       const match=fresh.appointments.find(item=>item.id===id);
-      if(match)return match;
+      if(match)return {...match,calendar_editability_contract:fresh.calendar_editability_contract,calendar_actor_role:fresh.calendar_actor_role};
     }
     const result=await book('appointments/?page=1');
     let item=result.items.find(x=>x.id===id);
 
-    if(!item){
-      const r=await book('calendar/?start='+startWeek(date)+'&days=7');item=r.appointments.find(x=>x.id===id);
-    }
+    const r=await book('calendar/?start='+startWeek(item?.date||date)+'&days=7');
+    const match=r.appointments.find(x=>x.id===id);
+    if(match)item={...match,calendar_editability_contract:r.calendar_editability_contract,calendar_actor_role:r.calendar_actor_role};
     if(!item)throw new Error(tr('Termin nicht verfügbar.','Appointment unavailable.'));
     return item;
+  }
+  function editabilityRows(item,kind){
+    const flag = name => typeof item[name] === 'boolean' ? String(item[name]) : 'missing';
+    const code = name => typeof item[name] === 'string' && /^[a-z0-9_-]{1,80}$/i.test(item[name]) ? item[name] : 'missing';
+    return [row('', 'API contract', code('calendar_editability_contract')),
+      row('', 'API role', code('calendar_actor_role')),
+      row('', 'source_managed', flag('source_managed')),
+      row('', 'source_editable', flag('source_editable')),
+      ...(kind==='block'?[row('', 'editable',flag('editable')),row('', 'source_revision_available',flag('source_revision_available'))]:
+        [row('', 'source_identity_available',flag('source_identity_available')),row('', 'source_time_supported',flag('source_time_supported')),row('', 'sync_state',item.sync_state===''?'empty':code('sync_state'))]),
+      row('', 'Eligibility reason', code('source_editability_reason')),
+      ...(item.source_readback_diagnostic?[row('', 'Source readback',code('source_readback_diagnostic'))]:[])];
+  }
+  async function showEditabilityDiagnostic(kind){
+    const item=kind==='appointment'?appointment:currentBlock;
+    const id=kind==='appointment'?item?.id:(item?.record_id??item?.id);
+    const managed=kind==='block'?sourceOfBlock(item)==='SimplyBook':item?.source_managed===true;
+    if(!admin||!managed||!Number.isSafeInteger(Number(id))||Number(id)<=0)return;
+    let fresh=item;
+    try {
+      const response=await book('calendar/?start='+startWeek(item.date)+'&days=7&diagnose='+encodeURIComponent(kind+':'+id));
+      const found=(kind==='appointment'?response.appointments:response.blocks).find(x=>String(kind==='appointment'?x.id:(x.record_id??x.id))===String(id));
+      if(found)fresh={...found,calendar_editability_contract:response.calendar_editability_contract,calendar_actor_role:response.calendar_actor_role};
+    } catch (_) { fresh={...item,source_readback_diagnostic:'relay_readback_unavailable'}; }
+    return render(view(tr('Freigabediagnose','Editability diagnostic'),{
+      message:tr('Nur Freigabefelder der authentifizierten API. Keine Zugangsdaten oder Patientendetails.','Only authenticated API eligibility fields. No credentials or patient details.'),
+      rows:editabilityRows(fresh,kind),actions:[row('calendar',tr('Zurück zum Kalender','Back to calendar'))],
+    }));
   }
   function appointmentSourceMessage(item) {
     if(!item.source_managed)return '';
@@ -508,7 +536,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         row('',tr('Status','Status'),appointment.status),row('',tr('Notiz','Note'),appointment.notes||''),
         row('',tr('Patient','Patient'),appointment.customer_name),row('',tr('Telefon','Phone'),contact.phone||tr('Nicht angegeben','Not provided')),row('','E Mail',contact.email||tr('Nicht angegeben','Not provided')),
       ],actions:[...(['new','confirmed'].includes(appointment.status)&&appointment.date>=today()?[row('appointment-reminder',tr('App Erinnerung senden','Send app reminder'))]:[]),...(contact.phone?[row('appointment-call',tr('Patient anrufen','Call patient')),row('appointment-whatsapp',tr('WhatsApp Erinnerung vorbereiten','Prepare WhatsApp reminder'))]:[]),...(appointment.customer_id?[row('patient:'+appointment.customer_id,tr('Patientenakte öffnen','Open patient record'))]:[]),...(appointment.source_managed && !(admin&&appointment.source_editable)
-        ? [row('calendar',tr('Zurück zum Kalender','Back to calendar'))]
+        ? [...(admin?[row('appointment-editability-diagnostic',tr('Freigabediagnose','Editability diagnostic'))]:[]),row('calendar',tr('Zurück zum Kalender','Back to calendar'))]
         : [row('edit-appointment',tr('Bearbeiten','Edit')),row('cancel-appointment',tr('Absagen','Cancel'))])],
     }));
   }
@@ -988,6 +1016,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       }
       if(id.startsWith('patient:'))return await showPatient(Number(id.split(':')[1]));
       if(id.startsWith('appointment:'))return await showAppointment(Number(id.split(':')[1]));
+      if(id==='appointment-editability-diagnostic')return await showEditabilityDiagnostic('appointment');
+      if(id==='block-editability-diagnostic')return await showEditabilityDiagnostic('block');
       if(id==='appointment-reminder'){
         return await render(view(tr('Terminerinnerung','Appointment reminder'),{subtitle:appointment.customer_name,message:tr('App Benachrichtigung an diesen Patienten senden?','Send an app notification to this patient?'),actions:[row('confirm-appointment-reminder',tr('Erinnerung senden','Send reminder')),row('appointment:'+appointment.id,tr('Abbrechen','Cancel'))]}));
       }
@@ -1013,7 +1043,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         const entry=fresh.blocks.find(item=>item.id===currentBlock.id ||
           (currentBlock.record_id!=null&&item.record_id===currentBlock.record_id));
         if(!entry){invalidateCalendar();return await screen('calendar');}
-        currentBlock=entry;
+        currentBlock={...entry,calendar_editability_contract:fresh.calendar_editability_contract,calendar_actor_role:fresh.calendar_actor_role};
         if(currentBlock.editable)return await blockForm(true);
         const owner=sourceOfBlock(currentBlock);
         const viaSimplyBook=owner==='SimplyBook';
@@ -1028,7 +1058,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           rows:[row('',tr('Verwaltet in','Managed in'),owner),
             row('',tr('Eintrag','Entry'),(currentBlock.text||'').split('\u2063')[0]),
             row('',tr('Behandler','Provider'),(catalog?.providers||[]).find(p=>p.id===currentBlock.staff_id)?.name||'')],
-          actions:[row('calendar',tr('Zurück zum Kalender','Back to calendar'))],
+          actions:[...(admin&&viaSimplyBook?[row('block-editability-diagnostic',tr('Freigabediagnose','Editability diagnostic'))]:[]),row('calendar',tr('Zurück zum Kalender','Back to calendar'))],
         }));
       }
       if(['save-block-new','save-block-edit','remove-block'].includes(id)){
