@@ -7,102 +7,12 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: bedifferent-esthetic-temp
   cancel-in-progress: false
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: bedifferent
-          POSTGRES_PASSWORD: test_only
-          POSTGRES_DB: bedifferent_build
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U bedifferent -d bedifferent_build"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 15
-    env:
-      BD_BUILD_SHA: a5cc4b83281ea011ff6ab5478132d87882d6b7bb
-      DATABASE_URL: postgresql://bedifferent:test_only@127.0.0.1:5432/bedifferent_build?schema=public
-      NEXT_PUBLIC_APP_URL: https://bedifferent.smarbiz.sbs
-      CRON_SECRET: isolated-build-only
-      DATA_DIR: /tmp/bedifferent-login-build
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: hsdarestani/aymantraining
-          ref: a5cc4b83281ea011ff6ab5478132d87882d6b7bb
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Verify isolated six-file voice delta and build exact source
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "a5cc4b83281ea011ff6ab5478132d87882d6b7bb"
-          actual="$(git diff --name-only f9f408f22bf50cbfba311b9306f0563441bce88e HEAD | sort)"
-          expected="$(printf '%s\n' app/admin/layout.tsx app/admin/page.tsx app/admin/voice-guidance/AudioManager.tsx app/admin/voice-guidance/page.tsx app/api/voice-guidance/route.ts app/components/AdminMobileNav.tsx | sort)"
-          if [ "$actual" != "$expected" ]; then echo "Unsafe source delta:"; echo "$actual"; exit 1; fi
-          cmp lib/i18n/en.json mobile/lib/i18n/en.json
-          grep -Fq 'aria-label="Language"' app/components/Locale.tsx
-          grep -Fq 'Copy text={"ATHLETEN."}' app/login/page.tsx
-          grep -Fq 'font-size:.84em' app/brand-system.css
-          npm ci --no-audit --no-fund
-          node scripts/test-languages.mjs
-          npm run check
-          npm audit --omit=dev --audit-level=high
-          npx prisma db push
-          npm run build
-          NODE_ENV=production npm start > /tmp/bd-login-smoke.log 2>&1 &
-          ready=0
-          for i in $(seq 1 35); do
-            if curl -fsS --max-time 5 http://127.0.0.1:3000/login > /tmp/bd-login-de.html 2>/dev/null; then ready=1; break; fi
-            sleep 2
-          done
-          if [ "$ready" -ne 1 ]; then cat /tmp/bd-login-smoke.log; exit 1; fi
-          grep -Fq 'WERDE' /tmp/bd-login-de.html
-          grep -Fq 'ZUM' /tmp/bd-login-de.html
-          grep -Fq 'ATHLETEN.' /tmp/bd-login-de.html
-          curl -fsS --max-time 8 -H 'Cookie: bd_locale=en' http://127.0.0.1:3000/login > /tmp/bd-login-en.html
-          grep -Fq 'BECOME' /tmp/bd-login-en.html
-          grep -Fq 'ATHLETE.' /tmp/bd-login-en.html
-          grep -Fq 'aria-label="Language"' /tmp/bd-login-de.html
-          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/voice-guidance)" = 401
-          test -s .next/standalone/server.js
-          test "$(cat .next/BUILD_ID)" = "a5cc4b83281ea011ff6ab5478132d87882d6b7bb"
-          test -d .next/static
-          echo "BD_LOGIN_BUILD_SOURCE=a5cc4b83281ea011ff6ab5478132d87882d6b7bb"
-      - name: Package standalone server from only these changes
-        run: |
-          set -euo pipefail
-          stage="$(mktemp -d)"
-          cp -a .next/standalone/. "$stage/"
-          mkdir -p "$stage/.next" "$stage/bin" "$stage/node_modules"
-          cp -a .next/static "$stage/.next/static"
-          cp -a public "$stage/public"
-          cp "$(command -v node)" "$stage/bin/node"
-          if [ -d node_modules/.prisma ]; then cp -a node_modules/.prisma "$stage/node_modules/"; fi
-          if [ -d node_modules/@prisma ]; then cp -a node_modules/@prisma "$stage/node_modules/"; fi
-          if [ -d node_modules/bcryptjs ]; then cp -a node_modules/bcryptjs "$stage/node_modules/"; fi
-          printf '%s\n' 'a5cc4b83281ea011ff6ab5478132d87882d6b7bb' > "$stage/.source-sha"
-          test -s "$stage/server.js"
-          test -s "$stage/node_modules/@prisma/client/package.json"
-          tar -czf bd-voice-20261127.tgz -C "$stage" .
-          test -s bd-voice-20261127.tgz
-      - uses: actions/upload-artifact@v4
-        with:
-          name: bd-voice-20261127
-          path: bd-voice-20261127.tgz
-          retention-days: 5
   deploy:
-    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -116,6 +26,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: bd-voice-20261127
+          run-id: 46016025104
+          github-token: ${{ github.token }}
       - name: Transfer archive only to Esthetic VPS temporary directory
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -140,11 +52,13 @@ jobs:
             EXPECTED=a5cc4b83281ea011ff6ab5478132d87882d6b7bb
             BASE=f9f408f22bf50cbfba311b9306f0563441bce88e
             NEW="$APP/releases/voice-${{ github.run_id }}"
+            phase=preflight
             switched=0
             OLD=""
             rollback(){
               rc=$?
               trap - ERR
+              echo "BD_VOICE_FAILED_PHASE=$phase" >&2
               if [ "$switched" -eq 1 ] && [ -n "$OLD" ]; then
                 ln -sfn "$OLD" "$APP/current.rollback"
                 mv -Tf "$APP/current.rollback" "$APP/current"
@@ -186,7 +100,9 @@ jobs:
             ln -sfn "$NEW" "$APP/current.next"
             mv -Tf "$APP/current.next" "$APP/current"
             switched=1
+            phase=restart
             systemctl restart "$SERVICE"
+            phase=readiness
             ready=0
             for i in $(seq 1 35); do
               if curl -fsS --max-time 5 http://127.0.0.1:3100/api/ready > /tmp/bd-login-ready.json 2>/dev/null &&
@@ -196,11 +112,23 @@ jobs:
               sleep 2
             done
             test "$ready" -eq 1
+            phase=login
             curl -fsS --max-time 10 http://127.0.0.1:3100/login > /tmp/bd-voice-login.html
             grep -Fq 'ATHLETEN.' /tmp/bd-voice-login.html
-            test "$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/api/voice-guidance)" = 401
-            admin_code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/admin/voice-guidance)"
-            case "$admin_code" in 302|303|307|308|401|403) ;; *) false;; esac
+            phase=api-auth
+            api_code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/api/voice-guidance)"
+            echo "VOICE_API_ANONYMOUS=$api_code"
+            test "$api_code" = 401
+            phase=admin-auth
+            admin_code="$(curl -sS --max-time 10 -o /tmp/bd-voice-admin-anon.html -D /tmp/bd-voice-admin-anon.headers -w '%{http_code}' http://127.0.0.1:3100/admin/voice-guidance)"
+            echo "VOICE_ADMIN_ANONYMOUS=$admin_code"
+            case "$admin_code" in
+              302|303|307|308) grep -Eiq '^location: .*\/login' /tmp/bd-voice-admin-anon.headers ;;
+              401|403) : ;;
+              200) grep -Fq 'NEXT_REDIRECT' /tmp/bd-voice-admin-anon.html && grep -Fq '/login' /tmp/bd-voice-admin-anon.html && ! grep -Fq 'Audio Management / Sprachbegleitung' /tmp/bd-voice-admin-anon.html ;;
+              *) false;;
+            esac
+            phase=sibling-health
             for svc in nginx postgresql a-esthetic-mobile aesthetic-book "$SERVICE"; do systemctl is-active --quiet "$svc"; done
             curl -fsS --max-time 8 http://127.0.0.1:8770/api/mobile/status/ >/dev/null
             curl -fsS --max-time 8 http://127.0.0.1:8017/api/health/ >/dev/null
