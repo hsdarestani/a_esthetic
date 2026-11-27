@@ -1,0 +1,46 @@
+name: Read-only actual App relay process parity
+on:
+  push:
+    branches: [qa/live-relay-process-parity-20261127]
+    paths: ['.github/workflows/live-relay-process-parity.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            root=/opt/a-esthetic-mobile
+            service=a-esthetic-mobile.service
+            systemctl is-active --quiet "$service"
+            test "$(sha256sum "$root/p0_app/mobile_staff_views.py" | cut -d' ' -f1)" = 9204476cb9a9c63130dc8b3e80041e40832bf137471948984026e3fb896dfe99
+            group=$(systemctl show "$service" -p ControlGroup --value)
+            test -r "/sys/fs/cgroup${group}/cgroup.procs"
+            total=0
+            unexpected_origin=0
+            for pid in $(sort -nu "/sys/fs/cgroup${group}/cgroup.procs"); do
+              test -r "/proc/$pid/environ"
+              total=$((total+1))
+              if grep -zq '^MOBILE_STAFF_BOOK_ORIGIN=' "/proc/$pid/environ" &&
+                 ! grep -zFxq 'MOBILE_STAFF_BOOK_ORIGIN=https://book.a-esthetic.de' "/proc/$pid/environ"; then
+                unexpected_origin=$((unexpected_origin+1))
+              fi
+            done
+            test "$total" -ge 2
+            test "$unexpected_origin" -eq 0
+            session=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' https://app.a-esthetic.de/api/mobile/staff/session/)
+            relay=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' https://app.a-esthetic.de/api/mobile/staff/book/calendar/)
+            test "$session" = 401 && test "$relay" = 401
+            printf 'APP_RELAY_PROCESS_COUNT=%s\n' "$total"
+            echo APP_RELAY_CODE_MATCH=yes
+            echo APP_RELAY_ORIGIN_EXPECTED=yes
+            echo APP_RELAY_ANONYMOUS_BOUNDARY=passed
