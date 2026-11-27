@@ -72,7 +72,7 @@ jobs:
           fi
           bash scripts/build-android.sh
           test -s artifacts/a-esthetic-release.aab
-          grep -F 'patient-contact-whatsapp' android/app/src/main/assets/public/mobile/native-staff-bridge.js
+          cmp www/mobile/native-workspace.mjs android/app/src/main/assets/public/mobile/native-workspace.mjs
           (cd android && ./gradlew assembleDebug --no-daemon)
           cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/a-esthetic-b70-debug.apk
       - uses: actions/upload-artifact@v4
@@ -125,7 +125,7 @@ jobs:
             app_path="$RUNNER_TEMP/aesthetic-ios/Build/Products/Debug-iphonesimulator/App.app"
             test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app_path/Info.plist")" = 70
             test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app_path/Info.plist")" = 1.0.64
-            grep -F 'patient-contact-whatsapp' "$app_path/public/mobile/native-staff-bridge.js"
+            cmp www/mobile/native-workspace.mjs "$app_path/public/mobile/native-workspace.mjs"
             /usr/bin/ditto -c -k --keepParent "$app_path" artifacts/a-esthetic-ios-simulator.zip
           fi
       - uses: actions/upload-artifact@v4
