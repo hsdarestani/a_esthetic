@@ -1,0 +1,132 @@
+name: Unified Build 70 native contact regression
+
+on:
+  push:
+    branches: [qa/unified-native-b70]
+    paths: ['.github/workflows/native-patient-contact-device-qa.yml']
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d9472cd185cce9c3df8a57e68fba1702653ccab2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate synthetic contact fixtures
+        run: APLUS_NATIVE_QA_FIXTURES=qa-fixtures node scripts/test_native_staff_controller.mjs
+      - name: Wait for the updated Build 70 artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run watch 45971264186 --interval 10 --exit-status
+      - uses: actions/download-artifact@v4
+        with:
+          name: a-esthetic-android-1.0.64-build-70
+          path: b70
+          run-id: 45971264186
+          github-token: ${{ github.token }}
+      - name: Select the Build 70 debug APK
+        run: |
+          set -euo pipefail
+          apk=$(find "$PWD/b70" -name a-esthetic-b70-debug.apk -type f)
+          test -f "$apk"
+          echo "APLUS_QA_APK=$apk" >> "$GITHUB_ENV"
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: >-
+            APLUS_QA_FIXTURES='qa-fixtures/16a-patient-contact.json qa-fixtures/16c-patient-contact-en.json'
+            bash scripts/capture_native_v4_android.sh &&
+            adb shell input keyevent KEYCODE_HOME &&
+            adb shell am start -W -a android.settings.SETTINGS &&
+            adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n de.aplusesthetic.app/.MainActivity &&
+            adb shell uiautomator dump /sdcard/aplus-contact-qa.xml &&
+            adb exec-out cat /sdcard/aplus-contact-qa.xml > contact-resume.xml &&
+            grep -Fq 'Demo patient' contact-resume.xml &&
+            grep -Fq 'Contact' contact-resume.xml &&
+            adb exec-out screencap -p > screenshots/android/contact-resumed.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-synthetic-contact-screens
+          path: screenshots/android/
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d9472cd185cce9c3df8a57e68fba1702653ccab2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate synthetic contact fixtures
+        run: APLUS_NATIVE_QA_FIXTURES=qa-fixtures node scripts/test_native_staff_controller.mjs
+      - name: Wait for the updated Build 70 artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run watch 45971264186 --interval 10 --exit-status
+      - uses: actions/download-artifact@v4
+        with:
+          name: a-esthetic-ios-1.0.64-build-70
+          path: b70
+          run-id: 45971264186
+          github-token: ${{ github.token }}
+      - name: Render and return to the native contact screen
+        run: |
+          set -euo pipefail
+          mkdir -p simulator screenshots/ios
+          ditto -x -k b70/artifacts/a-esthetic-ios-simulator.zip simulator
+          device=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(d["udid"] for runtime in sorted(devices,reverse=True) for d in devices[runtime] if runtime.split(".")[-1].startswith("iOS") and d["name"].startswith("iPhone")))')
+          xcrun simctl boot "$device" || true
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl install "$device" simulator/App.app
+          bundle=de.aplusesthetic.app
+          app_data=$(xcrun simctl get_app_container "$device" "$bundle" data)
+          mkdir -p "$app_data/Documents"
+          ready="$app_data/Documents/native-staff-simulator-ready"
+          for fixture in 16a-patient-contact 16c-patient-contact-en; do
+            xcrun simctl terminate "$device" "$bundle" || true
+            rm -f "$ready"
+            python3 - "$fixture" "$app_data/Documents/native-staff-simulator-fixture.json" <<'PY'
+          import json, pathlib, sys
+          fixture = json.loads(pathlib.Path(f'qa-fixtures/{sys.argv[1]}.json').read_text())
+          fixture['qaId'] = sys.argv[1]
+          pathlib.Path(sys.argv[2]).write_text(json.dumps(fixture))
+          PY
+            started=$(xcrun simctl launch "$device" "$bundle")
+            for attempt in {1..18}; do
+              if [[ -f "$ready" && "$(cat "$ready")" == "$fixture" ]]; then break; fi
+              sleep 1
+            done
+            test "$(cat "$ready")" = "$fixture"
+            xcrun simctl io "$device" screenshot "screenshots/ios/$fixture.png"
+          done
+          xcrun simctl launch "$device" com.apple.Preferences
+          sleep 1
+          returned=$(xcrun simctl launch "$device" "$bundle")
+          test "$started" = "$returned"
+          test "$(cat "$ready")" = 16c-patient-contact-en
+          xcrun simctl io "$device" screenshot screenshots/ios/contact-resumed.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-synthetic-contact-screens
+          path: screenshots/ios/
