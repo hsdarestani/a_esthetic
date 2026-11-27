@@ -1,0 +1,110 @@
+name: Release GOÄ draft deletion API
+
+on:
+  push:
+    branches: [release/goae-draft-deletion-api]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-mobile-api-production
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      DJANGO_DEBUG: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: |
+          pip install -r requirements.txt
+          python manage.py check
+          python manage.py test p0_app.test_book_billing_bridge --noinput
+      - name: Package the verified API file
+        run: |
+          tar -czf "goae-api-${GITHUB_RUN_ID}.tar.gz" p0_app/book_billing_bridge.py
+      - uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: goae-api-${{ github.run_id }}.tar.gz
+          target: /tmp
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 6m
+          script: |
+            set -euo pipefail
+            umask 077
+            cd /opt/a-esthetic-mobile
+            service=a-esthetic-mobile.service
+            exec 9>remediation-rollbacks/release.lock
+            flock -n 9
+            systemctl is-active --quiet "$service"
+            path=p0_app/book_billing_bridge.py
+            baseline=a83031fb1c6907758b6806cd9b96ba7279050b8db64ca0094ca77bd1bdf25f21
+            test -f "$path" && test ! -L "$path"
+            test "$(sha256sum "$path" | cut -d' ' -f1)" = "$baseline"
+            snapshot=$(mktemp -d remediation-rollbacks/goae-draft-delete.XXXXXXXX)
+            bundle=/tmp/goae-api-${{ github.run_id }}.tar.gz
+            tar -xOzf "$bundle" "$path" > "$snapshot/candidate"
+            cp -a "$path" "$snapshot/original"
+            set -a
+            source mobile.env
+            set +a
+            switched=0
+            finish() {
+              result=$?
+              trap - EXIT
+              if (( result != 0 && switched )); then
+                cp -a "$snapshot/original" "$path" && systemctl restart "$service" || result=2
+                echo "GOAE_DRAFT_API_ROLLBACK=$result"
+              fi
+              rm -f -- "$bundle"
+              exit "$result"
+            }
+            trap finish EXIT
+            switched=1
+            cp -a "$path" "$snapshot/install"
+            cat "$snapshot/candidate" > "$snapshot/install"
+            mv -f "$snapshot/install" "$path"
+            venv/bin/python manage.py check > "$snapshot/check.log" 2>&1
+            systemctl restart "$service"
+            for attempt in {1..12}; do
+              if systemctl is-active --quiet "$service" && \
+                [[ "$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' https://esthetic.smarbiz.sbs/api/mobile/internal/book-billing/delete-draft/1/ || true)" == 401 ]]; then
+                break
+              fi
+              sleep 2
+            done
+            venv/bin/python manage.py shell > "$snapshot/verification.log" 2>&1 <<'PY'
+            from urllib.error import HTTPError
+            from urllib.request import Request, urlopen
+            from p0_app.notification_views import _internal_sync_token
+
+            endpoint = 'https://esthetic.smarbiz.sbs/api/mobile/internal/book-billing/delete-draft/1/'
+            token = _internal_sync_token()
+            assert token
+            for headers, status in (({}, 401), ({'X-Aesthetic-Patient-Sync': token}, 405)):
+                try:
+                    with urlopen(Request(endpoint, headers=headers), timeout=12):
+                        raise AssertionError('GET must not delete a draft.')
+                except HTTPError as error:
+                    assert error.code == status
+                    if status == 405:
+                        assert error.headers.get('Allow') == 'POST'
+            PY
+            systemctl is-active --quiet "$service"
+            echo GOAE_DRAFT_API_VERIFIED=yes

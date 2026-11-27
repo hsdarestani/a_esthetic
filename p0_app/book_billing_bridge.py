@@ -7,6 +7,7 @@ import json
 from datetime import date
 
 from django.contrib.auth.models import User
+from django.db import transaction
 from django.db.models import Q, Value
 from django.db.models.functions import Replace
 from django.http import HttpResponse, JsonResponse
@@ -178,6 +179,18 @@ def book_billing(request, operation, item_id=None):
         return handler(request)
     if request.method == "POST" and operation == "services" and item_id:
         return billing_service(request, item_id)
+    if operation == "delete-draft" and item_id:
+        if request.method != "POST":
+            return JsonResponse({"ok": False}, status=405, headers={"Allow": "POST"})
+        with transaction.atomic():
+            invoice = Invoice.objects.select_for_update().filter(pk=item_id).first()
+            if invoice is None:
+                return JsonResponse({"ok": False, "message": "Rechnungsentwurf nicht gefunden."}, status=404)
+            if (invoice.billing_method != "goae" or invoice.status != "draft" or invoice.number
+                    or invoice.issued_at or invoice.issued_on or invoice.document_id):
+                return JsonResponse({"ok": False, "message": "Nur nicht ausgestellte GOÄ-Entwürfe ohne Rechnungsnummer und Dokument können gelöscht werden."}, status=409)
+            invoice.delete()
+        return JsonResponse({"ok": True}, headers={"Cache-Control": "private, no-store"})
     if request.method == "POST" and operation == "finalize" and item_id:
         return billing_invoice_finalize(request, item_id)
     if request.method == "GET" and operation == "pdf" and item_id:

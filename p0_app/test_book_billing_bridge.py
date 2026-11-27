@@ -228,3 +228,31 @@ class BookingBillingBridgeTests(TestCase):
             self.assertIn(b'ENTWURF', pdf.content)
             self.assertIn(b'GO', pdf.content)
             self.assertEqual(post(f'finalize/{invoice.pk}').status_code, 409)
+
+    def test_delete_only_verified_unissued_goae_drafts(self):
+        from datetime import date
+
+        def invoice(**fields):
+            return Invoice.objects.create(
+                user=self.customer, created_by=self.admin, service_date=date(2026, 10, 20),
+                customer_name='Synthetic patient', **{'billing_method': 'goae', **fields},
+            )
+
+        draft = invoice()
+        issued = invoice(status='issued', number='SYNTHETIC-1')
+        numbered = invoice(number='SYNTHETIC-2')
+        cancelled = invoice(status='cancelled')
+        standard = invoice(billing_method='standard')
+        def url(row):
+            return self.base + f'delete-draft/{row.pk}/'
+
+        self.assertEqual(self.client.post(url(draft)).status_code, 401)
+        with patch('p0_app.book_billing_bridge._internal_authorized', return_value=True):
+            self.assertEqual(self.client.get(url(draft)).status_code, 405)
+            for row in (issued, numbered, cancelled, standard):
+                self.assertEqual(self.client.post(url(row)).status_code, 409)
+            self.assertEqual(self.client.post(url(draft)).status_code, 200)
+            self.assertEqual(self.client.post(url(draft)).status_code, 404)
+            self.assertEqual(self.client.get(self.base + f'pdf/{draft.pk}/').status_code, 404)
+        self.assertSetEqual(set(Invoice.objects.values_list('pk', flat=True)),
+                            {issued.pk, numbered.pk, cancelled.pk, standard.pk})
