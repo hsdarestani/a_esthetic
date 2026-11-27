@@ -25,6 +25,7 @@ jobs:
             set -euo pipefail
             cd /opt/a-esthetic-mobile
             test "$(sha256sum p0_app/mobile_staff_views.py | cut -d' ' -f1)" = 9204476cb9a9c63130dc8b3e80041e40832bf137471948984026e3fb896dfe99
+            if command -v nginx >/dev/null && nginx -T 2>/dev/null | awk '/location/ && /mobile\/staff|book\/calendar/ {found=1} END {exit !found}'; then echo NGINX_EXPLICIT_STAFF_LOCATION=yes; else echo NGINX_EXPLICIT_STAFF_LOCATION=no; fi
             set -a
             source mobile.env
             set +a
@@ -37,21 +38,26 @@ jobs:
             from platform_app.models import UserProfile
 
             import json
+            from django.conf import settings
+            from django.test import RequestFactory
+            from p0_app import mobile_staff_views
             from datetime import date, timedelta
 
-            def check(origin, path, token):
+            def check(origin, path, token, relay_headers=False):
                 query = '?start=' + (date.today() + timedelta(days=370)).isoformat() + '&days=1'
                 request = Request(origin + path + query,
                     headers={'Accept':'application/json', 'Cache-Control':'no-cache',
-                             'Origin':'capacitor://localhost',
+                             **({'Content-Type':'application/json'} if relay_headers else {'Origin':'capacitor://localhost'}),
                              **({'Authorization':'Bearer '+token} if token else {})})
                 try:
                     with urlopen(request, timeout=20) as reply:
                         payload = json.load(reply)
                         return (reply.status, payload.get('calendar_editability_contract') == 'source-revisions-v2',
-                                payload.get('calendar_actor_role') == 'admin')
+                                payload.get('calendar_actor_role') == 'admin',
+                                (reply.headers.get('CF-Cache-Status') or '').upper() in {'HIT','STALE','UPDATING','REVALIDATED'},
+                                reply.headers.get('X-APlus-Staff-Contract') == 'source-revisions-v2')
                 except HTTPError as error:
-                    return error.code, False, False
+                    return error.code, False, False, False, False
 
             fixtures = []
             try:
@@ -72,7 +78,18 @@ jobs:
                 print('APP_RELAY', *relay, flush=True)
                 assert check(app, relay_path, None)[0] == 401
                 assert check(app, relay_path, _token_for(fixtures[1]))[0] == 403
-                assert direct == relay == (200, True, True)
+                upstream = getattr(settings, 'MOBILE_STAFF_BOOK_ORIGIN', book)
+                print('CONFIGURED_PUBLIC_BOOK', upstream == book, flush=True)
+                print('DIRECT_WITH_RELAY_HEADERS', *check(book, book_path, token, relay_headers=True), flush=True)
+                req = RequestFactory().get(relay_path, {
+                    'start': (date.today() + timedelta(days=370)).isoformat(), 'days': '1',
+                }, HTTP_AUTHORIZATION='Bearer ' + token, HTTP_HOST='app.a-esthetic.de', secure=True)
+                local = mobile_staff_views.book(req, 'calendar')
+                payload = json.loads(local.content)
+                print('DJANGO_RELAY_VIEW', local.status_code,
+                      payload.get('calendar_editability_contract') == 'source-revisions-v2',
+                      payload.get('calendar_actor_role') == 'admin', flush=True)
+                assert direct[:3] == relay[:3] == (200, True, True)
             finally:
                 for user in fixtures:
                     user.delete()
