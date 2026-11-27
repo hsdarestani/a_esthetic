@@ -1,4 +1,4 @@
-name: Verify the production App-to-Book staff identity boundary
+name: Check authenticated native calendar contract at both production origins
 
 on:
   push:
@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 6
     steps:
-      - name: Exercise the real bearer relay with disposable identities and no patient queries
+      - name: Compare the real calendar endpoints with a disposable staff identity
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -28,7 +28,7 @@ jobs:
             set -a
             source mobile.env
             set +a
-            if /opt/a-esthetic-mobile/venv/bin/python manage.py shell >/dev/null 2>&1 <<'PY'
+            if /opt/a-esthetic-mobile/venv/bin/python manage.py shell 2>/dev/null <<'PY'
             from django.contrib.auth import get_user_model
             from urllib.error import HTTPError
             from urllib.request import Request, urlopen
@@ -36,14 +36,22 @@ jobs:
             from platform_app.mobile_api import _token_for
             from platform_app.models import UserProfile
 
-            def check(token):
-                request = Request('https://app.a-esthetic.de/api/mobile/staff/book/catalog/',
-                    headers={'Accept':'application/json', **({'Authorization':'Bearer '+token} if token else {})})
+            import json
+            from datetime import date, timedelta
+
+            def check(origin, path, token):
+                query = '?start=' + (date.today() + timedelta(days=370)).isoformat() + '&days=1'
+                request = Request(origin + path + query,
+                    headers={'Accept':'application/json', 'Cache-Control':'no-cache',
+                             'Origin':'capacitor://localhost',
+                             **({'Authorization':'Bearer '+token} if token else {})})
                 try:
                     with urlopen(request, timeout=20) as reply:
-                        return reply.status
+                        payload = json.load(reply)
+                        return (reply.status, payload.get('calendar_editability_contract') == 'source-revisions-v2',
+                                payload.get('calendar_actor_role') == 'admin')
                 except HTTPError as error:
-                    return error.code
+                    return error.code, False, False
 
             fixtures = []
             try:
@@ -53,9 +61,18 @@ jobs:
                     user.save()
                     fixtures.append(user)
                     UserProfile.objects.update_or_create(user=user, defaults={'role':role})
-                assert check(None) == 401
-                assert check(_token_for(fixtures[1])) == 403
-                assert check(_token_for(fixtures[0])) == 200
+                app = 'https://app.a-esthetic.de'
+                book = 'https://book.a-esthetic.de'
+                relay_path = '/api/mobile/staff/book/calendar/'
+                book_path = '/api/mobile/staff/calendar/'
+                token = _token_for(fixtures[0])
+                direct = check(book, book_path, token)
+                relay = check(app, relay_path, token)
+                print('DIRECT_BOOK', *direct, flush=True)
+                print('APP_RELAY', *relay, flush=True)
+                assert check(app, relay_path, None)[0] == 401
+                assert check(app, relay_path, _token_for(fixtures[1]))[0] == 403
+                assert direct == relay == (200, True, True)
             finally:
                 for user in fixtures:
                     user.delete()
