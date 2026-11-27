@@ -80,17 +80,24 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
   const blockById = new Map();
   const calendarCache = new Map();
   const calendarInFlight = new Map();
-  let prefetchBusy = false;
+  let prefetchBusy = false, calendarEpoch = 0;
+  function invalidateCalendar() {
+    calendarEpoch++;
+    calendarCache.clear();
+    calendarInFlight.clear();
+  }
   function getCalendarWeek(day) {
     const key=startWeek(day);
     const cached=calendarCache.get(key);
     if(cached && Date.now()-cached.at<45000)return Promise.resolve(cached.data);
     if(calendarInFlight.has(key))return calendarInFlight.get(key);
+    const epoch=calendarEpoch;
     const pending=book('calendar/?start='+key+'&days=7').then(data=>{
+      if(epoch!==calendarEpoch)return data;
       calendarCache.set(key,{at:Date.now(),data});
       if(calendarCache.size>6)calendarCache.delete(calendarCache.keys().next().value);
       return data;
-    }).finally(()=>calendarInFlight.delete(key));
+    }).finally(()=>{if(calendarInFlight.get(key)===pending)calendarInFlight.delete(key);});
     calendarInFlight.set(key,pending);
     return pending;
   }
@@ -460,15 +467,31 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     }
   }
   async function getAppointment(id) {
-    if(appointmentsById.has(id))return appointmentsById.get(id);
+    const known=appointmentsById.get(id);
+    if(known?.date){
+      const fresh=await book('calendar/?start='+startWeek(known.date)+'&days=7');
+      rememberAppointments(fresh.appointments);
+      const match=fresh.appointments.find(item=>item.id===id);
+      if(match)return match;
+    }
     const result=await book('appointments/?page=1');
     let item=result.items.find(x=>x.id===id);
-    if(!item && patient)item=patient.appointments.find(x=>x.id===id);
+
     if(!item){
       const r=await book('calendar/?start='+startWeek(date)+'&days=7');item=r.appointments.find(x=>x.id===id);
     }
     if(!item)throw new Error(tr('Termin nicht verfügbar.','Appointment unavailable.'));
     return item;
+  }
+  function appointmentSourceMessage(item) {
+    if(!item.source_managed)return '';
+    if(['queued','sending'].includes(item.sync_state))return tr('Bestätigung durch SimplyBook steht aus.','Awaiting SimplyBook confirmation.');
+    if(['review','blocked'].includes(item.sync_state))return tr('SimplyBook konnte die Buchung nicht bestätigen. Bitte den Buchungsstatus prüfen.','SimplyBook could not confirm the booking. Check its status.');
+    if(admin&&item.source_editable)return tr('Terminzeit und Absage werden zuerst in SimplyBook bestätigt.','Rescheduling and cancellation are confirmed in SimplyBook first.');
+    if(!admin)return tr('Änderungen an SimplyBook-Terminen benötigen Administratorrechte.','Changes to SimplyBook appointments require administrator access.');
+    if(item.source_time_supported===false)return tr('Nur bestätigte zukünftige Termine des verbundenen Behandlers können hier geändert werden.','Only confirmed future appointments for the connected provider can be changed here.');
+    if(item.source_identity_available===false)return tr('Die SimplyBook-Buchungsnummer muss zuerst geprüft werden.','The SimplyBook booking ID must be verified first.');
+    return tr('Die Änderung in SimplyBook ist derzeit nicht freigegeben.','Changes in SimplyBook are currently unavailable.');
   }
   async function showAppointment(id,scroll) {
     activeTab='calendar';
@@ -478,13 +501,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     const treatmentEnd=String(appointment.treatment_end_at||'').match(/T(\d{2}:\d{2})/)?.[1]||appointment.end;
     return render(view(appointment.customer_name,{
       subtitle:displayCopy(appointment.service_name), scroll,
-      message:appointment.source_managed
-        ? (admin&&appointment.source_editable
-           ? tr('Mit SimplyBook synchronisiert. Terminzeit oder Stornierung wird zuerst direkt in SimplyBook bestätigt und danach hier gespeichert. Änderungen an Patient, Behandler und Behandlung bitte weiterhin in SimplyBook vornehmen.',
-                'Synced with SimplyBook. Time changes and cancellations are confirmed in SimplyBook first, then saved here. Edit patient, provider or treatment in SimplyBook directly.')
-           : tr('Dieser Termin wird aus SimplyBook synchronisiert. Bitte die Änderung direkt in der SimplyBook-Verwaltung vornehmen; sie wird danach hier übernommen.',
-                'This appointment is synced from SimplyBook. Change it in SimplyBook; the update will appear here.'))
-        : '',
+      message:appointmentSourceMessage(appointment),
       rows:[
         row('',appointment.date+' · '+appointment.start+' – '+treatmentEnd, appointment.staff_name),
         ...(treatmentEnd!==appointment.end?[row('',tr('Reserviert bis','Reserved until'),appointment.end)]:[]),
@@ -522,6 +539,10 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       value('date',tr('Datum (JJJJ-MM-TT)','Date (YYYY-MM-DD)'),edit?appointment.date:(slot.date||date)),
       value('start',tr('Beginn (HH:MM)','Start (HH:MM)'),edit?appointment.start:(slot.start||'10:00')),
       value('notes',tr('Notiz','Notes'),edit?appointment.notes:''),
+      ...(edit?[value('status',tr('Status','Status'),appointment.status,[
+        option('new',tr('Ausstehend','Pending')),option('confirmed',tr('Bestätigt','Confirmed')),
+        option('completed',tr('Abgeschlossen','Completed')),option('no_show',tr('Nicht erschienen','No show')),
+      ])]:[]),
     ];
     return render(view(edit?tr('Termin bearbeiten','Edit appointment'):tr('Neuen Termin buchen','Book new appointment'),
       {layout:'simplybook-form',formType:'booking',fields:syncedEdit?fields:[fields[2],fields[1],fields[0],...fields.slice(3)],actions:[row(edit?'save-edit':'save-new',tr('Speichern','Save'))]}));
@@ -556,7 +577,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     const data=await book('calendar/?start='+date+'&days=1');
     const current=data.availability.find(r=>r.staff_id===provider.id&&r.date===date);
     const ranges=current?.ranges||[];
-    if(isSyncedProvider(provider)){
+    if(provider.working_hours_source_managed||isSyncedProvider(provider)){
       return render(view(tr('Arbeitszeit – SimplyBook','Working hours – SimplyBook'),{layout:'simplybook-form',formType:'availability',
         subtitle:provider.name+' · '+date,
         message:tr('Diese Arbeitszeiten werden aus SimplyBook synchronisiert. Bitte direkt in der SimplyBook-Verwaltung ändern. Die Änderungen werden anschließend übernommen.',
@@ -988,14 +1009,20 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id.startsWith('block:')||id.startsWith('block-info:')){
         currentBlock=blockById.get(Number(id.split(':').at(-1)));
         if(!currentBlock)return await screen('calendar');
-        if(currentBlock.editable && id.startsWith('block:'))return await blockForm(true);
+        const fresh=await book('calendar/?start='+startWeek(currentBlock.date)+'&days=7');
+        const entry=fresh.blocks.find(item=>item.id===currentBlock.id ||
+          (currentBlock.record_id!=null&&item.record_id===currentBlock.record_id));
+        if(!entry){invalidateCalendar();return await screen('calendar');}
+        currentBlock=entry;
+        if(currentBlock.editable)return await blockForm(true);
         const owner=sourceOfBlock(currentBlock);
         const viaSimplyBook=owner==='SimplyBook';
         return await render(view(tr('Kalendereintrag','Calendar entry'),{
           subtitle:currentBlock.date+' · '+currentBlock.start+' – '+currentBlock.end,
           message:viaSimplyBook
-            ?tr('Dieser Eintrag wird aus SimplyBook synchronisiert und kann deshalb nicht hier geändert werden. Bitte Sperrzeit oder Notiz direkt in der SimplyBook-Verwaltung bearbeiten. Die Änderung erscheint nach der nächsten Synchronisierung.',
-                'This entry is synced from SimplyBook and cannot be edited here. Change the blocked time or note in SimplyBook administration. It will appear after the next sync.')
+            ? (currentBlock.source_revision_available===false && admin
+              ?tr('Für diesen SimplyBook-Eintrag fehlt eine bearbeitbare Quellrevision. Bitte Eintrag und Gültigkeit in SimplyBook prüfen.','This SimplyBook entry lacks a verified editable revision. Check its source entry and scope in SimplyBook.')
+              :tr('Änderungen an diesem SimplyBook-Eintrag sind für Ihre Rolle oder in dieser Ansicht nicht verfügbar.','Editing this SimplyBook entry is unavailable for your role or in this view.'))
             :tr('Dieser Eintrag wird in der Book-Verwaltung verwaltet und ist in der App schreibgeschützt. Bitte Änderungen dort vornehmen.',
                 'This entry is managed in Book administration and is read-only in the app. Make changes there.'),
           rows:[row('',tr('Verwaltet in','Managed in'),owner),
@@ -1012,12 +1039,12 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           await command('book/block/',{...fields,staff_id:Number(fields.staff_id),operation:id==='save-block-new'?'create':'update',...(id==='save-block-edit'?{id:currentBlock.id}:{})});
           date=fields.date;
         }
-        calendarCache.clear();
+        invalidateCalendar();
         return await screen('calendar');
       }
       if(id==='availability')return await availabilityForm();
       if(id==='load-availability'){if(!fields.date||!fields.staff_id)throw new Error(tr('Bitte Behandler und Datum auswählen.','Choose provider and date.'));date=fields.date;return await availabilityForm(fields.staff_id,true);}
-      if(id==='save-availability'){if(!availabilityTarget)throw new Error(tr('Arbeitszeit bitte neu laden.','Reload working hours.'));await command('book/availability/',{...fields,staff_id:Number(availabilityTarget.staff_id),date:availabilityTarget.date,closed:fields.closed==='yes'});calendarCache.clear();date=availabilityTarget.date;availabilityTarget=null;return await screen('calendar');}
+      if(id==='save-availability'){if(!availabilityTarget)throw new Error(tr('Arbeitszeit bitte neu laden.','Reload working hours.'));await command('book/availability/',{...fields,staff_id:Number(availabilityTarget.staff_id),date:availabilityTarget.date,closed:fields.closed==='yes'});invalidateCalendar();date=availabilityTarget.date;availabilityTarget=null;return await screen('calendar');}
       if(admin&&id.startsWith('service:')){
         currentService=catalog.services.find(s=>s.id===Number(id.split(':')[1]));
         if(!currentService)return;
@@ -1099,12 +1126,22 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         }
         if(id==='save-edit') for(const k of ['customer_id','staff_id','service_id']) if(payload[k]==null || payload[k]==='') payload[k]=appointment[k];
         for(const k of ['customer_id','staff_id','service_id']) { payload[k]=Number(payload[k]); if(!Number.isSafeInteger(payload[k])||payload[k]<=0) throw new Error(tr('Ungültige Buchungsdaten.','Invalid booking data.')); }
-        if(id==='save-edit'){payload.id=appointment.id;payload.revision=appointment.revision;payload.status=appointment.status;}
-        await command('book/appointment/',payload);appointmentsById.clear();calendarCache.clear();return await screen('calendar');
+        if(id==='save-edit'){payload.id=appointment.id;payload.revision=appointment.revision;payload.status=fields.status||appointment.status;}
+        const result=await command('book/appointment/',payload);
+        appointmentsById.clear();
+        invalidateCalendar();
+        date=payload.date;
+        if(result.external_confirmation_pending){
+          return await render(view(tr('Bestätigung ausstehend','Confirmation pending'),{
+            message:tr('Die Terminanfrage wurde gespeichert. SimplyBook prüft und bestätigt die Reservierung.','The request was saved. SimplyBook will verify and confirm the reservation.'),
+            actions:[row('calendar',tr('Zurück zum Kalender','Back to calendar'))],
+          }));
+        }
+        return await screen('calendar');
       }
       if(id==='cancel-appointment')return await render(view(tr('Absage bestätigen','Confirm cancellation'),{
         subtitle:appointment.customer_name,actions:[row('confirm-cancel',tr('Termin absagen','Cancel appointment'))]}));
-      if(id==='confirm-cancel'){await command('book/appointment/',{operation:'cancel',id:appointment.id,revision:appointment.revision});appointmentsById.clear();return await screen('calendar');}
+      if(id==='confirm-cancel'){await command('book/appointment/',{operation:'cancel',id:appointment.id,revision:appointment.revision});appointmentsById.clear();invalidateCalendar();return await screen('calendar');}
       if(['upload-pdf','upload-photo','take-photo'].includes(id))return await upload(id,event);
       if(id==='note')return await render(view(tr('Neue Notiz','New note'),{fields:[value('title',tr('Titel','Title')),value('note',tr('Notiz','Note'))],actions:[row('save-note',tr('Speichern','Save'))]}));
       if(id==='save-note'){await command('book/record-note/',{customer_id:patient.patient.id,...fields});patientSection='records';recordPage=1;return await showPatient(patient.patient.id,{reset:false});}

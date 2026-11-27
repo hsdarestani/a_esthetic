@@ -3,7 +3,7 @@ name: Build A+ Esthetic 1.0.64 (70) Android and iOS
 on:
   workflow_dispatch:
   push:
-    branches: [feature/native-patient-contact-build70]
+    branches: [release/unified-native-b70]
     paths:
       - '.github/workflows/build-aesthetic-b70.yml'
       - 'native/staff/**'
