@@ -1,0 +1,68 @@
+name: Verify the production App-to-Book staff identity boundary
+
+on:
+  push:
+    branches: [qa/unified-authenticated-relay-b70]
+    paths: ['.github/workflows/unified-authenticated-relay-b70.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Exercise the real bearer relay with disposable identities and no patient queries
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 4m
+          script: |
+            set -euo pipefail
+            cd /opt/a-esthetic-mobile
+            test "$(sha256sum p0_app/mobile_staff_views.py | cut -d' ' -f1)" = 9204476cb9a9c63130dc8b3e80041e40832bf137471948984026e3fb896dfe99
+            set -a
+            source mobile.env
+            set +a
+            if /opt/a-esthetic-mobile/venv/bin/python manage.py shell >/dev/null 2>&1 <<'PY'
+            from django.contrib.auth import get_user_model
+            from urllib.error import HTTPError
+            from urllib.request import Request, urlopen
+            from uuid import uuid4
+            from platform_app.mobile_api import _token_for
+            from platform_app.models import UserProfile
+
+            def check(token):
+                request = Request('https://app.a-esthetic.de/api/mobile/staff/book/catalog/',
+                    headers={'Accept':'application/json', **({'Authorization':'Bearer '+token} if token else {})})
+                try:
+                    with urlopen(request, timeout=20) as reply:
+                        return reply.status
+                except HTTPError as error:
+                    return error.code
+
+            fixtures = []
+            try:
+                for role in ('admin','customer'):
+                    user = get_user_model()(username='synthetic-relay-'+uuid4().hex)
+                    user.set_unusable_password()
+                    user.save()
+                    fixtures.append(user)
+                    UserProfile.objects.update_or_create(user=user, defaults={'role':role})
+                assert check(None) == 401
+                assert check(_token_for(fixtures[1])) == 403
+                assert check(_token_for(fixtures[0])) == 200
+            finally:
+                for user in fixtures:
+                    user.delete()
+            PY
+            then
+              echo 'PRODUCTION_BEARER_RELAY_ADMIN_AND_CUSTOMER_BOUNDARIES=passed'
+            else
+              echo 'PRODUCTION_BEARER_RELAY_ADMIN_AND_CUSTOMER_BOUNDARIES=unverified'
+              exit 1
+            fi
