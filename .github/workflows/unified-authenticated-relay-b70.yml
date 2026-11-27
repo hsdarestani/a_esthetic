@@ -132,8 +132,10 @@ jobs:
                 binds = sorted(set(re.findall(r'(?:--bind(?:=| )|-b )((?:127\.0\.0\.1|0\.0\.0\.0):[0-9]+)', exec_spec)))
                 for bind in binds:
                     print('LOCAL_APP_WORKER', *local_check('127.0.0.1', int(bind.rsplit(':',1)[1])), flush=True)
-                print('APP_WORKER_TCP_BIND_FOUND', bool(binds), flush=True)
-                for proxy in ('caddy','nginx','apache2','cloudflared'):
+                print('APP_WORKER_TCP_BIND', *binds, flush=True)
+                for port in (8770, 8773):
+                    print('NGINX_CONFIGURED_BIND', port, *local_check('127.0.0.1',port), flush=True)
+                for proxy in ('nginx',):
                     print('PROXY_ACTIVE', proxy, unit(proxy,'ActiveState') == 'active', flush=True)
                 print('LOCAL_NGINX_HTTP', *local_check('127.0.0.1',80), flush=True)
                 print('LOCAL_NGINX_TLS', *local_check('127.0.0.1',443), flush=True)
