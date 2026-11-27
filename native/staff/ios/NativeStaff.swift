@@ -309,6 +309,14 @@ struct StaffNativeScreen: View {
             .foregroundColor(modal ? muted : bronze).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 9)
     }
     private func icon(_ id: String) -> String {
+        switch id {
+        case "patient-contact-call": return "phone"
+        case "patient-contact-whatsapp": return "bubble.left"
+        case "patient-contact-email": return "envelope"
+        case "patient-copy-phone", "patient-copy-email": return "doc.on.doc"
+        case "patient-edit-contact": return "pencil"
+        default: break
+        }
         if id.hasPrefix("patient:") { return "person.crop.circle" }
         if id.hasPrefix("appointment:") { return "clock" }
         if id.hasPrefix("record:") { return "doc.text" }
@@ -350,6 +358,9 @@ struct StaffNativeScreen: View {
         return Button { action(id) } label: {
             HStack {
                 if primary { Spacer(minLength: 0) }
+                if id.hasPrefix("patient-contact-") || id.hasPrefix("patient-copy-") || id == "patient-edit-contact" {
+                    Image(systemName: icon(id)).frame(width: 22).accessibilityHidden(true)
+                }
                 StaffWordText(text(item, "label")).font(.system(size: 15, weight: .semibold))
                 Spacer(minLength: 0)
                 if !primary { Image(systemName: "arrow.right").font(.caption.weight(.semibold)).foregroundColor(modal ? tone : bronze) }
@@ -638,28 +649,99 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
         CAPPluginMethod(name: "pickPhoto", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "takePhoto", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openContact", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "copyContact", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "saveNavigation", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "readNavigation", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearNavigation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "probe", returnType: CAPPluginReturnPromise)
     ]
-    // Non-sensitive native bridge health check. No patient data or credentials.
     @objc func openContact(_ call: CAPPluginCall) {
-        let phone=call.getString("phone") ?? ""
-        let channel=call.getString("channel") ?? ""
-        guard phone.range(of:"^\\+[1-9][0-9]{6,14}$",options:.regularExpression) != nil else { call.reject("Invalid phone number");return }
-        var url:URL?
-        if channel=="phone" { url=URL(string:"tel:"+phone) }
-        else if channel=="whatsapp" {
-            var parts=URLComponents()
-            parts.scheme="https";parts.host="wa.me";parts.path="/"+String(phone.dropFirst())
-            parts.queryItems=[URLQueryItem(name:"text",value:call.getString("message") ?? "")]
-            url=parts.url
+        let phone = call.getString("phone") ?? ""
+        let channel = call.getString("channel") ?? ""
+        let validPhone = phone.range(of:"^\\+[1-9][0-9]{6,14}$",options:.regularExpression) != nil
+        var parts = URLComponents()
+        switch channel {
+        case "phone" where validPhone:
+            parts.scheme = "tel"
+            parts.path = phone
+        case "whatsapp" where validPhone:
+            let direct = call.getBool("direct") == true
+            parts.scheme = direct ? "whatsapp" : "https"
+            parts.host = direct ? "send" : "wa.me"
+            let digits = String(phone.dropFirst())
+            if direct {
+                parts.queryItems = [URLQueryItem(name:"phone",value:digits)]
+            } else {
+                parts.path = "/" + digits
+                parts.queryItems = [URLQueryItem(name:"text",value:call.getString("message") ?? "")]
+            }
+        case "email":
+            let email = call.getString("email") ?? ""
+            guard email.count <= 254,
+                  email.range(of:"^[^\\s@<>,;?&#%]+@[^\\s@<>,;?&#%]+\\.[^\\s@<>,;?&#%]+$",options:.regularExpression) != nil else {
+                call.reject("Invalid email address"); return
+            }
+            parts.scheme = "mailto"
+            parts.path = email
+        default:
+            call.reject("Invalid contact action"); return
         }
-        guard let target=url else { call.reject("Invalid contact action");return }
+        guard let target = parts.url else { call.reject("Invalid contact action"); return }
         DispatchQueue.main.async {
-            UIApplication.shared.open(target,options:[:]) { ok in
+            guard self.availableHost() != nil else { call.reject("Native screen unavailable"); return }
+            UIApplication.shared.open(target, options: [:]) { ok in
                 if ok { call.resolve() } else { call.reject("Contact application unavailable") }
             }
         }
     }
+
+    @objc func copyContact(_ call: CAPPluginCall) {
+        guard let value = call.getString("value"), !value.isEmpty, value.count <= 254 else {
+            call.reject("Invalid contact value"); return
+        }
+        DispatchQueue.main.async {
+            guard self.availableHost() != nil else { call.reject("Native screen unavailable"); return }
+            UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: value]], options: [
+                .localOnly: true, .expirationDate: Date().addingTimeInterval(120)
+            ])
+            call.resolve()
+        }
+    }
+
+    // Volatile, session-bound route state for a bridge reload during app switching.
+    private var navigationSession: String?
+    private var staffNavigation: JSObject?
+
+    @objc func saveNavigation(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            if call.getString("scope") == "staff", let session = call.getString("session"),
+               let state = call.getObject("state") {
+                self.navigationSession = session
+                self.staffNavigation = state
+            }
+            call.resolve()
+        }
+    }
+    @objc func readNavigation(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            if call.getString("scope") == "staff", let session = call.getString("session"),
+               session == self.navigationSession, let state = self.staffNavigation {
+                call.resolve(["state": state])
+            } else {
+                call.resolve()
+            }
+        }
+    }
+    @objc func clearNavigation(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            if let session = call.getString("session"), session == self.navigationSession {
+                self.staffNavigation = nil
+                self.navigationSession = nil
+            }
+            call.resolve()
+        }
+    }
+
     @objc func probe(_ call: CAPPluginCall) {
         call.resolve(["ok": true, "native": true, "bridge": "NativeStaff"])
     }
@@ -672,8 +754,13 @@ public final class NativeStaffPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPic
 
     @objc func present(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
-            guard let screen = call.getObject("screen"), self.host == nil,
-                  let presenter = self.bridge?.viewController, presenter.presentedViewController == nil,
+            guard let screen = call.getObject("screen") else { call.reject("Native screen unavailable"); return }
+            if let state = self.state, self.availableHost() != nil {
+                state.replace(screen)
+                call.resolve()
+                return
+            }
+            guard self.host == nil, let presenter = self.bridge?.viewController, presenter.presentedViewController == nil,
                   presenter.viewIfLoaded?.window != nil else {
                 call.reject("Native screen unavailable"); return
             }

@@ -4,6 +4,11 @@ import android.app.Dialog;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ActivityNotFoundException;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.net.Uri;
+import android.os.PersistableBundle;
 import android.app.Activity;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
@@ -122,7 +127,17 @@ public final class NativeStaffPlugin extends Plugin {
         v.setTextColor(primary&&!danger ? Color.WHITE : tone); v.setMinHeight(dp(49)); v.setMinimumHeight(dp(49));
         v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);v.setTextSize(14);v.setPadding(dp(12),dp(9),dp(12),dp(9));
         v.setMinWidth(0);v.setMinimumWidth(0);v.setStateListAnimator(null);v.setElevation(0);
-        v.setBackground(primary&&!danger?background(tone,13):outlined(accent==NAVY?Color.WHITE:Color.rgb(249,243,231),13,EDGE)); v.setOnClickListener(x -> action(id)); return v;
+        v.setBackground(primary&&!danger?background(tone,13):outlined(accent==NAVY?Color.WHITE:Color.rgb(249,243,231),13,EDGE));
+        int glyph = contactIcon(id);
+        if (glyph != 0) {
+            android.graphics.drawable.Drawable symbol = getContext().getDrawable(glyph).mutate();
+            symbol.setTint(v.getCurrentTextColor());
+            symbol.setBounds(0,0,dp(22),dp(22));
+            v.setCompoundDrawablesRelative(symbol,null,null,null);
+            v.setCompoundDrawablePadding(dp(8));
+        }
+        v.setOnClickListener(x -> action(id));
+        return v;
     }
     private JSObject fieldValues() {
         JSObject values = new JSObject();
@@ -236,6 +251,17 @@ public final class NativeStaffPlugin extends Plugin {
     }
     private JSONArray list(JSONObject s, String key) {
         JSONArray a = s.optJSONArray(key); return a == null ? new JSONArray() : a;
+    }
+    private int contactIcon(String id) {
+        switch (id) {
+            case "patient-contact-call": return android.R.drawable.ic_menu_call;
+            case "patient-contact-whatsapp": return android.R.drawable.ic_menu_send;
+            case "patient-contact-email": return android.R.drawable.ic_dialog_email;
+            case "patient-copy-phone":
+            case "patient-copy-email": return android.R.drawable.ic_menu_set_as;
+            case "patient-edit-contact": return android.R.drawable.ic_menu_edit;
+            default: return 0;
+        }
     }
     private String icon(String id) {
         if(id.startsWith("appointment:")||id.contains("calendar")||id.contains("appointment"))return "◷";
@@ -554,7 +580,22 @@ public final class NativeStaffPlugin extends Plugin {
             JSONObject item=rows.optJSONObject(i);if(item==null)continue;
             LinearLayout box=panel();LinearLayout content=row();String id=item.optString("id");
             if(!id.isEmpty()){
-                TextView symbol=text(icon(id),22,accent==NAVY?NAVY:BRONZE,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(background(accent==NAVY?PAPER:SAND,12));
+                int glyph=contactIcon(id);
+                int tint=accent==NAVY?NAVY:BRONZE;
+                View symbol;
+                if(glyph!=0){
+                    ImageView image=new ImageView(getContext());
+                    image.setImageResource(glyph);
+                    image.setColorFilter(tint);
+                    image.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                    image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                    symbol=image;
+                }else{
+                    TextView label=text(icon(id),22,tint,true);
+                    label.setGravity(Gravity.CENTER);
+                    symbol=label;
+                }
+                symbol.setBackground(background(accent==NAVY?PAPER:SAND,12));
                 LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(43),dp(43));p.rightMargin=dp(12);content.addView(symbol,p);
             }
             LinearLayout copy=column();add(copy,text(item.optString("label"),16,INK,true),5);if(!item.optString("detail").isEmpty())add(copy,text(item.optString("detail"),13,MUTED,false),0);
@@ -632,15 +673,68 @@ public final class NativeStaffPlugin extends Plugin {
         },700);
     }
     @PluginMethod public void openContact(PluginCall call) {
-        String phone=call.getString("phone",""),channel=call.getString("channel","");
-        if(!phone.matches("\\+[1-9][0-9]{6,14}")){call.reject("Invalid phone number");return;}
-        final android.content.Intent intent;
-        if("phone".equals(channel))intent=new android.content.Intent(android.content.Intent.ACTION_DIAL,android.net.Uri.parse("tel:"+phone));
-        else if("whatsapp".equals(channel)){
-            android.net.Uri uri=new android.net.Uri.Builder().scheme("https").authority("wa.me").appendPath(phone.substring(1)).appendQueryParameter("text",call.getString("message","")).build();
-            intent=new android.content.Intent(android.content.Intent.ACTION_VIEW,uri);
-        }else{call.reject("Invalid contact action");return;}
-        getActivity().runOnUiThread(()->{try{getActivity().startActivity(intent);call.resolve();}catch(android.content.ActivityNotFoundException e){call.reject("Contact application unavailable");}});
+        String phone=call.getString("phone",""), channel=call.getString("channel","");
+        boolean validPhone=phone.matches("\\+[1-9][0-9]{6,14}");
+        boolean directWhatsapp="whatsapp".equals(channel) && Boolean.TRUE.equals(call.getBoolean("direct"));
+        Intent intent;
+        if ("phone".equals(channel) && validPhone) {
+            intent=new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+phone));
+        } else if ("whatsapp".equals(channel) && validPhone) {
+            Uri.Builder target=new Uri.Builder().scheme("https").authority("wa.me").appendPath(phone.substring(1));
+            if (!directWhatsapp) target.appendQueryParameter("text",call.getString("message",""));
+            intent=new Intent(Intent.ACTION_VIEW,target.build());
+            if (directWhatsapp) intent.setPackage("com.whatsapp");
+        } else if ("email".equals(channel)) {
+            String email=call.getString("email","");
+            if (email.length()>254 || !email.matches("[^\\s@<>,;?&#%]+@[^\\s@<>,;?&#%]+\\.[^\\s@<>,;?&#%]+")) {
+                call.reject("Invalid email address");
+                return;
+            }
+            intent=new Intent(Intent.ACTION_SENDTO,Uri.fromParts("mailto",email,null));
+        } else {
+            call.reject("Invalid contact action");
+            return;
+        }
+        getActivity().runOnUiThread(()->{
+            if (dialog==null || !dialog.isShowing()) {
+                call.reject("Native screen unavailable");
+                return;
+            }
+            try {
+                try {
+                    getActivity().startActivity(intent);
+                } catch (ActivityNotFoundException unavailable) {
+                    if (!directWhatsapp) throw unavailable;
+                    getActivity().startActivity(new Intent(intent).setPackage("com.whatsapp.w4b"));
+                }
+                call.resolve();
+            } catch (ActivityNotFoundException | SecurityException unavailable) {
+                call.reject("Contact application unavailable");
+            }
+        });
+    }
+
+    @PluginMethod public void copyContact(PluginCall call) {
+        String value=call.getString("value","");
+        if (value.isEmpty() || value.length()>254) {
+            call.reject("Invalid contact value");
+            return;
+        }
+        getActivity().runOnUiThread(()->{
+            ClipboardManager clipboard=getContext().getSystemService(ClipboardManager.class);
+            if (clipboard==null || dialog==null || !dialog.isShowing()) {
+                call.reject("Clipboard unavailable");
+                return;
+            }
+            ClipData clip=ClipData.newPlainText("",value);
+            if (Build.VERSION.SDK_INT>=24) {
+                PersistableBundle extras=new PersistableBundle();
+                extras.putBoolean("android.content.extra.IS_SENSITIVE",true);
+                clip.getDescription().setExtras(extras);
+            }
+            clipboard.setPrimaryClip(clip);
+            call.resolve();
+        });
     }
     @PluginMethod public void probe(PluginCall call) {
         JSObject result=new JSObject();result.put("ok",true);result.put("native",true);

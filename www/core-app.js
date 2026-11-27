@@ -315,12 +315,12 @@
   let bootPhase = 'idle';
   async function nativeNavigation(token){
     const bridge=window.APlusNativeStaff;
-    if(window.Capacitor?.getPlatform?.()!=='android' || !bridge || !globalThis.crypto?.subtle)return;
+    if(!['android','ios'].includes(window.Capacitor?.getPlatform?.()) || !bridge || !globalThis.crypto?.subtle)return;
     const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token));
     const session=Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('');
     return {
       async read(scope){return (await bridge.readNavigation({session,scope}).catch(()=>null))?.state;},
-      save(scope,state){void bridge.saveNavigation({session,scope,state}).catch(()=>{});},
+      save(scope,state){return bridge.saveNavigation({session,scope,state}).catch(()=>{});},
       clear(){void bridge.clearNavigation({session}).catch(()=>{});},
     };
   }

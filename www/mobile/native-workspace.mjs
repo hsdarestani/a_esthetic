@@ -42,6 +42,21 @@ const isSyncedProvider = p => Boolean(p?.source_managed || String(p?.name||'').s
 const isSyncedService = s => Boolean(s?.source_managed || String(s?.slug||'').startsWith('simplybook-event-'));
 const uuid = () => globalThis.crypto.randomUUID();
 
+export function internationalPhone(input) {
+  const raw=String(input??'').trim();
+  if(!/^\+?\(?[0-9][0-9 ().\s/–-]*$/.test(raw))return '';
+  let phone=raw.replace(/[ ().\s/–-]/g,'');
+  if(phone.startsWith('00'))phone='+'+phone.slice(2);
+  else if(phone.startsWith('0'))phone='+49'+phone.slice(1);
+  if(phone.startsWith('+490'))phone='+49'+phone.slice(4);
+  return /^\+[1-9]\d{6,14}$/.test(phone)&&!phone.startsWith('+490')?phone:'';
+}
+const validContactEmail = input => typeof input==='string' && input.length<=254 &&
+  /^[^\s@<>,;?&#%]+@[^\s@<>,;?&#%]+\.[^\s@<>,;?&#%]+$/.test(input) &&
+  !/@invalid\.local$/i.test(input);
+const contactEmail = input => /@invalid\.local$/i.test(input||'')?'':String(input??'').trim();
+
+
 export async function mountNativeWorkspace({token, identity, origin, logout, initialPatient, initialCalendar, navigation, signal}) {
   const plugin = globalThis.APlusNativeStaff || globalThis.Capacitor?.Plugins?.NativeStaff;
   if (!plugin) throw new Error('Native staff renderer unavailable');
@@ -121,7 +136,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     ...(content.subtitle?{subtitle:displayData(content.subtitle)}:{}),
     ...Object.fromEntries(['rows','secondaryRows'].filter(key=>content[key]).map(key=>[key,content[key].map(item=>({...item,...(item.badge?{badge:localizedStatus(item.badge)}:{})}))]))});
   const datePattern=/^\d{4}-\d{2}-\d{2}$/;
-  const subviews=/^(appointment:\d+|record-detail:[\w-]+|block(?:-info)?:\d+|service:\d+|patient-(?:link-account|adjust-points|invoices)|note|record-edit|new-patient-appointment|new-appointment|slot:\d{4}-\d{2}-\d{2}:\d{2}:\d{2}(?::\w+)?|edit-appointment|new-block|availability|language|services|identity-review)$/;
+  const subviews=/^(appointment:\d+|record-detail:[\w-]+|block(?:-info)?:\d+|service:\d+|patient-(?:link-account|adjust-points|invoices|edit-contact)|note|record-edit|new-patient-appointment|new-appointment|slot:\d{4}-\d{2}-\d{2}:\d{2}:\d{2}(?::\w+)?|edit-appointment|new-block|availability|language|services|identity-review)$/;
   const updates=/^(date:|cal-(?:today|mode:|provider:|service:)|(?:day|week)-(?:next|prev)|search$|patient-section:|(?:patient|record)-page-|apply-calendar-filter$|calendar-client-search$|load-availability$|patient-link-search$)/;
   function routeState(action){
     return {action,activeTab,date,search,calendarMode,providerFilter,serviceFilter,patientPage,recordPage,patientSection,
@@ -138,7 +153,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     return {screen,location,models:{patient,appointment,currentBlock,currentService,selectedRecord,currentPatientAccount},calendarScreen};
   }
   const checkpoint=()=>{
-    if(active && location)navigation?.save('staff',{...location,screenKey:current.screenKey,
+    if(active && location)return navigation?.save('staff',{...location,screenKey:current.screenKey,
       scroll:current.scroll,scrollX:current.scrollX,values:Object.fromEntries((current.fields||[]).map(f=>[f.id,f.value])),
       history:history.map(({location,screen})=>screen?{...location,scroll:screen.scroll,scrollX:screen.scrollX,
         values:Object.fromEntries((screen.fields||[]).map(f=>[f.id,f.value]))}:location)});
@@ -334,7 +349,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     rememberAppointments(patient.appointments);
     return renderPatient(scroll);
   }
-  async function renderPatient(scroll){
+  async function renderPatient(scroll,message=''){
     const p=patient.patient;
     const sections=[['overview',tr('Übersicht','Overview')],['appointments',tr('Termine','Appointments')],['records',tr('Patientenakte','Records')],['contact',tr('Kontakt','Contact')],
       ...(admin?[['account',tr('Patientenkonto','Patient account')]]:[])];
@@ -381,7 +396,27 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       }
       }catch(err){if(err.status===401)throw err;accountContent={message:tr('Das Patientenkonto ist momentan nicht erreichbar. Bitte erneut laden.','The patient account is temporarily unavailable. Please reload.'),actions:[row('patient-section:account',tr('Erneut laden','Reload'))]};}
     }
-    return render(view(p.name,{hero:p.name,heroLabel:tr('PATIENTENAKTE','PATIENT RECORD'),subtitle:[p.email,p.phone].filter(Boolean).join(' · '),
+    const email=contactEmail(p.email), phone=String(p.phone??'').trim();
+    const dialable=Boolean(internationalPhone(phone)), mailable=validContactEmail(email);
+    const missing=tr('Nicht angegeben','Not provided');
+    const contactRows=[
+      row('',tr('Name','Name'),p.name),
+      {...row(mailable?'patient-contact-email':'',tr('E-Mail','Email')),label:language==='en'?'Email':'E-Mail',detail:email||missing},
+      {...row(dialable?'patient-contact-call':'',tr('Telefon','Phone')),detail:phone||missing},
+      ...(p.date_of_birth?[row('',tr('Geburtsdatum','Date of birth'),p.date_of_birth)]:[]),
+    ];
+    const contactActions=[
+      ...(dialable?[row('patient-contact-call',tr('Anrufen','Call')),row('patient-contact-whatsapp','WhatsApp')]:[]),
+      ...(mailable?[{...row('patient-contact-email','Email'),label:language==='en'?'Email':'E-Mail'}]:[]),
+      ...(phone?[row('patient-copy-phone',tr('Telefonnummer kopieren','Copy phone number'))]:[]),
+      ...(email?[{...row('patient-copy-email','Copy email'),label:language==='en'?'Copy email':'E-Mail-Adresse kopieren'}]:[]),
+      ...(admin?[row('patient-edit-contact',tr('Kontaktdaten bearbeiten','Edit contact details'))]:[]),
+    ];
+    const contactMessage=message||[
+      ...(phone&&!dialable?[tr('Die Telefonnummer hat kein gültiges Format.','The phone number has an invalid format.')]:[]),
+      ...(email&&!mailable?[tr('Die E-Mail-Adresse hat kein gültiges Format.','The email address has an invalid format.')]:[]),
+    ].join(' ');
+    return render(view(p.name,{hero:p.name,heroLabel:tr('PATIENTENAKTE','PATIENT RECORD'),subtitle:[email,phone].filter(Boolean).join(' · '),
       scroll,segments:sections.map(([id,label])=>({...row('patient-section:'+id,label),selected:patientSection===id})),
       ...(patientSection==='overview'?{metrics:[row('patient-section:appointments',tr('Termine (Auszug)','Appointments (shown)'),String(appointments.length)),row('patient-section:records',tr('Akteneinträge (Auszug)','Records (shown)'),String(records.length))],
         shortcuts:[row('new-patient-appointment',tr('Termin hinzufügen','Book appointment')),row('note',tr('Notiz hinzufügen','Add note')),row('upload-pdf',tr('PDF hinzufügen','Add PDF'))],
@@ -392,8 +427,33 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           row('take-photo',tr('Kamera','Camera')),row('upload-photo',tr('Foto auswählen','Choose photo'))],
         actions:[...(patient.has_more?[row('record-page-next',tr('Nächste Seite','Next page'))]:[]),...(recordPage>1?[row('record-page-prev',tr('Vorherige Seite','Previous page'))]:[])]}:
       patientSection==='account'?accountContent:
-      {rows:[row('',tr('Name','Name'),p.name),row('','E Mail',p.email||tr('Nicht angegeben','Not provided')),row('',tr('Telefon','Phone'),p.phone||tr('Nicht angegeben','Not provided')),
-          ...(p.date_of_birth?[row('',tr('Geburtsdatum','Date of birth'),p.date_of_birth)]:[])]})}));
+      {rows:contactRows,actions:contactActions,message:contactMessage})}));
+  }
+  async function contactForm() {
+    const {patient:p}=await book('patient/'+patient.patient.id+'/contact/');
+    patient={...patient,patient:{...patient.patient,...p}};
+    return render(view(tr('Kontaktdaten bearbeiten','Edit contact details'),{
+      subtitle:p.name,
+      fields:[value('phone',tr('Telefon','Phone'),p.phone),{...value('email','Email',contactEmail(p.email)),label:language==='en'?'Email':'E-Mail'}],
+      actions:[row('patient-save-contact',tr('Speichern','Save')),row('back',tr('Abbrechen','Cancel'))],
+    }));
+  }
+  async function openNativeContact(channel, contact, event, message) {
+    const phone=internationalPhone(contact.phone), email=contactEmail(contact.email);
+    if(channel==='email'?!validContactEmail(email):!phone)throw new Error(channel==='email'
+      ?tr('Keine gültige E-Mail-Adresse.','No valid email address.')
+      :tr('Keine gültige internationale Telefonnummer.','No valid international phone number.'));
+    current={...current,scroll:event.scroll??current.scroll};
+    await checkpoint();
+    try {
+      await plugin.openContact(channel==='email'?{channel,email}:{channel,phone,...(message?{message}:{direct:true})});
+    } catch {
+      throw new Error({
+        phone:tr('Die Telefon-App ist nicht verfügbar.','The phone app is unavailable.'),
+        whatsapp:tr('WhatsApp ist auf diesem Gerät nicht verfügbar.','WhatsApp is unavailable on this device.'),
+        email:tr('Keine E-Mail-App verfügbar.','No email app is available.'),
+      }[channel]);
+    }
   }
   async function getAppointment(id) {
     if(appointmentsById.has(id))return appointmentsById.get(id);
@@ -406,14 +466,14 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
     if(!item)throw new Error(tr('Termin nicht verfügbar.','Appointment unavailable.'));
     return item;
   }
-  async function showAppointment(id) {
+  async function showAppointment(id,scroll) {
     activeTab='calendar';
     appointment=await getAppointment(id);
     let contact={};
     if(appointment.customer_id){try { const detail=await book('patient/'+appointment.customer_id+'/'); contact=detail.patient||{}; } catch(err) { if(err.status!==404) throw err; }}
     const treatmentEnd=String(appointment.treatment_end_at||'').match(/T(\d{2}:\d{2})/)?.[1]||appointment.end;
     return render(view(appointment.customer_name,{
-      subtitle:displayCopy(appointment.service_name),
+      subtitle:displayCopy(appointment.service_name), scroll,
       message:appointment.source_managed
         ? (admin&&appointment.source_editable
            ? tr('Mit SimplyBook synchronisiert. Terminzeit oder Stornierung wird zuerst direkt in SimplyBook bestätigt und danach hier gespeichert. Änderungen an Patient, Behandler und Behandlung bitte weiterhin in SimplyBook vornehmen.',
@@ -640,7 +700,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(saved.action==='record-edit' && saved.recordId)await handle({id:'record-detail:'+saved.recordId},{restoring:true});
       await handle({id:saved.action,values:saved.values},{restoring:true});
     }
-    const fields=current.fields?.map(field=>({...field,value:saved.values?.[field.id]??field.value}));
+    // A restored contact editor must use values tied to the current revision.
+    const fields=current.fields?.map(field=>({...field,value:(saved.action==='patient-edit-contact'?undefined:saved.values?.[field.id])??field.value}));
     const restored={...current,...(fields?{fields}:{}),scroll:saved.scroll,scrollX:saved.scrollX};
     await plugin.render({screen:restored});
     current=restored;
@@ -721,6 +782,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           calendarScreen=previous.calendarScreen;
           applyRoute(location);
           ({patient,appointment,currentBlock,currentService,selectedRecord,currentPatientAccount}=previous.models);
+          if(/^appointment:\d+$/.test(location.action))await showAppointment(Number(location.action.split(':')[1]),current.scroll);
+          if(/^patient:\d+$/.test(location.action)&&patientSection==='contact')await showPatient(patient.patient.id,{reset:false,scroll:current.scroll});
         }else await restoreRoute(previous.location);
         history.pop();
         return;
@@ -763,7 +826,59 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id.startsWith('date:')){date=id.slice(5);return await screen('calendar');}
       if(id==='search'||id==='billing-query'){search=fields.query||'';patientPage=1;return await screen(id==='search'?'patients':'billing-search');}
       if(id==='patient-page-next'||id==='patient-page-prev'){patientPage=Math.max(1,patientPage+(id.endsWith('next')?1:-1));return await screen('patients');}
-      if(id.startsWith('patient-section:')&&patient){patientSection=id.slice('patient-section:'.length);return await renderPatient();}
+      if(id.startsWith('patient-section:')&&patient){
+        patientSection=id.slice('patient-section:'.length);
+        if(patientSection==='contact')return await showPatient(patient.patient.id,{reset:false});
+        return await renderPatient();
+      }
+      if(admin&&id==='patient-edit-contact'&&patient&&patientSection==='contact')return await contactForm();
+      if(admin&&id==='patient-save-contact'&&patient&&location?.action==='patient-edit-contact'){
+        const p=patient.patient, changes={};
+        const phone=String(fields.phone??p.phone).trim(), email=String(fields.email??contactEmail(p.email)).trim();
+        if(phone!==String(p.phone??'').trim()){
+          if(phone&&!internationalPhone(phone))throw new Error(tr('Bitte eine gültige internationale Telefonnummer eingeben.','Enter a valid international phone number.'));
+          changes.phone=phone?internationalPhone(phone):'';
+        }
+        if(email!==contactEmail(p.email)){
+          if(email&&!validContactEmail(email))throw new Error(tr('Bitte eine gültige E-Mail-Adresse eingeben.','Enter a valid email address.'));
+          changes.email=email;
+        }
+        if(!Object.keys(changes).length)return await renderPatient();
+        try {
+          const saved=await book('patient/'+p.id+'/contact/',{...changes,revision:p.contact_revision});
+          patient={...patient,patient:{...p,...saved.patient}};
+        } catch(err) {
+          if(err.status===409)throw new Error(tr('Die Kontaktdaten wurden inzwischen geändert oder gehören zu einem anderen Patientenprofil. Bitte prüfen und erneut öffnen.','The contact details changed or are assigned to another patient profile. Check the details and reopen the editor.'));
+          throw err;
+        }
+        return await renderPatient(undefined,tr('Kontaktdaten gespeichert.','Contact details saved.'));
+      }
+      if(/^patient-(?:contact-(?:call|whatsapp|email)|copy-(?:phone|email))$/.test(id)&&patient&&patientSection==='contact'&&location?.action==='patient:'+patient.patient.id){
+        let p;
+        const patientId=patient.patient.id;
+        try {({patient:p}=await book('patient/'+patientId+'/contact/'));}
+        catch(err) {
+          if(err.status!==404)throw err;
+          // The pre-release backend still exposes this authorized read.
+          ({patient:p}=await book('patient/'+patientId+'/'));
+        }
+        if(p?.id!==patientId)throw new Error(tr('Patient nicht verfügbar.','Patient unavailable.'));
+        // A stale row must never open a different recipient than the one displayed.
+        if(p.phone!==patient.patient.phone||contactEmail(p.email)!==contactEmail(patient.patient.email)){
+          patient={...patient,patient:{...patient.patient,...p}};
+          return await renderPatient(event.scroll,tr('Kontaktdaten aktualisiert. Bitte Aktion erneut auswählen.','Contact details updated. Select the action again.'));
+        }
+        if(id.startsWith('patient-copy-')){
+          const copied=id.endsWith('phone')?String(p.phone??'').trim():contactEmail(p.email);
+          if(!copied)return;
+          try {await plugin.copyContact({value:copied});}
+          catch {throw new Error(tr('Kopieren fehlgeschlagen.','Unable to copy contact details.'));}
+          return await renderPatient(event.scroll,id.endsWith('phone')
+            ?tr('Telefonnummer kopiert.','Phone number copied.')
+            :tr('E-Mail-Adresse kopiert.','Email address copied.'));
+        }
+        return await openNativeContact(id.endsWith('call')?'phone':id.split('-').at(-1),p,event);
+      }
       if(admin&&id==='patient-link-account'&&patient)return await patientLinkForm(patient.patient.email||patient.patient.name||'');
       if(admin&&id==='patient-link-search'&&patient)return await patientLinkForm(fields.query||'');
       if(admin&&id==='patient-link-confirm'&&patient){
@@ -858,14 +973,8 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       if(id==='appointment-call'||id==='appointment-whatsapp'){
         // Re-fetch authorized contact before opening a native external action.
         const detail=await book('patient/'+appointment.customer_id+'/');
-        const raw=String(detail.patient?.phone||'').trim();
-        let phone=raw.replace(/[^0-9+]/g,'');
-        if(phone.startsWith('00'))phone='+'+phone.slice(2);
-        else if(phone.startsWith('0'))phone='+49'+phone.slice(1);
-        if(!/^\+[1-9]\d{6,14}$/.test(phone))throw new Error(tr('Keine gültige internationale Telefonnummer.','No valid international phone number.'));
         const message=language==='en'?'Hello, this is a friendly reminder of your appointment on '+germanDate(appointment.date)+' at '+appointment.start+' with A+ Esthetic.':'Guten Tag, wir möchten Sie freundlich an Ihren Termin am '+germanDate(appointment.date)+' um '+appointment.start+' bei A+ Esthetic erinnern.';
-        await plugin.openContact({channel:id==='appointment-call'?'phone':'whatsapp',phone,message});
-        return;
+        return await openNativeContact(id==='appointment-call'?'phone':'whatsapp',detail.patient||{},event,message);
       }
       if(id==='apply-calendar-filter'){
         calendarMode=fields.calendar_mode;providerFilter=fields.provider_filter;serviceFilter=fields.service_filter;

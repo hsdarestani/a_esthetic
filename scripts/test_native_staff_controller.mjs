@@ -3,19 +3,27 @@ import { mock } from 'node:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 mock.timers.enable({apis:['Date'], now: new Date('2026-11-23T12:00:00+01:00')});
-import { mountNativeWorkspace, germanDate, canonicalDate, displayCopy } from '../www/mobile/native-workspace.mjs';
+import { mountNativeWorkspace, germanDate, canonicalDate, displayCopy, internationalPhone } from '../www/mobile/native-workspace.mjs';
 assert.equal(displayCopy('Wallet-Verlauf – Test'),'Wallet Verlauf · Test');
 assert.equal(germanDate('2026-11-25 · 16:00'),'25.11.2026 · 16:00');
 assert.equal(canonicalDate('25.11.2026'),'2026-11-25');
 assert.equal(canonicalDate('29.02.2024'),'2024-02-29');
 assert.equal(canonicalDate('29.02.2026'),null);
+for (const [raw, expected] of [
+  ['(030) 23125 000', '+493023125000'], ['+49 (0) 30 23125-000', '+493023125000'],
+  ['0049 30 / 23125000', '+493023125000'], ['+44 20 7946 0000', '+442079460000'],
+  ['+39 02 12345678', '+390212345678'], ['0049 00 123456', ''],
+  ['+49 30 23125000 ext. 3', ''], ['0690abc0000', ''], ['123', ''], ['', ''],
+]) assert.equal(internationalPhone(raw),expected,raw);
 
 let current, onAction, closed = false, lastTimelineScreen;
 let choose = async()=>({cancelled:true});
 let confirm = async()=>({confirmed:false});
 let preview = async()=>{};
 const uploads=[];
-const contactActions=[], calendarCommands=[];
+const contactActions=[], calendarCommands=[], copiedContacts=[], contactWrites=[];
+let contact={id:23,name:'Demo patient',email:'demo@example.test',phone:'069000000',contact_revision:'initial'};
+let externalUnavailable=false, conflict=false;
 let uploadFailures=0, patientRequests=0, loggedOut=0, sessionExpired=false;
 const checkpoints=new Map();
 const navigation={
@@ -40,7 +48,8 @@ globalThis.Capacitor={Plugins:{NativeStaff:{
   async takePhoto(){return choose();},
   async confirmUpload(options){return confirm(options);},
   async previewPDF(options){return preview(options);},
-  async openContact(options){contactActions.push(options);},
+  async openContact(options){contactActions.push(options);if(externalUnavailable)throw new Error('fixture unavailable');},
+  async copyContact(options){copiedContacts.push(options.value);},
   async addListener(name,fn){assert.equal(name,'action');onAction=fn;return{remove(){onAction=null;}};},
 }}};
 let localBooking=false, omitCurrentPatient=false;
@@ -74,7 +83,18 @@ globalThis.fetch=async(url,opts)=>{
     };
   }
   else if(path.endsWith('/patients/'))result={items:omitCurrentPatient?[]:[{id:23,name:'Demo patient',email:'demo@example.test'}],has_more:new URL(url).searchParams.get('page')==='1'};
-  else if(path.endsWith('/patient/23/')){patientRequests++;result={patient:{id:23,name:'Demo patient',email:'demo@example.test',phone:'069000000'},appointments:[{id:46,public_id:'00000000-0000-4000-8000-000000000046',date:'2026-11-20',start:'11:30',service_name:'Consult',staff_name:'Demo clinician',status:'completed'}],records:[{id:'00000000-0000-4000-8000-000000000099',title:'Synthetic clinical note',date:'2026-11-20',note:'Synthetic record for UI testing',kind:'note',has_file:false}]};}
+  else if(path.endsWith('/patient/23/contact/')){
+    if(opts.body){
+      const body=JSON.parse(opts.body);
+      contactWrites.push(body);
+      if(conflict)return {ok:false,status:409};
+      assert.equal(body.revision,contact.contact_revision);
+      const {revision,...changes}=body;
+      contact={...contact,...changes,contact_revision:'updated'};
+    }
+    result={patient:{...contact}};
+  }
+  else if(path.endsWith('/patient/23/')){patientRequests++;result={patient:{...contact},appointments:[{id:46,public_id:'00000000-0000-4000-8000-000000000046',date:'2026-11-20',start:'11:30',service_name:'Consult',staff_name:'Demo clinician',status:'completed'}],records:[{id:'00000000-0000-4000-8000-000000000099',title:'Synthetic clinical note',date:'2026-11-20',note:'Synthetic record for UI testing',kind:'note',has_file:false}]};}
   else if(path.endsWith('/customers/'))result={items:[{id:25,name:'Demo patient',email:'demo@example.test',book_customer_id:accountMode==='unlinked'?null:23,address:{street:'Testweg 1',postal_code:'60313',city:'Frankfurt'}}]};
   else if(path.endsWith('/patient-account/23/')){if(accountMode==='fallback'||accountMode==='unlinked')return {ok:false,status:404};result={customer_id:accountMode==='null-verified'?null:25};}
   else if(path.endsWith('/customers/25/')){if(accountMode==='missing-detail')return {ok:false,status:404};result={customer:{id:25,name:'Demo patient',coins:240,credit_cents:1500},packages:[{id:1,name:'Synthetic package',remaining_sessions:2,expires_at:'2027-01-01',status:'active'}]};}
@@ -372,6 +392,12 @@ await native.destroy();localBooking=false;omitCurrentPatient=false;
 native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'doctor',name:'Demo Doctor'},
   origin:'https://example.test',logout:()=>{}});
 assert.ok(!current.tabs.some(t=>t.id==='office'));
+await click('patient:23');
+await click('patient-section:contact');
+assert.ok(!current.actions.some(row=>row.id==='patient-edit-contact'));
+const beforeUnauthorized=contactWrites.length;
+await click('patient-edit-contact');await click('patient-save-contact',{phone:'+493023125000'});
+assert.equal(contactWrites.length,beforeUnauthorized);
 await native.destroy();
 delete preferences.aplus_language;
 native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'admin',name:'Demo Admin'},origin:'https://example.test',logout:()=>{}});
@@ -385,6 +411,87 @@ await click('calendar');await click('new-block');capture('04-block');
 await click('calendar');await click('availability');capture('06-working-hours');
 await click('patients');await click('patient:23');capture('13-patient-profile');
 await click('patient-section:contact');capture('16a-patient-contact');
+const visibleContactIds=()=>current.actions.map(row=>row.id);
+const selectedContact=()=>current.segments.find(segment=>segment.selected).id;
+assert.equal(selectedContact(),'patient-section:contact');
+assert.ok(current.rows.some(row=>row.id==='patient-contact-call'&&row.detail===contact.phone));
+assert.ok(current.rows.some(row=>row.id==='patient-contact-email'&&row.detail===contact.email));
+assert.deepEqual(current.actions.map(row=>row.label),['Anrufen','WhatsApp','E-Mail','Telefonnummer kopieren','E-Mail-Adresse kopieren','Kontaktdaten bearbeiten']);
+await click('patient-edit-contact');capture('16b-patient-contact-edit-de');
+assert.deepEqual(current.fields.map(field=>field.kind),['phone','email']);
+await click('patient-save-contact',{phone:'invalid',email:'demo@example.test'});
+assert.match(current.message,/gültige internationale/);
+assert.equal(contactWrites.length,0);
+await click('patient-save-contact',{phone:'0049 30 23125000',email:'updated@example.test'});
+assert.deepEqual(contactWrites.at(-1),{phone:'+493023125000',email:'updated@example.test',revision:'initial'});
+assert.match(current.message,/gespeichert/);
+assert.equal(selectedContact(),'patient-section:contact');
+await click('patient-copy-phone');
+assert.equal(copiedContacts.at(-1),'+493023125000');
+assert.match(current.message,/kopiert/);
+await click('patient-copy-email');
+assert.equal(copiedContacts.at(-1),'updated@example.test');
+const profileBeforeExternal=current;
+for(const [id, args] of [
+  ['patient-contact-call',{channel:'phone',phone:'+493023125000',direct:true}],
+  ['patient-contact-whatsapp',{channel:'whatsapp',phone:'+493023125000',direct:true}],
+  ['patient-contact-email',{channel:'email',email:'updated@example.test'}],
+]){
+  await click(id,{}, {scroll:94});
+  assert.deepEqual(contactActions.at(-1),args);
+  assert.equal(current,profileBeforeExternal,'return from an external app keeps the same native screen');
+  assert.equal(selectedContact(),'patient-section:contact');
+}
+externalUnavailable=true;
+await click('patient-contact-whatsapp');assert.match(current.message,/WhatsApp.*nicht verfügbar/);
+await click('patient-contact-email');assert.match(current.message,/App verfügbar/);
+externalUnavailable=false;
+await click('patient-edit-contact');
+conflict=true;
+await click('patient-save-contact',{phone:'069 000000',email:'stale@example.test'});
+assert.match(current.message,/inzwischen geändert/);
+conflict=false;
+await click('back');
+assert.equal(selectedContact(),'patient-section:contact');
 await click('patient-section:account');capture('16-patient-account');
 await native.destroy();
-console.log('PASS: native controller, SimplyBook form layouts, calendar swipes, German defaults, Office hidden, medical notes and role tabs');
+
+preferences.aplus_language='en';
+native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'admin',name:'Demo Admin'},
+  origin:'https://example.test',navigation,initialPatient:23,logout:()=>{}});
+await click('patient-section:contact');capture('16c-patient-contact-en');
+assert.deepEqual(current.actions.map(row=>row.label),['Call','WhatsApp','Email','Copy phone number','Copy email','Edit contact details']);
+const beforeStaleTap=contactActions.length;
+contact={...contact,email:'new-recipient@example.test'};
+await click('patient-contact-email');
+assert.equal(contactActions.length,beforeStaleTap,'a stale link must never launch a different recipient');
+assert.match(current.message,/Select the action again/);
+await click('patient-contact-email',{}, {scroll:94});
+assert.deepEqual(contactActions.at(-1),{channel:'email',email:'new-recipient@example.test'});
+assert.equal(checkpoints.get('staff').patientSection,'contact');
+assert.equal(checkpoints.get('staff').patientId,23);
+assert.equal(checkpoints.get('staff').scroll,94);
+await native.destroy();
+native=await mountNativeWorkspace({token:'synthetic-test-token',identity:{role:'admin',name:'Demo Admin'},
+  origin:'https://example.test',navigation,logout:()=>{}});
+assert.equal(current.title,'Demo patient');
+assert.equal(selectedContact(),'patient-section:contact');
+assert.equal(current.scroll,94);
+await click('calendar');
+await click('appointment:44');
+assert.ok(current.rows.some(row=>row.detail==='new-recipient@example.test'));
+await click('patient:23');
+await click('patient-section:contact');
+await click('patient-edit-contact');
+await click('patient-save-contact',{phone:'',email:''});
+assert.deepEqual(visibleContactIds(),['patient-edit-contact']);
+await click('back');
+assert.ok(current.rows.some(row=>row.detail==='Not provided'));
+assert.ok(!current.actions.some(row=>row.id==='appointment-call'));
+contact={...contact,phone:'invalid',email:'simplybook-client-789@invalid.local'};
+await click('patient:23');await click('patient-section:contact');
+assert.deepEqual(visibleContactIds(),['patient-copy-phone','patient-edit-contact']);
+assert.match(current.message,/invalid format/);
+assert.ok(!current.rows.some(row=>row.detail.includes('@invalid.local')));
+await native.destroy();
+console.log('PASS: native workspace regressions and synthetic contact actions, localization, permissions, save, and route restoration');
