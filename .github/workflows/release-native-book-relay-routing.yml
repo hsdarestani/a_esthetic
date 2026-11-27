@@ -1,0 +1,160 @@
+name: Route native Book requests to the current App service
+on:
+  push:
+    branches: [release/native-book-relay-routing-20261127]
+    paths: ['.github/workflows/release-native-book-relay-routing.yml']
+permissions:
+  contents: read
+concurrency:
+  group: a-esthetic-mobile-api-production
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Apply and verify the scoped nginx route with rollback
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 6m
+          script: |
+            set -euo pipefail
+            umask 077
+            root=/opt/a-esthetic-mobile
+            cd "$root"
+            exec 9>"$root/remediation-rollbacks/release.lock"
+            flock -n 9
+            systemctl is-active --quiet a-esthetic-mobile.service
+            systemctl is-active --quiet nginx
+            systemctl show a-esthetic-mobile.service -p ExecStart --value | grep -F '127.0.0.1:8770' >/dev/null
+            live="$(readlink -f /etc/nginx/sites-enabled/a-esthetic-app.conf)"
+            case "$live" in
+              /etc/nginx/sites-enabled/a-esthetic-app.conf|/etc/nginx/sites-available/a-esthetic-app.conf) ;;
+              *) exit 1 ;;
+            esac
+            test -f "$live"
+            snapshot=$(mktemp -d "$root/remediation-rollbacks/native-book-route.XXXXXXXX")
+            cp -a "$live" "$snapshot/original"
+            candidate=$(mktemp "$(dirname "$live")/.native-book-route.XXXXXXXX")
+            switched=0
+            cleanup() {
+              result=$?
+              trap - EXIT
+              if [ "$result" != 0 ] && [ "$switched" = 1 ]; then
+                cp -a "$snapshot/original" "$candidate" &&
+                  mv -f "$candidate" "$live" &&
+                  nginx -t && systemctl reload nginx &&
+                  echo NATIVE_BOOK_ROUTE_ROLLBACK=passed || result=2
+              fi
+              rm -f "$candidate"
+              exit "$result"
+            }
+            trap cleanup EXIT
+            cp -a "$live" "$candidate"
+            "$root/venv/bin/python" - "$candidate" <<'PY'
+            import re
+            import sys
+            from pathlib import Path
+
+            path = Path(sys.argv[1])
+            text = path.read_text()
+            if '/api/mobile/staff/book/' in text:
+                raise SystemExit('Staff Book location already present. Configuration unchanged.')
+            candidates = list(re.finditer(r'(?m)^([ \t]*)location \^~ /api/mobile/ \{[^\r\n]*proxy_pass http://127\.0\.0\.1:8773;[^\r\n]*\}[ \t]*$', text))
+            if len(candidates) != 1:
+                raise SystemExit('Expected a single production App mobile location. Configuration unchanged.')
+            current = candidates[0]
+            dedicated = current[0].replace('location ^~ /api/mobile/', 'location ^~ /api/mobile/staff/book/', 1)
+            dedicated = dedicated.replace('http://127.0.0.1:8773;', 'http://127.0.0.1:8770;', 1)
+            path.write_text(text[:current.start()] + dedicated + '\n' + text[current.start():])
+            PY
+            set -a
+            source mobile.env
+            set +a
+            mv -f "$candidate" "$live"
+            switched=1
+            nginx -t
+            systemctl reload nginx
+            export DJANGO_SETTINGS_MODULE=config.settings
+            "$root/venv/bin/python" - <<'PY'
+            from datetime import datetime, timedelta
+            import json
+            from urllib.error import HTTPError
+            from urllib.parse import urlencode
+            from urllib.request import Request, build_opener
+            from uuid import uuid4
+            from zoneinfo import ZoneInfo
+
+            import django
+            django.setup()
+            from django.contrib.auth import get_user_model
+            from p0_app.mobile_staff_views import NoRedirect
+            from platform_app.mobile_api import _token_for
+            from platform_app.models import UserProfile
+
+            app = 'https://app.a-esthetic.de'
+            book = 'https://book.a-esthetic.de'
+            native_origin = 'capacitor://localhost'
+            relay_calendar = '/api/mobile/staff/book/calendar/'
+            day = datetime.now(ZoneInfo('Europe/Berlin')).date() + timedelta(days=1)
+            query = '?' + urlencode({'start': day.isoformat(), 'days': 1})
+            opener = build_opener(NoRedirect)
+
+            def fetch(origin, path, token=None, method='GET'):
+                headers = {'Accept': 'application/json', 'Origin': native_origin}
+                if token:
+                    headers['Authorization'] = 'Bearer ' + token
+                if method == 'OPTIONS':
+                    headers.update({'Access-Control-Request-Method': 'GET',
+                                    'Access-Control-Request-Headers': 'authorization,content-type'})
+                try:
+                    with opener.open(Request(origin + path, headers=headers, method=method), timeout=12) as response:
+                        payload = json.load(response) if method == 'GET' else {}
+                        return response.status, payload, response.headers.get('Access-Control-Allow-Origin', '')
+                except HTTPError as error:
+                    return error.code, {}, ''
+
+            def valid_calendar(result):
+                status, payload, _ = result
+                return (status == 200 and payload.get('calendar_editability_contract') == 'source-revisions-v2'
+                        and payload.get('calendar_actor_role') == 'admin'
+                        and all(type(row.get('source_editable')) is bool for row in payload['appointments'])
+                        and all(type(row.get('source_editable')) is bool
+                                and type(row.get('source_revision_available')) is bool for row in payload['blocks']))
+
+            fixtures = []
+            stage = 'fixtures'
+            try:
+                for role in ('admin', 'customer'):
+                    user = get_user_model()(username='synthetic-relay-' + uuid4().hex)
+                    user.set_unusable_password()
+                    user.save()
+                    fixtures.append(user)
+                    UserProfile.objects.update_or_create(user=user, defaults={'role': role})
+                staff, customer = map(_token_for, fixtures)
+                stage = 'book_direct'
+                assert valid_calendar(fetch(book, '/api/mobile/staff/calendar/' + query, staff))
+                stage = 'app_staff_authorization'
+                assert fetch(app, relay_calendar + query)[0] == 401
+                assert fetch(app, relay_calendar + query, customer)[0] == 403
+                status, identity, _ = fetch(app, '/api/mobile/staff/session/', staff)
+                assert status == 200 and identity.get('role') == 'admin'
+                stage = 'native_cors'
+                status, _, allowed = fetch(app, relay_calendar, method='OPTIONS')
+                assert status in (200, 204) and allowed in (native_origin, '*')
+                stage = 'app_relay'
+                assert valid_calendar(fetch(app, relay_calendar + query, staff))
+                assert fetch(app, '/api/mobile/staff/book/catalog/', staff)[0] == 200
+                print('AUTHENTICATED_NATIVE_BOOK_RELAY_VERIFIED=yes', flush=True)
+            except Exception:
+                raise SystemExit('Scoped native relay verification failed at ' + stage) from None
+            finally:
+                for user in fixtures:
+                    user.delete()
+            PY
+            systemctl is-active --quiet nginx
+            echo NATIVE_BOOK_ROUTE_DEPLOYED=yes
