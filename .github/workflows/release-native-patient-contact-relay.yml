@@ -1,0 +1,121 @@
+name: Guarded native patient contact relay release
+
+on:
+  push:
+    branches: [release/native-patient-contact-relay]
+    paths: ['.github/workflows/release-native-patient-contact-relay.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a-esthetic-mobile-api-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DJANGO_DEBUG: '1'
+      BASELINE_HASH: 5792104013dd972448beeba604908eb7e1f1890596ed3edb6cb8033c8ac96a72
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Test the authenticated relay and pin its source
+        id: relay
+        run: |
+          set -euo pipefail
+          cmp <(printf '%s\n' p0_app/mobile_staff_views.py p0_app/test_mobile_staff_workspace.py) <(git diff --name-only HEAD^^ HEAD^)
+          test "$(git show HEAD^^:p0_app/mobile_staff_views.py | sha256sum | cut -d' ' -f1)" = "$BASELINE_HASH"
+          python manage.py test p0_app.test_mobile_staff_workspace --noinput
+          tar -cf "native-contact-relay-$GITHUB_RUN_ID.tar" p0_app/mobile_staff_views.py
+          echo "source_sha=$(git rev-parse HEAD^)" >> "$GITHUB_OUTPUT"
+          echo "checksum=$(sha256sum p0_app/mobile_staff_views.py | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Wait for the guarded Book release before uploading the relay
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            code=$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' https://book.a-esthetic.de/api/mobile/staff/patient/1/contact/ || true)
+            if [ "$code" = 401 ]; then exit 0; fi
+            sleep 25
+          done
+          echo 'Book contact API is still unavailable. The relay has not been uploaded.'
+          exit 1
+      - uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: native-contact-relay-${{ github.run_id }}.tar
+          target: /tmp
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          CANDIDATE_HASH: ${{ steps.relay.outputs.checksum }}
+          RELEASE_BUNDLE: /tmp/native-contact-relay-${{ github.run_id }}.tar
+          RELAY_SHA: ${{ steps.relay.outputs.source_sha }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: BASELINE_HASH,CANDIDATE_HASH,RELEASE_BUNDLE,RELAY_SHA
+          command_timeout: 8m
+          script: |
+            set -euo pipefail
+            umask 077
+            trap 'rm -f "$RELEASE_BUNDLE"' EXIT
+            root=/opt/a-esthetic-mobile
+            service=a-esthetic-mobile.service
+            backups="$root/remediation-rollbacks"
+            path=p0_app/mobile_staff_views.py
+            file="$root/$path"
+            exec 9>"$backups/release.lock"
+            flock -n 9
+            test -f "$file" && test ! -L "$file"
+            systemctl is-active --quiet "$service"
+            if [ "$(sha256sum "$file" | cut -d' ' -f1)" != "$BASELINE_HASH" ]; then
+              echo 'The live relay differs from the reviewed baseline. No files changed.'
+              exit 1
+            fi
+            code=$(curl -s --max-time 15 -o /dev/null -w '%{http_code}' https://book.a-esthetic.de/api/mobile/staff/patient/1/contact/)
+            test "$code" = 401
+            snapshot=$(mktemp -d "$backups/native-contact-relay.XXXXXXXX")
+            cp -a "$file" "$snapshot/original"
+            tmp=$(mktemp "$root/p0_app/.contact-relay.XXXXXXXX")
+            switched=0
+            finish() {
+              result=$?
+              trap - EXIT
+              if [ "$result" != 0 ] && [ "$switched" = 1 ]; then
+                cp -a "$snapshot/original" "$tmp" && mv -f "$tmp" "$file" &&
+                  systemctl restart "$service" && systemctl is-active --quiet "$service" &&
+                  echo 'Native relay rollback verified.' || result=2
+              fi
+              rm -f "$tmp" "$RELEASE_BUNDLE"
+              exit "$result"
+            }
+            trap finish EXIT
+            cp -a "$file" "$tmp"
+            tar -xOf "$RELEASE_BUNDLE" "$path" > "$tmp"
+            test "$(sha256sum "$tmp" | cut -d' ' -f1)" = "$CANDIDATE_HASH"
+            "$root/venv/bin/python" -c 'import pathlib, sys; compile(pathlib.Path(sys.argv[1]).read_text(), sys.argv[1], "exec")' "$tmp"
+            mv -f "$tmp" "$file"
+            switched=1
+            systemctl restart "$service"
+            for attempt in {1..12}; do
+              code=$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' https://app.a-esthetic.de/api/mobile/staff/book/patient/1/contact/ || true)
+              if systemctl is-active --quiet "$service" && [ "$code" = 401 ]; then
+                test "$(sha256sum "$file" | cut -d' ' -f1)" = "$CANDIDATE_HASH"
+                echo "NATIVE_CONTACT_RELAY_DEPLOYED=$RELAY_SHA"
+                exit 0
+              fi
+              sleep 2
+            done
+            exit 1
