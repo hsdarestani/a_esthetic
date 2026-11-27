@@ -44,8 +44,8 @@ jobs:
             from p0_app import mobile_staff_views
             from datetime import date, timedelta
 
-            def check(origin, path, token, relay_headers=False):
-                query = '?start=' + (date.today() + timedelta(days=370)).isoformat() + '&days=1'
+            def check(origin, path, token, relay_headers=False, nonce=False):
+                query = '?start=' + (date.today() + timedelta(days=370)).isoformat() + '&days=1' + ('&_probe=' + uuid4().hex if nonce else '')
                 request = Request(origin + path + query,
                     headers={'Accept':'application/json', 'Cache-Control':'no-cache',
                              **({'Content-Type':'application/json'} if relay_headers else {'Origin':'capacitor://localhost'}),
@@ -77,6 +77,7 @@ jobs:
                 relay = check(app, relay_path, token)
                 print('DIRECT_BOOK', *direct, flush=True)
                 print('APP_RELAY', *relay, flush=True)
+                print('APP_RELAY_UNIQUE_QUERY', *check(app, relay_path, token, nonce=True), flush=True)
                 assert check(app, relay_path, None)[0] == 401
                 assert check(app, relay_path, _token_for(fixtures[1]))[0] == 403
                 upstream = getattr(settings, 'MOBILE_STAFF_BOOK_ORIGIN', book)
@@ -93,12 +94,19 @@ jobs:
                 import http.client
                 import re
                 import subprocess
+                import socket
+                import ssl
                 from urllib.parse import urlencode
                 from urllib.request import getproxies
                 def unit(service, prop):
                     return subprocess.check_output(['systemctl','show',service,'-p',prop,'--value'], text=True).strip()
+                class LocalTLS(http.client.HTTPSConnection):
+                    def connect(self):
+                        raw = socket.create_connection(('127.0.0.1', self.port), self.timeout)
+                        self.sock = self._context.wrap_socket(raw, server_hostname=self.host)
                 def local_check(address, port):
-                    conn = http.client.HTTPConnection(address, port, timeout=15)
+                    conn = (LocalTLS('app.a-esthetic.de', port, timeout=15) if port == 443 else
+                            http.client.HTTPConnection(address, port, timeout=15))
                     path = relay_path + '?' + urlencode({'start': (date.today() + timedelta(days=370)).isoformat(), 'days': '1'})
                     try:
                         conn.request('GET', path, headers={'Host':'app.a-esthetic.de',
@@ -127,24 +135,26 @@ jobs:
                 print('APP_WORKER_TCP_BIND_FOUND', bool(binds), flush=True)
                 for proxy in ('caddy','nginx','apache2','cloudflared'):
                     print('PROXY_ACTIVE', proxy, unit(proxy,'ActiveState') == 'active', flush=True)
-                try:
-                    with urlopen('http://127.0.0.1:2019/config/apps/http/servers/', timeout=3) as config:
-                        servers = json.load(config)
-                    def inspect(routes, matched=False):
-                        for route in routes:
-                            relevant = matched or any('app.a-esthetic.de' in rule.get('host', []) for rule in route.get('match', []))
-                            if relevant:
-                                for handler in route.get('handle', []):
-                                    for upstream in handler.get('upstreams', []):
-                                        bind = re.fullmatch(r'(?:127\.0\.0\.1|localhost):([0-9]+)', upstream.get('dial',''))
-                                        if bind:
-                                            print('CADDY_APP_UPSTREAM_MATCHES_WORKER', any(v.endswith(':'+bind[1]) for v in binds), flush=True)
-                                            print('CADDY_APP_UPSTREAM', *local_check('127.0.0.1', int(bind[1])), flush=True)
-                                    inspect(handler.get('routes', []), relevant)
-                    for server in servers.values():
-                        inspect(server.get('routes', []))
-                except Exception:
-                    print('CADDY_ADMIN_UNAVAILABLE', flush=True)
+                print('LOCAL_NGINX_HTTP', *local_check('127.0.0.1',80), flush=True)
+                print('LOCAL_NGINX_TLS', *local_check('127.0.0.1',443), flush=True)
+                config = subprocess.run(['nginx','-T'], text=True, capture_output=True)
+                print('NGINX_CONFIG_READABLE', config.returncode == 0, flush=True)
+                selected = []
+                for chunk in re.split(r'^# configuration file ([^:]+):\n',config.stdout,flags=re.M)[2::2]:
+                    if re.search(r'\bserver_name\s+[^;]*\bapp\.a-esthetic\.de\b', chunk):
+                        selected.append(chunk)
+                print('NGINX_EXACT_APP_CONFIG_COUNT', len(selected), flush=True)
+                for chunk in selected:
+                    for row in chunk.splitlines():
+                        line = row.strip()
+                        match = re.fullmatch(r'proxy_pass\s+https?://(?:127\.0\.0\.1|localhost):([0-9]+)[^;]*;',line)
+                        if match:
+                            print('NGINX_LOCAL_PROXY', match[1], any(v.endswith(':'+match[1]) for v in binds), flush=True)
+                            print('NGINX_LOCAL_PROXY_CHECK', *local_check('127.0.0.1',int(match[1])), flush=True)
+                        if re.match(r'(?:proxy_cache|fastcgi_cache|rewrite|try_files)\b',line):
+                            print('NGINX_APP_DIRECTIVE',line.split()[0], flush=True)
+                        if line.startswith('location ') and re.fullmatch(r'location\s+(?:(?:=|\^~)\s+)?/[a-zA-Z0-9/_-]*\s*\{',line):
+                            print('NGINX_APP_LOCATION',line[:-1].strip(), flush=True)
                 assert direct[:3] == relay[:3] == (200, True, True)
             finally:
                 for user in fixtures:
