@@ -1,0 +1,218 @@
+name: Publish BE DIFFERENT voice guidance admin — 2026-11-27
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bedifferent-voice-guidance-isolated-release-20261127.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bedifferent-esthetic-temp
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: bedifferent
+          POSTGRES_PASSWORD: test_only
+          POSTGRES_DB: bedifferent_build
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U bedifferent -d bedifferent_build"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      BD_BUILD_SHA: a5cc4b83281ea011ff6ab5478132d87882d6b7bb
+      DATABASE_URL: postgresql://bedifferent:test_only@127.0.0.1:5432/bedifferent_build?schema=public
+      NEXT_PUBLIC_APP_URL: https://bedifferent.smarbiz.sbs
+      CRON_SECRET: isolated-build-only
+      DATA_DIR: /tmp/bedifferent-login-build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/aymantraining
+          ref: a5cc4b83281ea011ff6ab5478132d87882d6b7bb
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify isolated six-file voice delta and build exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "a5cc4b83281ea011ff6ab5478132d87882d6b7bb"
+          actual="$(git diff --name-only f9f408f22bf50cbfba311b9306f0563441bce88e HEAD | sort)"
+          expected="$(printf '%s\n' app/admin/layout.tsx app/admin/page.tsx app/admin/voice-guidance/AudioManager.tsx app/admin/voice-guidance/page.tsx app/api/voice-guidance/route.ts app/components/AdminMobileNav.tsx | sort)"
+          if [ "$actual" != "$expected" ]; then echo "Unsafe source delta:"; echo "$actual"; exit 1; fi
+          cmp lib/i18n/en.json mobile/lib/i18n/en.json
+          grep -Fq 'aria-label="Language"' app/components/Locale.tsx
+          grep -Fq 'Copy text={"ATHLETEN."}' app/login/page.tsx
+          grep -Fq 'font-size:.84em' app/brand-system.css
+          npm ci --no-audit --no-fund
+          node scripts/test-languages.mjs
+          npm run check
+          npm audit --omit=dev --audit-level=high
+          npx prisma db push
+          npm run build
+          NODE_ENV=production npm start > /tmp/bd-login-smoke.log 2>&1 &
+          ready=0
+          for i in $(seq 1 35); do
+            if curl -fsS --max-time 5 http://127.0.0.1:3000/login > /tmp/bd-login-de.html 2>/dev/null; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then cat /tmp/bd-login-smoke.log; exit 1; fi
+          grep -Fq 'WERDE' /tmp/bd-login-de.html
+          grep -Fq 'ZUM' /tmp/bd-login-de.html
+          grep -Fq 'ATHLETEN.' /tmp/bd-login-de.html
+          curl -fsS --max-time 8 -H 'Cookie: bd_locale=en' http://127.0.0.1:3000/login > /tmp/bd-login-en.html
+          grep -Fq 'BECOME' /tmp/bd-login-en.html
+          grep -Fq 'ATHLETE.' /tmp/bd-login-en.html
+          grep -Fq 'aria-label="Language"' /tmp/bd-login-de.html
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/voice-guidance)" = 401
+          test -s .next/standalone/server.js
+          test "$(cat .next/BUILD_ID)" = "a5cc4b83281ea011ff6ab5478132d87882d6b7bb"
+          test -d .next/static
+          echo "BD_LOGIN_BUILD_SOURCE=a5cc4b83281ea011ff6ab5478132d87882d6b7bb"
+      - name: Package standalone server from only these changes
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d)"
+          cp -a .next/standalone/. "$stage/"
+          mkdir -p "$stage/.next" "$stage/bin" "$stage/node_modules"
+          cp -a .next/static "$stage/.next/static"
+          cp -a public "$stage/public"
+          cp "$(command -v node)" "$stage/bin/node"
+          if [ -d node_modules/.prisma ]; then cp -a node_modules/.prisma "$stage/node_modules/"; fi
+          if [ -d node_modules/@prisma ]; then cp -a node_modules/@prisma "$stage/node_modules/"; fi
+          if [ -d node_modules/bcryptjs ]; then cp -a node_modules/bcryptjs "$stage/node_modules/"; fi
+          printf '%s\n' 'a5cc4b83281ea011ff6ab5478132d87882d6b7bb' > "$stage/.source-sha"
+          test -s "$stage/server.js"
+          test -s "$stage/node_modules/@prisma/client/package.json"
+          tar -czf bd-voice-20261127.tgz -C "$stage" .
+          test -s bd-voice-20261127.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bd-voice-20261127
+          path: bd-voice-20261127.tgz
+          retention-days: 5
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Verify all three production endpoints before switch
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready | grep -Fq '"ok":true'
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          echo BD_WEB_PREDEPLOY=OK
+      - uses: actions/download-artifact@v4
+        with:
+          name: bd-voice-20261127
+      - name: Transfer archive only to Esthetic VPS temporary directory
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: bd-voice-20261127.tgz
+          target: /tmp
+      - name: Switch BE DIFFERENT only with automatic rollback
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 12m
+          script: |
+            set -Eeuo pipefail
+            APP=/opt/bedifferent-temp
+            SERVICE=bedifferent-temp
+            EXPECTED=a5cc4b83281ea011ff6ab5478132d87882d6b7bb
+            BASE=f9f408f22bf50cbfba311b9306f0563441bce88e
+            NEW="$APP/releases/voice-${{ github.run_id }}"
+            switched=0
+            OLD=""
+            rollback(){
+              rc=$?
+              trap - ERR
+              if [ "$switched" -eq 1 ] && [ -n "$OLD" ]; then
+                ln -sfn "$OLD" "$APP/current.rollback"
+                mv -Tf "$APP/current.rollback" "$APP/current"
+                systemctl restart "$SERVICE" || true
+                echo "BD_LOGIN_ROLLED_BACK=$OLD" >&2
+              fi
+              exit "$rc"
+            }
+            trap rollback ERR
+            test "$(id -u)" -eq 0
+            for svc in nginx postgresql a-esthetic-mobile aesthetic-book "$SERVICE"; do systemctl is-active --quiet "$svc"; done
+            test -d /opt/a-esthetic-mobile && test -d /opt/aesthetic-book
+            test -L "$APP/current" && test -s /etc/bedifferent-temp.env
+            OLD="$(readlink -f "$APP/current")"
+            case "$OLD" in "$APP"/releases/*) ;; *) echo UNEXPECTED_ACTIVE_RELEASE; false;; esac
+            test -s "$OLD/server.js"
+            test "$(cat "$OLD/.source-sha")" = "$BASE" || { echo "Live release changed; refusing to replace"; false; }
+            test ! -e "$NEW" && test -s /tmp/bd-voice-20261127.tgz
+            test "$(awk '/MemAvailable/ {print $2}' /proc/meminfo)" -gt 850000
+            test "$(df -Pk "$APP" | awk 'NR==2{print $4}')" -gt 1500000
+            curl -fsS --max-time 8 http://127.0.0.1:3100/api/ready >/dev/null
+            mkdir -p "$NEW"
+            tar -xzf /tmp/bd-voice-20261127.tgz -C "$NEW"
+            test -s "$NEW/server.js" && test -x "$NEW/bin/node"
+            test -d "$NEW/.next/static"
+            test "$(cat "$NEW/.source-sha")" = "$EXPECTED"
+            test "$(cat "$NEW/.next/BUILD_ID")" = "$EXPECTED"
+            test -s "$NEW/node_modules/@prisma/client/package.json"
+            # Retain hashed chunks for currently open sessions, without changing other apps.
+            cp -an "$OLD/.next/static/." "$NEW/.next/static/"
+            chown -R root:root "$NEW"
+            chmod -R go-w "$NEW"
+            find "$NEW" -type d -exec chmod a+rx {} +
+            find "$NEW/.next/static" -type f -exec chmod a+r {} +
+            runuser -u bedifferenttemp -- test -r "$NEW/server.js"
+            mkdir -p "$NEW/.next/cache"
+            chown -R bedifferenttemp:bedifferenttemp "$NEW/.next/cache"
+            echo "BE_DIFFERENT_PREVIOUS=$OLD"
+            ln -sfn "$NEW" "$APP/current.next"
+            mv -Tf "$APP/current.next" "$APP/current"
+            switched=1
+            systemctl restart "$SERVICE"
+            ready=0
+            for i in $(seq 1 35); do
+              if curl -fsS --max-time 5 http://127.0.0.1:3100/api/ready > /tmp/bd-login-ready.json 2>/dev/null &&
+                 grep -Fq "\"release\":\"$EXPECTED\"" /tmp/bd-login-ready.json; then
+                ready=1; break
+              fi
+              sleep 2
+            done
+            test "$ready" -eq 1
+            curl -fsS --max-time 10 http://127.0.0.1:3100/login > /tmp/bd-voice-login.html
+            grep -Fq 'ATHLETEN.' /tmp/bd-voice-login.html
+            test "$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/api/voice-guidance)" = 401
+            admin_code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/admin/voice-guidance)"
+            case "$admin_code" in 302|303|307|308|401|403) ;; *) false;; esac
+            for svc in nginx postgresql a-esthetic-mobile aesthetic-book "$SERVICE"; do systemctl is-active --quiet "$svc"; done
+            curl -fsS --max-time 8 http://127.0.0.1:8770/api/mobile/status/ >/dev/null
+            curl -fsS --max-time 8 http://127.0.0.1:8017/api/health/ >/dev/null
+            rm -f /tmp/bd-voice-20261127.tgz
+            trap - ERR
+            echo "BD_LOGIN_WEB_PUBLISHED_SHA=$EXPECTED"
+      - name: Verify public HTTPS and sibling services
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 "https://bedifferent.smarbiz.sbs/login?bd_release=${{ github.run_id }}" | grep -Fq 'ATHLETEN.'
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready | grep -Fq '"release":"a5cc4b83281ea011ff6ab5478132d87882d6b7bb"'
+          curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
+          curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
+          test "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' https://bedifferent.smarbiz.sbs/api/voice-guidance)" = 401
+          echo BD_VOICE_PRODUCTION_VERIFIED=YES
