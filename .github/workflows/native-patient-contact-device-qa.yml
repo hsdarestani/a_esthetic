@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 1fb31ace50ffd8f25b7e8b594d945b801fdedb3a
+          ref: 6b0d78a2fde1ecc4b33677f47770909b5877e71d
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -25,12 +25,12 @@ jobs:
       - name: Wait for the updated Build 70 artifacts
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run watch 45966585218 --interval 10 --exit-status
+        run: gh run watch 45967027845 --interval 10 --exit-status
       - uses: actions/download-artifact@v4
         with:
           name: a-esthetic-android-1.0.64-build-70
           path: b70
-          run-id: 45966585218
+          run-id: 45967027845
           github-token: ${{ github.token }}
       - name: Select the Build 70 debug APK
         run: |
@@ -73,7 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 1fb31ace50ffd8f25b7e8b594d945b801fdedb3a
+          ref: 6b0d78a2fde1ecc4b33677f47770909b5877e71d
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -82,12 +82,12 @@ jobs:
       - name: Wait for the updated Build 70 artifacts
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run watch 45966585218 --interval 10 --exit-status
+        run: gh run watch 45967027845 --interval 10 --exit-status
       - uses: actions/download-artifact@v4
         with:
           name: a-esthetic-ios-1.0.64-build-70
           path: b70
-          run-id: 45966585218
+          run-id: 45967027845
           github-token: ${{ github.token }}
       - name: Render and return to the native contact screen
         run: |
