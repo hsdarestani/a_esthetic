@@ -26,6 +26,12 @@ jobs:
           path: b70
           run-id: 45964486696
           github-token: ${{ github.token }}
+      - name: Select the Build 70 debug APK
+        run: |
+          set -euo pipefail
+          apk=$(find "$PWD/b70" -name a-esthetic-b70-debug.apk -type f)
+          test -f "$apk"
+          echo "APLUS_QA_APK=$apk" >> "$GITHUB_ENV"
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -38,17 +44,16 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
-          script: |
-            export APLUS_QA_APK=b70/artifacts/a-esthetic-b70-debug.apk
-            export APLUS_QA_FIXTURES='qa-fixtures/16a-patient-contact.json qa-fixtures/16c-patient-contact-en.json'
-            bash scripts/capture_native_v4_android.sh
-            adb shell input keyevent KEYCODE_HOME
-            adb shell am start -W -a android.settings.SETTINGS
-            adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n de.aplusesthetic.app/.MainActivity
-            adb shell uiautomator dump /sdcard/aplus-contact-qa.xml
-            adb exec-out cat /sdcard/aplus-contact-qa.xml > contact-resume.xml
-            grep -Fq 'Demo patient' contact-resume.xml
-            grep -Fq 'Contact' contact-resume.xml
+          script: >-
+            APLUS_QA_FIXTURES='qa-fixtures/16a-patient-contact.json qa-fixtures/16c-patient-contact-en.json'
+            bash scripts/capture_native_v4_android.sh &&
+            adb shell input keyevent KEYCODE_HOME &&
+            adb shell am start -W -a android.settings.SETTINGS &&
+            adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n de.aplusesthetic.app/.MainActivity &&
+            adb shell uiautomator dump /sdcard/aplus-contact-qa.xml &&
+            adb exec-out cat /sdcard/aplus-contact-qa.xml > contact-resume.xml &&
+            grep -Fq 'Demo patient' contact-resume.xml &&
+            grep -Fq 'Contact' contact-resume.xml &&
             adb exec-out screencap -p > screenshots/android/contact-resumed.png
       - uses: actions/upload-artifact@v4
         if: always()
