@@ -139,22 +139,17 @@ jobs:
                 print('LOCAL_NGINX_TLS', *local_check('127.0.0.1',443), flush=True)
                 config = subprocess.run(['nginx','-T'], text=True, capture_output=True)
                 print('NGINX_CONFIG_READABLE', config.returncode == 0, flush=True)
-                selected = []
-                for chunk in re.split(r'^# configuration file ([^:]+):\n',config.stdout,flags=re.M)[2::2]:
-                    if re.search(r'\bserver_name\s+[^;]*\bapp\.a-esthetic\.de\b', chunk):
-                        selected.append(chunk)
-                print('NGINX_EXACT_APP_CONFIG_COUNT', len(selected), flush=True)
-                for chunk in selected:
+                sections = re.split(r'^# configuration file ([^:]+):\n',config.stdout,flags=re.M)
+                for filename, chunk in zip(sections[1::2], sections[2::2]):
+                    relevant = 'app.a-esthetic.de' in chunk or 'a-esthetic' in filename
+                    if not relevant:
+                        continue
+                    print('NGINX_FILE', filename, flush=True)
                     for row in chunk.splitlines():
                         line = row.strip()
-                        match = re.fullmatch(r'proxy_pass\s+https?://(?:127\.0\.0\.1|localhost):([0-9]+)[^;]*;',line)
-                        if match:
-                            print('NGINX_LOCAL_PROXY', match[1], any(v.endswith(':'+match[1]) for v in binds), flush=True)
-                            print('NGINX_LOCAL_PROXY_CHECK', *local_check('127.0.0.1',int(match[1])), flush=True)
-                        if re.match(r'(?:proxy_cache|fastcgi_cache|rewrite|try_files)\b',line):
-                            print('NGINX_APP_DIRECTIVE',line.split()[0], flush=True)
-                        if line.startswith('location ') and re.fullmatch(r'location\s+(?:(?:=|\^~)\s+)?/[a-zA-Z0-9/_-]*\s*\{',line):
-                            print('NGINX_APP_LOCATION',line[:-1].strip(), flush=True)
+                        if re.match(r'(?:listen|server_name|location|include|proxy_pass|upstream|proxy_cache|fastcgi_pass|rewrite|try_files|return)\s',line) and re.fullmatch(r"[A-Za-z0-9_ /.:\-~^=$%*{};@+?]+",line):
+                            if '://' not in line or re.search(r'://(?:127\.0\.0\.1|localhost|app\.a-esthetic\.de|[a-zA-Z0-9_-]+(?=[:/;]))',line):
+                                print('NGINX_ROUTE', line, flush=True)
                 assert direct[:3] == relay[:3] == (200, True, True)
             finally:
                 for user in fixtures:
