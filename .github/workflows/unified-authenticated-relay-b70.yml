@@ -38,6 +38,7 @@ jobs:
             from platform_app.models import UserProfile
 
             import json
+            import os
             from django.conf import settings
             from django.test import RequestFactory
             from p0_app import mobile_staff_views
@@ -89,6 +90,61 @@ jobs:
                 print('DJANGO_RELAY_VIEW', local.status_code,
                       payload.get('calendar_editability_contract') == 'source-revisions-v2',
                       payload.get('calendar_actor_role') == 'admin', flush=True)
+                import http.client
+                import re
+                import subprocess
+                from urllib.parse import urlencode
+                from urllib.request import getproxies
+                def unit(service, prop):
+                    return subprocess.check_output(['systemctl','show',service,'-p',prop,'--value'], text=True).strip()
+                def local_check(address, port):
+                    conn = http.client.HTTPConnection(address, port, timeout=15)
+                    path = relay_path + '?' + urlencode({'start': (date.today() + timedelta(days=370)).isoformat(), 'days': '1'})
+                    try:
+                        conn.request('GET', path, headers={'Host':'app.a-esthetic.de',
+                            'X-Forwarded-Proto':'https','Authorization':'Bearer '+token,'Accept':'application/json'})
+                        reply = conn.getresponse()
+                        if reply.status != 200:
+                            return reply.status, False, False
+                        payload = json.load(reply)
+                        return reply.status, payload.get('calendar_editability_contract') == 'source-revisions-v2', payload.get('calendar_actor_role') == 'admin'
+                    except Exception:
+                        return 'unreachable', False, False
+                    finally:
+                        conn.close()
+                service = 'a-esthetic-mobile.service'
+                worker_pid = int(unit(service, 'MainPID'))
+                assert worker_pid > 1
+                worker_env = dict(item.split(b'=', 1) for item in open('/proc/%d/environ' % worker_pid, 'rb').read().split(b'\0') if b'=' in item)
+                print('WORKER_SETTINGS_MATCH', worker_env.get(b'DJANGO_SETTINGS_MODULE', b'config.settings').decode() == settings.SETTINGS_MODULE, flush=True)
+                print('WORKER_CWD_MATCH', os.path.realpath('/proc/%d/cwd' % worker_pid) == os.getcwd(), flush=True)
+                print('WORKER_PROXY_ENV_MATCH', all(worker_env.get(k.encode()) == os.environb.get(k.encode()) for k in
+                     ('HTTPS_PROXY','https_proxy','HTTP_PROXY','http_proxy','ALL_PROXY','all_proxy','NO_PROXY','no_proxy')), flush=True)
+                exec_spec = unit(service, 'ExecStart')
+                binds = sorted(set(re.findall(r'(?:--bind(?:=| )|-b )((?:127\.0\.0\.1|0\.0\.0\.0):[0-9]+)', exec_spec)))
+                for bind in binds:
+                    print('LOCAL_APP_WORKER', *local_check('127.0.0.1', int(bind.rsplit(':',1)[1])), flush=True)
+                print('APP_WORKER_TCP_BIND_FOUND', bool(binds), flush=True)
+                for proxy in ('caddy','nginx','apache2','cloudflared'):
+                    print('PROXY_ACTIVE', proxy, unit(proxy,'ActiveState') == 'active', flush=True)
+                try:
+                    with urlopen('http://127.0.0.1:2019/config/apps/http/servers/', timeout=3) as config:
+                        servers = json.load(config)
+                    def inspect(routes, matched=False):
+                        for route in routes:
+                            relevant = matched or any('app.a-esthetic.de' in rule.get('host', []) for rule in route.get('match', []))
+                            if relevant:
+                                for handler in route.get('handle', []):
+                                    for upstream in handler.get('upstreams', []):
+                                        bind = re.fullmatch(r'(?:127\.0\.0\.1|localhost):([0-9]+)', upstream.get('dial',''))
+                                        if bind:
+                                            print('CADDY_APP_UPSTREAM_MATCHES_WORKER', any(v.endswith(':'+bind[1]) for v in binds), flush=True)
+                                            print('CADDY_APP_UPSTREAM', *local_check('127.0.0.1', int(bind[1])), flush=True)
+                                    inspect(handler.get('routes', []), relevant)
+                    for server in servers.values():
+                        inspect(server.get('routes', []))
+                except Exception:
+                    print('CADDY_ADMIN_UNAVAILABLE', flush=True)
                 assert direct[:3] == relay[:3] == (200, True, True)
             finally:
                 for user in fixtures:
