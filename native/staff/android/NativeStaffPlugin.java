@@ -258,7 +258,7 @@ public final class NativeStaffPlugin extends Plugin {
             case "patient-contact-whatsapp": return android.R.drawable.ic_menu_send;
             case "patient-contact-email": return android.R.drawable.ic_dialog_email;
             case "patient-copy-phone":
-            case "patient-copy-email": return android.R.drawable.ic_menu_set_as;
+            case "patient-copy-email": return R.drawable.aplus_content_copy;
             case "patient-edit-contact": return android.R.drawable.ic_menu_edit;
             default: return 0;
         }
@@ -493,8 +493,20 @@ public final class NativeStaffPlugin extends Plugin {
         grid(body,list(s,"metrics"),true);
         JSONArray segments=list(s,"segments");
         if(segments.length()>0){
-            HorizontalScrollView chips=new HorizontalScrollView(getContext());chips.setHorizontalScrollBarEnabled(false);LinearLayout strip=row();
-            for(int i=0;i<segments.length();i++){JSONObject item=segments.optJSONObject(i);if(item!=null){Button chip=button(item.optString("label"),item.optString("id"),item.optBoolean("selected"));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,-2);p.rightMargin=dp(6);strip.addView(chip,p);}}
+            HorizontalScrollView chips=new HorizontalScrollView(getContext());
+            chips.setHorizontalScrollBarEnabled(false);
+            LinearLayout strip=row();
+            for(int i=0;i<segments.length();i++){
+                JSONObject item=segments.optJSONObject(i);
+                if(item==null)continue;
+                boolean selected=item.optBoolean("selected");
+                Button chip=button(item.optString("label"),item.optString("id"),selected);
+                chip.setSelected(selected);
+                LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,-2);
+                p.rightMargin=dp(6);
+                strip.addView(chip,p);
+                if(selected)chips.post(()->chips.scrollTo(Math.max(0,chip.getRight()+dp(6)-chips.getWidth()),0));
+            }
             chips.addView(strip);add(body,chips,10);
         }
         if(!s.optString("message").isEmpty()) {

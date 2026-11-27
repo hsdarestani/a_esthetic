@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import re
+from shutil import copyfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,6 +83,9 @@ def android():
         raise RuntimeError('Missing Android package')
     native = (ROOT / 'native/staff/android/NativeStaffPlugin.java').read_text()
     (main.parent / 'NativeStaffPlugin.java').write_text(native.replace('NATIVE_STAFF_PACKAGE', package[1]))
+    drawable = ROOT / 'android/app/src/main/res/drawable'
+    drawable.mkdir(parents=True, exist_ok=True)
+    copyfile(ROOT / 'native/staff/android/aplus_content_copy.xml', drawable / 'aplus_content_copy.xml')
     calendar = (ROOT / 'native/staff/android/NativeStaffV3Calendar.java').read_text()
     (main.parent / 'NativeStaffV3Calendar.java').write_text(calendar.replace('NATIVE_STAFF_PACKAGE', package[1]))
     paths = ROOT / 'android/app/src/main/res/xml/file_paths.xml'

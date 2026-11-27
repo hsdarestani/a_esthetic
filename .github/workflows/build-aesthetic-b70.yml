@@ -6,6 +6,8 @@ on:
     branches: [feature/native-patient-contact-build70]
     paths:
       - '.github/workflows/build-aesthetic-b70.yml'
+      - 'native/staff/**'
+      - 'www/mobile/native-workspace.mjs'
 
 permissions:
   contents: read

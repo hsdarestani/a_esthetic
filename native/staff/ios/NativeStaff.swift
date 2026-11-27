@@ -424,17 +424,27 @@ struct StaffNativeScreen: View {
         }
     }
     @ViewBuilder private var segmentsView: some View {
-        if !items("segments").isEmpty {
-            ScrollView(.horizontal,showsIndicators:false) {
-                HStack(spacing:7) {
-                    ForEach(Array(items("segments").enumerated()),id:\.offset) { _, item in
-                        let selected = item["selected"] as? Bool == true
-                        Button { action(text(item,"id")) } label: {
-                            Text(text(item,"label")).font(.subheadline.weight(.semibold)).lineLimit(1).fixedSize().padding(.horizontal,13).padding(.vertical,11)
-                                .foregroundColor(selected ? green : accent).background(selected ? sand : card,in:Capsule())
-                                .overlay { Capsule().strokeBorder(selected ? gold : edge,lineWidth:1) }
-                        }.buttonStyle(.plain)
+        let segments = items("segments")
+        let selectedId = segments.first { $0["selected"] as? Bool == true }.map { text($0,"id") }
+        if !segments.isEmpty {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal,showsIndicators:false) {
+                    HStack(spacing:7) {
+                        ForEach(Array(segments.enumerated()),id:\.offset) { _, item in
+                            let id = text(item,"id")
+                            let selected = id == selectedId
+                            Button { action(id) } label: {
+                                Text(text(item,"label")).font(.subheadline.weight(.semibold)).lineLimit(1).fixedSize().padding(.horizontal,13).padding(.vertical,11)
+                                    .foregroundColor(selected ? green : accent).background(selected ? sand : card,in:Capsule())
+                                    .overlay { Capsule().strokeBorder(selected ? gold : edge,lineWidth:1) }
+                            }.buttonStyle(.plain).id(id)
+                                .accessibilityAddTraits(selected ? .isSelected : [])
+                        }
                     }
+                }
+                .onAppear { if let selectedId { proxy.scrollTo(selectedId, anchor:.trailing) } }
+                .onChange(of:selectedId) { next in
+                    if let next { proxy.scrollTo(next, anchor:.trailing) }
                 }
             }
         }

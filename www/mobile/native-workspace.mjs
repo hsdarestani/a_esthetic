@@ -45,7 +45,11 @@ const uuid = () => globalThis.crypto.randomUUID();
 export function internationalPhone(input) {
   const raw=String(input??'').trim();
   if(!/^\+?\(?[0-9][0-9 ().\s/–-]*$/.test(raw))return '';
-  let phone=raw.replace(/[ ().\s/–-]/g,'');
+  // An explicit trunk prefix in parentheses is for domestic use. Italy,
+  // San Marino, and Vatican numbers can have a significant leading zero.
+  const trunk=raw.match(/^(?:\+|00)\s*(\d{1,3})[ .–-]*\(0\)/);
+  const formatted=trunk&&!['39','378','379'].includes(trunk[1])?raw.replace('(0)',''):raw;
+  let phone=formatted.replace(/[ ().\s/–-]/g,'');
   if(phone.startsWith('00'))phone='+'+phone.slice(2);
   else if(phone.startsWith('0'))phone='+49'+phone.slice(1);
   if(phone.startsWith('+490'))phone='+49'+phone.slice(4);
