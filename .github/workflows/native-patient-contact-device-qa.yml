@@ -15,16 +15,22 @@ jobs:
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 1fb31ace50ffd8f25b7e8b594d945b801fdedb3a
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Generate synthetic contact fixtures
         run: APLUS_NATIVE_QA_FIXTURES=qa-fixtures node scripts/test_native_staff_controller.mjs
+      - name: Wait for the updated Build 70 artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run watch 45966585218 --interval 10 --exit-status
       - uses: actions/download-artifact@v4
         with:
           name: a-esthetic-android-1.0.64-build-70
           path: b70
-          run-id: 45964486696
+          run-id: 45966585218
           github-token: ${{ github.token }}
       - name: Select the Build 70 debug APK
         run: |
@@ -66,16 +72,22 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 1fb31ace50ffd8f25b7e8b594d945b801fdedb3a
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Generate synthetic contact fixtures
         run: APLUS_NATIVE_QA_FIXTURES=qa-fixtures node scripts/test_native_staff_controller.mjs
+      - name: Wait for the updated Build 70 artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run watch 45966585218 --interval 10 --exit-status
       - uses: actions/download-artifact@v4
         with:
           name: a-esthetic-ios-1.0.64-build-70
           path: b70
-          run-id: 45964486696
+          run-id: 45966585218
           github-token: ${{ github.token }}
       - name: Render and return to the native contact screen
         run: |
