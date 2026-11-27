@@ -1,0 +1,45 @@
+name: Check public native API protocol from App host
+on:
+  push:
+    branches: [qa/native-public-contract-check-20261127]
+    paths: ['.github/workflows/native-public-contract-check.yml']
+permissions:
+  contents: read
+jobs:
+  public-http:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify the public anonymous protocol response without credential or record access
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 3m
+          script: |
+            set -euo pipefail
+            cd /opt/a-esthetic-mobile
+            set -a
+            source mobile.env
+            set +a
+            if /opt/a-esthetic-mobile/venv/bin/python manage.py shell >/dev/null 2>&1 <<'PY'
+            from django.conf import settings
+            from urllib.request import Request, urlopen
+            from urllib.error import HTTPError
+            origin = getattr(settings, 'MOBILE_STAFF_BOOK_ORIGIN', 'https://book.a-esthetic.de')
+            req = Request(origin + '/api/mobile/staff/calendar/', headers={'Accept':'application/json'})
+            try:
+                urlopen(req, timeout=12)
+            except HTTPError as e:
+                assert e.code == 401 and e.headers.get('X-APlus-Staff-Contract') == 'source-revisions-v2'
+            else:
+                raise AssertionError('Expected anonymous rejection')
+            PY
+            then
+              echo 'PUBLIC_NATIVE_HTTP_CONTRACT=source-revisions-v2'
+            else
+              echo 'PUBLIC_NATIVE_HTTP_CONTRACT=not_observed'
+              exit 1
+            fi
