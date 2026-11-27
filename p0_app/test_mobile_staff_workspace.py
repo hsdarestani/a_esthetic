@@ -38,6 +38,31 @@ class MobileStaffWorkspaceTests(TestCase):
             self.assertEqual(self.client.get('/api/mobile/staff/book/admin/overview/', **self.auth(self.doctor)).status_code,404)
             relay.assert_not_called()
 
+    def test_patient_contact_relay_is_scoped_and_write_is_admin_only(self):
+        endpoint = '/api/mobile/staff/book/patient/23/contact/'
+        admin = User.objects.create_superuser('contact-admin', email='contact-admin@example.test')
+        body = {'revision':'a'*64, 'phone':'+493023125000'}
+        with patch('p0_app.mobile_staff_views.build_opener') as opener:
+            for user, expected in [(self.customer,403), (self.doctor,403), (None,401)]:
+                result = self.client.post(endpoint, body, content_type='application/json',
+                                          **(self.auth(user) if user else {}))
+                self.assertEqual(result.status_code, expected)
+            opener.assert_not_called()
+            upstream = opener.return_value.open.return_value
+            upstream.code = 200
+            upstream.headers.get_content_type.return_value = 'application/json'
+            upstream.read.return_value = b'{"ok":true}'
+            headers = self.auth(admin)
+            response = self.client.post(endpoint, body, content_type='application/json', **headers)
+            remote = opener.return_value.open.call_args.args[0]
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('no-store', response.headers['Cache-Control'])
+            self.assertTrue(remote.full_url.endswith('/api/mobile/staff/patient/23/contact/'))
+            self.assertEqual(remote.get_method(), 'POST')
+            self.assertEqual(remote.get_header('Authorization'), headers['HTTP_AUTHORIZATION'])
+            self.assertEqual(self.client.get(endpoint, **self.auth(self.doctor)).status_code, 200)
+            self.assertEqual(opener.return_value.open.call_args.args[0].get_method(), 'GET')
+
     @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_reset_uses_allauth_token_and_generic_success(self):
         for address in (self.customer.email, 'missing@example.test'):
