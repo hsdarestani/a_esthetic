@@ -1,4 +1,4 @@
-name: Publish BE DIFFERENT voice guidance admin — 2026-11-27
+name: Publish BE DIFFERENT recorded coach playback — 2026-11-28
 on:
   push:
     branches: [main]
@@ -7,12 +7,104 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  actions: read
 concurrency:
   group: bedifferent-esthetic-temp
   cancel-in-progress: false
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: bedifferent
+          POSTGRES_PASSWORD: test_only
+          POSTGRES_DB: bedifferent_build
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U bedifferent -d bedifferent_build"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      BD_BUILD_SHA: 749108c423ad6ac630dcb56ec20e18357b9be474
+      DATABASE_URL: postgresql://bedifferent:test_only@127.0.0.1:5432/bedifferent_build?schema=public
+      NEXT_PUBLIC_APP_URL: https://bedifferent.smarbiz.sbs
+      CRON_SECRET: isolated-build-only
+      DATA_DIR: /tmp/bedifferent-login-build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: hsdarestani/aymantraining
+          ref: 749108c423ad6ac630dcb56ec20e18357b9be474
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify tested voice source and web-only delta
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "749108c423ad6ac630dcb56ec20e18357b9be474"
+          actual="$(git diff --name-only a5cc4b83281ea011ff6ab5478132d87882d6b7bb HEAD -- app lib public pwa prisma package.json package-lock.json next.config.mjs | sort)"
+          expected="$(printf '%s\n' app/admin/voice-guidance/AudioManager.tsx app/admin/voice-guidance/page.tsx app/api/privacy/delete/route.ts app/api/privacy/export/route.ts app/api/voice-guidance/route.ts app/api/voice-preference/route.ts app/components/Locale.tsx app/components/useCoachVoice.ts app/focus/FocusTimer.tsx app/settings/SettingsClient.tsx app/settings/VoicePreference.tsx app/training/[id]/WorkoutSession.tsx lib/i18n/en.json public/offline.html pwa/worker.js | sort)"
+          if [ "$actual" != "$expected" ]; then echo "Unsafe source delta:"; echo "$actual"; exit 1; fi
+          cmp lib/i18n/en.json mobile/lib/i18n/en.json
+          grep -Fq 'Language' app/components/Locale.tsx
+          grep -Fq 'Copy text={"ATHLETEN."}' app/login/page.tsx
+          grep -Fq 'font-size:.84em' app/brand-system.css
+          npm ci --no-audit --no-fund
+          node scripts/test-languages.mjs
+          npm run check
+          npm audit --omit=dev --audit-level=high
+          npx prisma db push
+          npm run build
+          NODE_ENV=production npm start > /tmp/bd-login-smoke.log 2>&1 &
+          ready=0
+          for i in $(seq 1 35); do
+            if curl -fsS --max-time 5 http://127.0.0.1:3000/login > /tmp/bd-login-de.html 2>/dev/null; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then cat /tmp/bd-login-smoke.log; exit 1; fi
+          grep -Fq 'WERDE' /tmp/bd-login-de.html
+          grep -Fq 'ZUM' /tmp/bd-login-de.html
+          grep -Fq 'ATHLETEN.' /tmp/bd-login-de.html
+          curl -fsS --max-time 8 -H 'Cookie: bd_locale=en' http://127.0.0.1:3000/login > /tmp/bd-login-en.html
+          grep -Fq 'BECOME' /tmp/bd-login-en.html
+          grep -Fq 'ATHLETE.' /tmp/bd-login-en.html
+          grep -Fq 'Language' /tmp/bd-login-de.html
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/voice-guidance)" = 401
+          test -s .next/standalone/server.js
+          test "$(cat .next/BUILD_ID)" = "749108c423ad6ac630dcb56ec20e18357b9be474"
+          test -d .next/static
+          echo "BD_LOGIN_BUILD_SOURCE=749108c423ad6ac630dcb56ec20e18357b9be474"
+      - name: Package standalone server from only these changes
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d)"
+          cp -a .next/standalone/. "$stage/"
+          mkdir -p "$stage/.next" "$stage/bin" "$stage/node_modules"
+          cp -a .next/static "$stage/.next/static"
+          cp -a public "$stage/public"
+          mkdir -p "$stage/pwa"
+          cp pwa/worker.js "$stage/pwa/worker.js"
+          cp "$(command -v node)" "$stage/bin/node"
+          if [ -d node_modules/.prisma ]; then cp -a node_modules/.prisma "$stage/node_modules/"; fi
+          if [ -d node_modules/@prisma ]; then cp -a node_modules/@prisma "$stage/node_modules/"; fi
+          if [ -d node_modules/bcryptjs ]; then cp -a node_modules/bcryptjs "$stage/node_modules/"; fi
+          printf '%s\n' '749108c423ad6ac630dcb56ec20e18357b9be474' > "$stage/.source-sha"
+          test -s "$stage/server.js"
+          test -s "$stage/node_modules/@prisma/client/package.json"
+          tar -czf bd-voice-complete-20261128.tgz -C "$stage" .
+          test -s bd-voice-complete-20261128.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bd-voice-complete-20261128
+          path: bd-voice-complete-20261128.tgz
+          retention-days: 5
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -25,9 +117,7 @@ jobs:
           echo BD_WEB_PREDEPLOY=OK
       - uses: actions/download-artifact@v4
         with:
-          name: bd-voice-20261127
-          run-id: 46016025104
-          github-token: ${{ github.token }}
+          name: bd-voice-complete-20261128
       - name: Transfer archive only to Esthetic VPS temporary directory
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -35,7 +125,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           port: ${{ secrets.SERVER_PORT }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          source: bd-voice-20261127.tgz
+          source: bd-voice-complete-20261128.tgz
           target: /tmp
       - name: Switch BE DIFFERENT only with automatic rollback
         uses: appleboy/ssh-action@v1.2.0
@@ -49,8 +139,8 @@ jobs:
             set -Eeuo pipefail
             APP=/opt/bedifferent-temp
             SERVICE=bedifferent-temp
-            EXPECTED=a5cc4b83281ea011ff6ab5478132d87882d6b7bb
-            BASE=f9f408f22bf50cbfba311b9306f0563441bce88e
+            EXPECTED=749108c423ad6ac630dcb56ec20e18357b9be474
+            BASE=a5cc4b83281ea011ff6ab5478132d87882d6b7bb
             NEW="$APP/releases/voice-${{ github.run_id }}"
             phase=preflight
             switched=0
@@ -76,12 +166,12 @@ jobs:
             case "$OLD" in "$APP"/releases/*) ;; *) echo UNEXPECTED_ACTIVE_RELEASE; false;; esac
             test -s "$OLD/server.js"
             test "$(cat "$OLD/.source-sha")" = "$BASE" || { echo "Live release changed; refusing to replace"; false; }
-            test ! -e "$NEW" && test -s /tmp/bd-voice-20261127.tgz
+            test ! -e "$NEW" && test -s /tmp/bd-voice-complete-20261128.tgz
             test "$(awk '/MemAvailable/ {print $2}' /proc/meminfo)" -gt 850000
             test "$(df -Pk "$APP" | awk 'NR==2{print $4}')" -gt 1500000
             curl -fsS --max-time 8 http://127.0.0.1:3100/api/ready >/dev/null
             mkdir -p "$NEW"
-            tar -xzf /tmp/bd-voice-20261127.tgz -C "$NEW"
+            tar -xzf /tmp/bd-voice-complete-20261128.tgz -C "$NEW"
             test -s "$NEW/server.js" && test -x "$NEW/bin/node"
             test -d "$NEW/.next/static"
             test "$(cat "$NEW/.source-sha")" = "$EXPECTED"
@@ -132,15 +222,16 @@ jobs:
             for svc in nginx postgresql a-esthetic-mobile aesthetic-book "$SERVICE"; do systemctl is-active --quiet "$svc"; done
             curl -fsS --max-time 8 http://127.0.0.1:8770/api/mobile/status/ >/dev/null
             curl -fsS --max-time 8 http://127.0.0.1:8017/api/health/ >/dev/null
-            rm -f /tmp/bd-voice-20261127.tgz
+            rm -f /tmp/bd-voice-complete-20261128.tgz
             trap - ERR
             echo "BD_LOGIN_WEB_PUBLISHED_SHA=$EXPECTED"
       - name: Verify public HTTPS and sibling services
         run: |
           set -euo pipefail
           curl -fsS --max-time 20 "https://bedifferent.smarbiz.sbs/login?bd_release=${{ github.run_id }}" | grep -Fq 'ATHLETEN.'
-          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready | grep -Fq '"release":"a5cc4b83281ea011ff6ab5478132d87882d6b7bb"'
+          curl -fsS --max-time 15 https://bedifferent.smarbiz.sbs/api/ready | grep -Fq '"release":"749108c423ad6ac630dcb56ec20e18357b9be474"'
           curl -fsS --max-time 15 https://esthetic.smarbiz.sbs/api/mobile/status/ >/dev/null
           curl -fsS --max-time 15 https://book.a-esthetic.de/api/health/ >/dev/null
           test "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' https://bedifferent.smarbiz.sbs/api/voice-guidance)" = 401
+          test "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' https://bedifferent.smarbiz.sbs/api/voice-preference)" = 401
           echo BD_VOICE_PRODUCTION_VERIFIED=YES
