@@ -1,0 +1,66 @@
+name: Native latency audit
+on:
+  push:
+    branches: [ops/native-latency-audit-20261128]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 4m
+          script: |
+            set -euo pipefail
+            cd /opt/a-esthetic-mobile
+            systemctl is-active a-esthetic-mobile
+            systemctl is-active aesthetic-book || true
+            systemctl show a-esthetic-mobile -p ExecStart --value | sed -E 's/.*(--workers [0-9]+).*/\1/' | grep -E '^--workers [0-9]+$' || true
+            set -a
+            source mobile.env
+            set +a
+            export DJANGO_SETTINGS_MODULE=config.settings
+            /opt/a-esthetic-mobile/venv/bin/python - <<'PY'
+            import django
+            django.setup()
+            from django.contrib.auth import get_user_model
+            from platform_app.mobile_api import _token_for
+            from platform_app.models import UserProfile
+            from time import monotonic
+            from urllib.request import Request,urlopen
+            from urllib.error import HTTPError
+            from uuid import uuid4
+            from django.conf import settings
+            print("BOOK_ORIGIN_IS_PUBLIC",getattr(settings,"MOBILE_STAFF_BOOK_ORIGIN","https://book.a-esthetic.de")=="https://book.a-esthetic.de")
+            user=get_user_model()(username='synthetic-latency-'+uuid4().hex)
+            user.set_unusable_password()
+            user.save()
+            try:
+                UserProfile.objects.update_or_create(user=user,defaults={"role":"admin"})
+                token=_token_for(user)
+                for name,url in [
+                    ("session","https://app.a-esthetic.de/api/mobile/staff/session/"),
+                    ("direct_search","https://book.a-esthetic.de/api/mobile/staff/patients/?q=synthetic-no-match"),
+                    ("relay_search","https://app.a-esthetic.de/api/mobile/staff/book/patients/?q=synthetic-no-match"),
+                    ("relay_catalog","https://app.a-esthetic.de/api/mobile/staff/book/catalog/"),
+                ]:
+                    for i in range(2):
+                        start=monotonic()
+                        try:
+                            with urlopen(Request(url,headers={"Authorization":"Bearer "+token,"Accept":"application/json"}),timeout=18) as res:
+                                res.read()
+                                status=res.status
+                        except HTTPError as exc:
+                            status=exc.code
+                        except Exception as exc:
+                            status=type(exc).__name__
+                        print("LATENCY",name,status,round((monotonic()-start)*1000),flush=True)
+            finally:
+                user.delete()
+            PY
