@@ -23,7 +23,7 @@ let preview = async()=>{};
 const uploads=[];
 const contactActions=[], calendarCommands=[], copiedContacts=[], contactWrites=[];
 let contact={id:23,name:'Demo patient',email:'demo@example.test',phone:'069000000',contact_revision:'initial'};
-let externalUnavailable=false, conflict=false;
+let externalUnavailable=false, conflict=false, bookingFailure=false;
 let uploadFailures=0, patientRequests=0, loggedOut=0, sessionExpired=false;
 const checkpoints=new Map();
 const navigation={
@@ -65,7 +65,7 @@ globalThis.fetch=async(url,opts)=>{
   if(path.endsWith('/overview/'))result={today:3,upcoming_count:14,patient_count:37,provider_count:2,intake_review_count:1,
     provider_today:[{id:1,name:'Demo clinician',count:3}],upcoming:[{id:44,customer_name:'Synthetic patient',date:'2026-11-23',start:'10:00',staff_name:'Demo clinician',service_name:'Consult',status:'confirmed'}]};
   else if(path.endsWith('/catalog/'))result={
-    providers:[{id:1,name:'Dr. Ariane Demo'},{id:2,name:'A+ Esthetic (SimplyBook #7)',source_managed:true}],
+    providers:[{id:1,name:'Dr. Ariane Demo',services:[1]},{id:2,name:'A+ Esthetic (SimplyBook #7)',source_managed:true,services:[2]}],
     services:[{id:1,name:'Consult',active:true},{id:2,name:'Imported',slug:'simplybook-event-7',active:true,source_managed:true}],
   };
   else if(path.endsWith('/calendar/')){
@@ -99,6 +99,7 @@ globalThis.fetch=async(url,opts)=>{
   else if(path.endsWith('/patient-account/23/')){if(accountMode==='fallback'||accountMode==='unlinked')return {ok:false,status:404};result={customer_id:accountMode==='null-verified'?null:25};}
   else if(path.endsWith('/customers/25/')){if(accountMode==='missing-detail')return {ok:false,status:404};result={customer:{id:25,name:'Demo patient',coins:240,credit_cents:1500},packages:[{id:1,name:'Synthetic package',remaining_sessions:2,expires_at:'2027-01-01',status:'active'}]};}
   else if(path.endsWith('/records/99/'))return new Response('%PDF-1.7 synthetic');
+  else if(path.endsWith('/appointment/')&&opts.body&&bookingFailure)return {ok:false,status:400,json:async()=>({ok:false,error:'invalid_request',message:'Patient, Behandlung oder Behandler ist nicht verfügbar.'})};
   else if(/\/(appointment|appointment-reminder|block|availability)\/$/.test(path)&&opts.body){calendarCommands.push({path,body:JSON.parse(opts.body)});result={ok:true,id:44};}
   else if(path.endsWith('/record-upload/')){
     uploads.push(JSON.parse(opts.body));
@@ -169,6 +170,21 @@ assert.equal(current.openChoice,'customer_id');
 assert.equal(current.choiceQuery,'Demo');
 assert.ok(current.fields.find(f=>f.id==='customer_id').options.some(o=>o.label==='Demo patient'));
 capture('03b-client-picker');
+const bookingFields={customer_id:'23',staff_id:'1',service_id:'1',date:'23.11.2026',start:'10:00'};
+const beforeBooking=calendarCommands.length;
+await click('save-new',{...bookingFields,service_id:'2'});
+assert.match(current.message,/not assigned to this provider/);
+assert.equal(calendarCommands.length,beforeBooking);
+await click('save-new',{...bookingFields,start:'10:07'});
+assert.match(current.message,/15-minute increments/);
+assert.equal(calendarCommands.length,beforeBooking);
+bookingFailure=true;
+await click('save-new',bookingFields);
+assert.match(current.message,/Patient, Behandlung oder Behandler ist nicht verfügbar.*HTTP 400/);
+bookingFailure=false;
+await click('save-new',bookingFields);
+assert.equal(calendarCommands.at(-1).body.date,'2026-11-23');
+assert.equal(calendarCommands.at(-1).body.start,'10:00');
 await click('calendar');
 await click('new-block');
 assert.equal(current.layout,'simplybook-form');
