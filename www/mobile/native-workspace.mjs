@@ -115,7 +115,18 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
       method:data ? 'POST':'GET', headers:{Authorization:'Bearer '+token,Accept:'application/json','Content-Type':'application/json'},
       cache:'no-store', signal:requests.signal, ...(data?{body:JSON.stringify(data)}:{}),
     });
-    if(!response.ok){const err=new Error(tr('Vorgang konnte nicht abgeschlossen werden.','Unable to complete request.')+' (HTTP '+response.status+')');err.status=response.status;throw err;}
+    if(!response.ok){
+      let message=tr('Vorgang konnte nicht abgeschlossen werden.','Unable to complete request.')+' (HTTP '+response.status+')';
+      // Book already returns staff-safe validation messages. Preserve them for booking actions.
+      if(path==='book/appointment/' && [400,409].includes(response.status)){
+        try {
+          const failure=await response.json();
+          if(typeof failure?.message==='string' && failure.message.trim())
+            message=failure.message.trim().slice(0,500)+' (HTTP '+response.status+')';
+        } catch(_) { /* retain the generic status if the response is not JSON */ }
+      }
+      const err=new Error(message);err.status=response.status;throw err;
+    }
     return response.json();
   }
   const pendingCommands = new Map();
@@ -1095,6 +1106,15 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
         }
         if(id==='save-edit') for(const k of ['customer_id','staff_id','service_id']) if(payload[k]==null || payload[k]==='') payload[k]=appointment[k];
         for(const k of ['customer_id','staff_id','service_id']) { payload[k]=Number(payload[k]); if(!Number.isSafeInteger(payload[k])||payload[k]<=0) throw new Error(tr('Ungültige Buchungsdaten.','Invalid booking data.')); }
+        if(id==='save-new'){
+          const provider=catalog?.providers?.find(p=>Number(p.id)===payload.staff_id);
+          // The catalogue exposes the active services assigned to each provider.
+          if(Array.isArray(provider?.services)&&!provider.services.some(s=>Number(s)===payload.service_id))
+            throw new Error(tr('Die gewählte Behandlung ist diesem Behandler nicht zugeordnet. Bitte einen passenden Behandler oder eine andere Behandlung auswählen.','The selected treatment is not assigned to this provider. Choose a compatible provider or treatment.'));
+          if(!/^(?:[01][0-9]|2[0-3]):(?:00|15|30|45)$/.test(String(payload.start||'').trim()))
+            throw new Error(tr('Bitte eine Uhrzeit im 15-Minuten-Raster eingeben.','Choose a time in 15-minute increments.'));
+          payload.start=String(payload.start).trim();
+        }
         if(id==='save-edit'){payload.id=appointment.id;payload.revision=appointment.revision;payload.status=appointment.status;}
         await command('book/appointment/',payload);appointmentsById.clear();calendarCache.clear();return await screen('calendar');
       }
