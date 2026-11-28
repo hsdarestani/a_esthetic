@@ -1111,7 +1111,7 @@ export async function mountNativeWorkspace({token, identity, origin, logout, ini
           // The catalogue exposes the active services assigned to each provider.
           if(Array.isArray(provider?.services)&&!provider.services.some(s=>Number(s)===payload.service_id))
             throw new Error(tr('Die gewählte Behandlung ist diesem Behandler nicht zugeordnet. Bitte einen passenden Behandler oder eine andere Behandlung auswählen.','The selected treatment is not assigned to this provider. Choose a compatible provider or treatment.'));
-          if(!/^(?:[01]\\d|2[0-3]):(?:00|15|30|45)$/.test(String(payload.start||'').trim()))
+          if(!/^(?:[01][0-9]|2[0-3]):(?:00|15|30|45)$/.test(String(payload.start||'').trim()))
             throw new Error(tr('Bitte eine Uhrzeit im 15-Minuten-Raster eingeben.','Choose a time in 15-minute increments.'));
           payload.start=String(payload.start).trim();
         }
