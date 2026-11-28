@@ -36,6 +36,7 @@ jobs:
             source mobile.env
             set +a
             export DJANGO_SETTINGS_MODULE=config.settings
+            export PYTHONPATH=/opt/a-esthetic-mobile
             probe=$(mktemp)
             chmod 600 "$probe"
             cat > "$probe" <<'PY'
