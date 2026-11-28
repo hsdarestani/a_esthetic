@@ -73,7 +73,8 @@ jobs:
           curl -fsS --max-time 8 -H 'Cookie: bd_locale=en' http://127.0.0.1:3000/login > /tmp/bd-login-en.html
           grep -Fq 'BECOME' /tmp/bd-login-en.html
           grep -Fq 'ATHLETE.' /tmp/bd-login-en.html
-          grep -Fq 'Language' /tmp/bd-login-de.html
+          grep -Fq 'aria-label="Sprache"' /tmp/bd-login-de.html
+          grep -Fq 'aria-label="Language"' /tmp/bd-login-en.html
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/voice-guidance)" = 401
           test -s .next/standalone/server.js
           test "$(cat .next/BUILD_ID)" = "749108c423ad6ac630dcb56ec20e18357b9be474"
